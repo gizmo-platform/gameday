@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	_ "github.com/the-maldridge/authware/backend/htpasswd"
 
 	"github.com/gizmo-platform/gameday/pkg/http"
 )

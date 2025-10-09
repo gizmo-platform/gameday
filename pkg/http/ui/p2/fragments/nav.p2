@@ -1,0 +1,14 @@
+<div id="nav" class="foreground flex-container flex-row noprint">
+    <div class="flex-item">
+    <span id="logomark">Gameday</span>
+  </div>
+  <div class="flex-item flex-max">
+  </div>
+    <div class="flex-item">
+    {% if user.Identity %}
+      <a href="/logout" style="text-decoration: none; color: black;">Logout ({{ user.Identity }})</a>
+    {% else %}
+      <a href="/login">Login</a>
+    {% endif %}
+  </div>
+</div>

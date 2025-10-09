@@ -1,0 +1,119 @@
+html, body {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+#logomark {
+    font-weight: 800;
+}
+
+#nav {
+    background-color: #e0e0e0;
+    width: 100%;
+}
+
+#content {
+    max-width: 80%;
+    margin-top: 1em;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#disproot .flex-item {
+    padding: 0.25em;
+}
+
+#logbox-anchor {
+    overflow-anchor: auto;
+    height: 1px;
+}
+
+.background {
+    background-color: #7e7e7e;
+}
+
+.box {
+    padding: 1em;
+    border: 1px solid black;
+    border-radius: 4px;
+    width: auto;
+    height: auto;
+}
+
+.flex-center {
+    align-items: center;
+    justify-content: center;
+}
+
+.flex-container {
+    display: flex;
+}
+
+.flex-row {
+    flex-direction: row;
+}
+
+.flex-column {
+    flex-direction: column;
+}
+
+.flex-item {
+    padding: 1em;
+}
+
+.flex-max {
+    flex-grow: 1;
+}
+
+.flex-less {
+    flex-shrink: 3;
+}
+
+.foreground {
+    background-color: #f9f9f9;
+}
+
+.grid-center {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    width: 100%;
+}
+
+.nav-header {
+    font-weight: 475;
+    margin-left: 1em;
+    margin-right: 1em;
+    margin-bottom: 0.25em;
+}
+
+.nav-container {
+    display: inline-block;
+    position: relative;
+}
+
+.nav-dropdown {
+    display: none;
+    position: absolute;
+    background-color: #dddddd;
+    border: 2px black solid;
+}
+
+.nav-container:hover .nav-dropdown {
+    display: block;
+}
+
+.nav-item {
+    text-decoration: none;
+    display: inline-block;
+    padding: 0.5em;
+    min-width: 160px;
+    transition: background-color 100ms linear;
+}
+
+.nav-item:hover {
+    background-color: #eeeeee;
+    transition: background-color 100ms linear;
+}
