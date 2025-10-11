@@ -42,6 +42,20 @@ html, body {
     height: auto;
 }
 
+.button {
+    text-decoration: none;
+    color: black;
+    padding: 0.5em;
+    border: 1px solid black;
+    border-radius: 4px;
+    background-color: lightgray;
+}
+
+.button:hover {
+    background-color: gainsboro;
+    transition: background-color 100ms linear;
+}
+
 .flex-center {
     align-items: center;
     justify-content: center;
@@ -106,6 +120,7 @@ html, body {
 }
 
 .nav-item {
+    color: black;
     text-decoration: none;
     display: inline-block;
     padding: 0.5em;

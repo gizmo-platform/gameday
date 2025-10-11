@@ -1,4 +1,4 @@
-package http
+package web
 
 import (
 	"fmt"
@@ -17,6 +17,8 @@ func (s *Server) DoTemplate(w http.ResponseWriter, r *http.Request, tmpl string,
 		ctx = pongo2.Context{}
 	}
 	ctx["user"], _ = r.Context().Value(authware.UserKey{}).(authware.User)
+	ctx["navElements"] = s.nav
+	ctx["pageBase"] = r.URL.Path
 	t, err := s.tpl.FromCache(tmpl)
 	if err != nil {
 		s.templateErrorHandler(w, err)
@@ -25,4 +27,10 @@ func (s *Server) DoTemplate(w http.ResponseWriter, r *http.Request, tmpl string,
 	if err := t.ExecuteWriter(ctx, w); err != nil {
 		s.templateErrorHandler(w, err)
 	}
+}
+
+// AddTemplateLoader attempts to add a module owned template loader to
+// the cache.
+func (s *Server) AddTemplateLoader(t pongo2.TemplateLoader) {
+	s.tpl.AddLoader(t)
 }

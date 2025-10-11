@@ -1,0 +1,38 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Team List{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <p>Below is a list of all teams that Gameday knows about.</p>
+  <br />
+  <hr />
+  <div class="flex-container flex-center">
+    <a class="flex-item button" href="{{ pageBase }}/import">Import Teams</a>
+  </div>
+  <hr />
+
+  <div class="flex-container flex-center">
+    <table class="flex-item flex-max">
+      <tr>
+        <th>Number</th>
+        <th>Name</th>
+        <th>Division</th>
+        <th>Region</th>
+        <th>Actions</th>
+      </tr>
+      {% for team in teams %}
+      <tr>
+        <td>{{ team.Number }}</td>
+        <td>{{ team.Name }}</td>
+        <td>{{ team.Division }}</td>
+        <td>{{ team.Region }}</td>
+        <td class="flex-container">
+          <a class="flex-item button" href="{{ pageBase }}/{{ team.ID }}/edit">Edit</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

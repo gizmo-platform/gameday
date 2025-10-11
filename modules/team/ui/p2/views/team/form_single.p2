@@ -1,0 +1,52 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Team Edit{% endblock %}
+
+{% block content %}
+<div class="foreground box flex-container flex-center">
+  <form method="POST">
+    <table class="flex-item">
+      <tr>
+        <th>Field</th>
+        <th>Value</th>
+      </tr>
+
+      <tr>
+        <td><label for="team_number">Team Number</label></td>
+        <td><input type="number" name="team_number" value="{{ team.Number }}" /></td>
+      </tr>
+
+      <tr>
+        <td><label for="team_name">Team Name</label></td>
+        <td><input type="text" name="team_name" value="{{ team.Name }}" /></td>
+      </tr>
+
+      <tr>
+        <td><label for="team_division">Team Division</label></td>
+        <td>
+          <select name="team_division">
+            {% for division in divisions %}
+            <option value="{{ division }}" {% if division == team.Division %}selected{% endif %}>{{ division }}</option>
+            {% endfor %}
+          </select>
+        </td>
+      </tr>
+
+      <tr>
+        <td><label for="team_region">Team Region</label></td>
+        <td>
+          <select name="team_region">
+            {% for region in regions %}
+            <option value="{{ region }}" {% if region == team.Region %}selected{% endif %}>{{ region }}</option>
+            {% endfor %}
+          </select>
+        </td>
+      </tr>
+
+      <tr>
+        <td colspan="2"><center><input type="submit" value="Save" /></center></td>
+      </tr>
+    </table>
+  </form>
+</div>
+{% endblock %}

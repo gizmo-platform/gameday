@@ -1,0 +1,20 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Team Import{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <p>Import teams from a bulk CSV using the form below.  The import file must have headers, and the headers must include 'Team Name', 'Team Number', and 'Hub Name'.  Alternate headers of 'Name', 'Number', and 'Hub' may be used instead.</p>
+  <br />
+  <hr />
+
+  <form method="POST" enctype="multipart/form-data">
+    <fieldset>
+      <legend>Load Teams</legend>
+      <label for="teams_file">Teams CSV</label>
+      <input type="file" id="teams_file" name="teams_file" />
+      <input type="submit" value="Load Teams" />
+    </fieldset>
+  </form>
+</div>
+{% endblock %}

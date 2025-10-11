@@ -1,4 +1,4 @@
-package http
+package web
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"sync"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -19,15 +18,16 @@ var uifs embed.FS
 
 // Server manages the HTTP serving components
 type Server struct {
-	r   chi.Router
-	n   *http.Server
-	swg *sync.WaitGroup
+	r chi.Router
+	n *http.Server
 
 	tpl *pongo2.TemplateSet
+
+	nav []NavElement
 }
 
 // NewServer returns a running field controller.
-func NewServer(opts ...Option) (*Server, error) {
+func NewServer() (*Server, error) {
 	sub, _ := fs.Sub(uifs, "ui/p2")
 	ldr := pongo2.NewFSLoader(sub)
 
@@ -53,12 +53,6 @@ func NewServer(opts ...Option) (*Server, error) {
 	x.r.Get("/logout", basic.LogoutHandler("/ui"))
 	x.r.Get("/ui", x.uiViewLanding)
 
-	for _, o := range opts {
-		if err := o(x); err != nil {
-			return nil, err
-		}
-	}
-
 	return x, nil
 }
 
@@ -68,7 +62,6 @@ func (s *Server) Serve(bind string) error {
 	slog.Info("HTTP is starting")
 	s.n.Addr = bind
 	s.n.Handler = s.r
-	s.swg.Done()
 	return s.n.ListenAndServe()
 }
 
