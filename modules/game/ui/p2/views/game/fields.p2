@@ -1,0 +1,37 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Fields{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <h1>Fields</h1>
+
+  <div class="flex-container flex-row flex-center">
+    <a class="flex-item button" href="fields/add">Add Single</a>
+  </div>
+  <hr />
+
+  <div class="flex-container flex-row flex-center">
+    <table class="flex-item">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Actions</th>
+      </tr>
+      {% for field in fields %}
+      <tr>
+        <td>{{ field.ID }}</td>
+        <td>{{ field.Name }}</td>
+        <td class="flex-container flex-row">
+          <a class="flex-item button" href="fields/{{ field.ID }}/edit">Edit</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="2">There are no fields. <a href="fields/add">Add One.</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -6,6 +6,7 @@ require (
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5 // indirect
 	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.3 // indirect
+	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.6.8 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect

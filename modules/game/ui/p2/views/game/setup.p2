@@ -1,0 +1,15 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Game Setup{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+<h1>Game Setup</h1>
+
+<p>The game setup file controls the field geometry, as well as the actual game scorecard setup.</p>
+<form method="POST" enctype="multipart/form-data">
+  <input type="file" name="game_config" />
+  <input type="submit" />
+</form>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Field Form{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <form method="post">
+    <table>
+      <tr>
+        <th>Field</th>
+        <th>Value</th>
+      </tr>
+      <tr>
+        <td><label for="field_name">Name</label></td>
+        <td><input type="text" name="field_name" value="{{ field.Name }}" /></td>
+      </tr>
+      <tr>
+        <td colspan="2"><input type="submit" /></td>
+      </tr>
+    </table>
+  </form>
+</div>
+{% endblock %}

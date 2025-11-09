@@ -17,6 +17,7 @@ import (
 	"github.com/gizmo-platform/gameday/pkg/web"
 
 	"github.com/gizmo-platform/gameday/modules"
+	"github.com/gizmo-platform/gameday/modules/game"
 	"github.com/gizmo-platform/gameday/modules/team"
 )
 
@@ -55,6 +56,7 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 
 	modMap := make(map[string]modules.Web)
 	modMap["team"] = team.New(d, w)
+	modMap["game"] = game.New(d, w)
 
 	for mod, handle := range modMap {
 		slog.Info("Mounting module", "module", mod)

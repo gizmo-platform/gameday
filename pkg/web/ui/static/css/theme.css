@@ -5,6 +5,10 @@ html, body {
     margin: 0;
 }
 
+table, tr, td {
+    padding: 0.25em;
+}
+
 #logomark {
     font-weight: 800;
 }

@@ -1,0 +1,30 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Game Configuration{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+{% if config.Field.Positions|length == 0 %}
+<p>No configuration has been found.  Perhaps you should load one?</p>
+{% else %}
+<h1>Field Configuration</h1>
+<p>Gameday has been configured with {{ config.Field.Positions|length }} field positions:</p>
+<table>
+  <tr>
+    <td>ID</td>
+    <td>Name</td>
+    <td>Color 1</td>
+    <td>Color 2</td>
+  </tr>
+  {% for position in config.Field.Positions %}
+  <tr>
+    <td>{{ position.ID }}</td>
+    <td>{{ position.Name|capfirst }}</td>
+    <td><span style="background-color: #{{ position.Color1 }}">{{ position.Color1 }}</span></td>
+    <td><span style="background-color: #{{ position.Color2 }}">{{ position.Color2 }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+</div>
+{% endblock %}
