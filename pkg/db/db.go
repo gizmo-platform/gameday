@@ -16,7 +16,10 @@ func New() (*DB, error) {
 	if dbPath == "" {
 		dbPath = "gameday.db"
 	}
-	d, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	d, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		PrepareStmt:            true,
+		SkipDefaultTransaction: true,
+	})
 	if err != nil {
 		return nil, err
 	}

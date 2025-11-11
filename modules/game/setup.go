@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
+	"gorm.io/gorm"
 )
 
 func (m *Module) uiViewGame(w http.ResponseWriter, r *http.Request) {
@@ -16,6 +18,12 @@ func (m *Module) uiViewGame(w http.ResponseWriter, r *http.Request) {
 
 	if res := m.db.Find(&c.Field.Positions); res.Error != nil {
 		slog.Error("Error retreiving field positions", "error", res.Error)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		return
+	}
+
+	if res := m.db.Find(&c.Phases); res.Error != nil {
+		slog.Error("Error retreiving game phases", "error", res.Error)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
 		return
 	}
@@ -52,6 +60,14 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	for _, phase := range c.Phases {
+		if res := m.db.Save(&phase); res.Error != nil {
+			slog.Error("Error saving phases", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return
+		}
+	}
+
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
 }
 
@@ -71,7 +87,7 @@ func (m *Module) uiViewFieldForm(w http.ResponseWriter, r *http.Request) {
 	fID := m.ws.StrToUint(chi.URLParam(r, "id"))
 
 	field := Field{}
-	if res := m.db.Where(&Field{ID: fID}).First(&field); res.Error != nil {
+	if res := m.db.Where(&Field{ID: fID}).First(&field); res.Error != nil && !errors.Is(res.Error, gorm.ErrRecordNotFound) {
 		slog.Error("Error loading fields", "error", res.Error)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
 		return

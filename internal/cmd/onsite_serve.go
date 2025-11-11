@@ -55,8 +55,9 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 	}
 
 	modMap := make(map[string]modules.Web)
-	modMap["team"] = team.New(d, w)
-	modMap["game"] = game.New(d, w)
+	t := team.New(team.WithDatabase(d), team.WithWebserver(w))
+	modMap["team"] = t
+	modMap["game"] = game.New(game.WithDatabase(d), game.WithWebserver(w), game.WithTeamModule(t))
 
 	for mod, handle := range modMap {
 		slog.Info("Mounting module", "module", mod)

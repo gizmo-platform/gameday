@@ -1,0 +1,49 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Select Teams{% endblock %}
+
+{% block content %}
+<div class="foreground box flex-container flex-row flex-center">
+  <div class="flex-item">
+    <h2>Select Teams</h2>
+    <p>Select the teams that should be included in this phase.  You may select multiple teams by holding shift and selecting a contiguous range, or holding control to select a non-contiguous selection.</p>
+
+    <form method="POST">
+      <table>
+        <tr>
+          <th>Parameter</th>
+          <th>Value</th>
+        </tr>
+        <tr>
+          <td><label for="selected_teams">Selected Teams</label></td>
+          <td>
+            <select name="selected_teams" size="25" multiple>
+              {% for team in teams %}
+              <option value="{{ team.ID }}">{{ team.Number }} - {{ team.Name }} ({{ team.Division}} / {{ team.Region }})</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td><label for="fields">Schedule to Fields</label></td>
+          <td>
+            <select name="fields" multiple>
+              {% for field in fields %}
+              <option value="{{ field.ID }}" selected>{{ field.Name }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td><label for="rounds">Rounds</label></td>
+          <td><input type="number" name="rounds" value="7" /></td>
+        </tr>
+        <tr>
+          <td colspan="2"><input type="submit" /></td>
+        </tr>
+      </table>
+      <input type="hidden" name="schedule_type" value="{{ scheduletype }}" />
+    </form>
+  </div>
+</div>
+{% endblock %}

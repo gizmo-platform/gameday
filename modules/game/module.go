@@ -8,8 +8,13 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
+)
+
+const (
+	CandidatePhase = 99
 )
 
 //go:embed ui/*
@@ -18,7 +23,8 @@ var efs embed.FS
 // Field represents a field of play, and has at least one position on
 // which a team can be placed.
 type Config struct {
-	Field ConfigField
+	Field  ConfigField
+	Phases []GamePhase
 }
 
 type ConfigField struct {
@@ -40,19 +46,59 @@ type Field struct {
 	Name string
 }
 
+// GamePhase is a single phase of play that is part of a larger
+// schedule.
+type GamePhase struct {
+	ID             uint
+	Name           string
+	AdvanceFrom    string
+	AdvanceCount   int
+	DivisionAware  bool
+	ScheduleType   string
+	ScoreSummation string
+}
+
+// MatchPlacement binds a team to a given field placement.
+type MatchPlacement struct {
+	ID uint
+
+	Round   int
+	Match   int
+	Phase   GamePhase
+	PhaseID uint
+
+	Team       team.Team
+	TeamID     uint
+	Field      Field
+	FieldID    uint
+	Position   FieldPosition
+	PositionID uint
+}
+
+type TeamModule interface {
+	ListTeams(team.Team) ([]team.Team, error)
+}
+
 type Module struct {
 	r  chi.Router
 	db *db.DB
 	ws *web.Server
 
+	tm TeamModule
+
 	basePath string
 }
 
-func New(d *db.DB, w *web.Server) *Module {
+// Option allows for dynamic option passing to the module.
+type Option func(*Module)
+
+func New(opts ...Option) *Module {
 	m := Module{
-		r:  chi.NewRouter(),
-		db: d,
-		ws: w,
+		r: chi.NewRouter(),
+	}
+
+	for _, o := range opts {
+		o(&m)
 	}
 
 	m.r.Route("/", func(r chi.Router) {
@@ -68,6 +114,14 @@ func New(d *db.DB, w *web.Server) *Module {
 			r.Get("/{id}/edit", m.uiViewFieldForm)
 			r.Post("/{id}/edit", m.uiViewFieldSubmit)
 		})
+
+		r.Route("/schedule", func(r chi.Router) {
+			r.Get("/", m.uiViewPhaseList)
+			r.Get("/phases/{id}", m.uiViewPhaseSchedule)
+			r.Get("/phases/{id}/select-teams", m.uiViewPhaseScheduleSelectTeams)
+			r.Post("/phases/{id}/select-teams", m.uiViewPhaseSchedulePreview)
+			r.Post("/phases/{id}/accept-schedule", m.uiViewPhaseScheduleAccept)
+		})
 	})
 
 	return &m
@@ -81,6 +135,8 @@ func (m *Module) Migrate() error {
 	return m.db.AutoMigrate(
 		Field{},
 		FieldPosition{},
+		GamePhase{},
+		MatchPlacement{},
 	)
 }
 
@@ -103,6 +159,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		}, {
 			Text:   "Fields",
 			Target: path.Join(prefix, "/fields/"),
+		}, {
+			Text:   "Schedule",
+			Target: path.Join(prefix, "/schedule/"),
 		}},
 	}}
 }

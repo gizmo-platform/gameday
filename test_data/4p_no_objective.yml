@@ -1,0 +1,39 @@
+---
+field:
+  positions:
+    - name: red
+      id: 1
+      color1: ec5e5e
+      color2: f4a2a2
+    - name: blue
+      id: 2
+      color1: 5b7ab6
+      color2: 9fb1d4
+    - name: green
+      id: 3
+      color1: 8de98d
+      color2: bef3be
+    - name: yellow
+      id: 4
+      color1: f5f551
+      color2: fcfcd3
+
+phases:
+  - name: seeding
+    id: 1
+    scoresummation: AverageWithMulligan
+    scheduletype: RandomSeeding
+  - name: semifinal
+    id: 2
+    scoresummation: Total
+    advancefrom: 1
+    advancecount: 8
+    divisionaware: true
+    scheduletype: Semifinal
+  - name: finals
+    scoresummation: Total
+    id: 3
+    advancefrom: 2
+    advancecount: 4
+    divisionaware: true
+    scheduletype: Final

@@ -7,14 +7,14 @@
 {% if config.Field.Positions|length == 0 %}
 <p>No configuration has been found.  Perhaps you should load one?</p>
 {% else %}
-<h1>Field Configuration</h1>
+<h2>Field Configuration</h2>
 <p>Gameday has been configured with {{ config.Field.Positions|length }} field positions:</p>
 <table>
   <tr>
-    <td>ID</td>
-    <td>Name</td>
-    <td>Color 1</td>
-    <td>Color 2</td>
+    <th>ID</th>
+    <th>Name</th>
+    <th>Color 1</th>
+    <th>Color 2</th>
   </tr>
   {% for position in config.Field.Positions %}
   <tr>
@@ -22,6 +22,30 @@
     <td>{{ position.Name|capfirst }}</td>
     <td><span style="background-color: #{{ position.Color1 }}">{{ position.Color1 }}</span></td>
     <td><span style="background-color: #{{ position.Color2 }}">{{ position.Color2 }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Phase Configuration</h2>
+<table>
+  <tr>
+    <th>ID</th>
+    <th>Name</th>
+    <th>Advance From</th>
+    <th>Advance Count</th>
+    <th>Division Aware</th>
+    <th>Schedule Type</th>
+    <th>Score Summation</th>
+  </tr>
+  {% for phase in config.Phases %}
+  <tr>
+    <td>{{ phase.ID }}</td>
+    <td>{{ phase.Name }}</td>
+    <td>{{ phase.AdvanceFrom }}</td>
+    <td>{{ phase.AdvanceCount }}</td>
+    <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
+    <td>{{ phase.ScheduleType }}</td>
+    <td>{{ phase.ScoreSummation }}</td>
   </tr>
   {% endfor %}
 </table>

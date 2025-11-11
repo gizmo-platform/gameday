@@ -3,6 +3,7 @@ package team
 import (
 	"embed"
 	"encoding/csv"
+	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -38,11 +39,16 @@ type Team struct {
 	Region   string
 }
 
-func New(d *db.DB, w *web.Server) *Module {
+// Option passes in multiple components to the module.
+type Option func(m *Module)
+
+func New(opts ...Option) *Module {
 	m := Module{
-		r:  chi.NewRouter(),
-		db: d,
-		ws: w,
+		r: chi.NewRouter(),
+	}
+
+	for _, o := range opts {
+		o(&m)
 	}
 
 	m.r.Route("/", func(r chi.Router) {
@@ -53,6 +59,8 @@ func New(d *db.DB, w *web.Server) *Module {
 		r.Get("/{id}/edit", m.uiViewEditForm)
 		r.Post("/{id}/edit", m.uiViewUpsert)
 	})
+
+	pongo2.RegisterFilter("teamList", filterTeamList)
 
 	return &m
 }
@@ -82,6 +90,21 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 			Target: path.Join(prefix, "/import"),
 		}},
 	}}
+}
+
+// ListTeams returns a selection of teams matching the filter.
+func (m *Module) ListTeams(filter Team) ([]Team, error) {
+	out := []Team{}
+	res := m.db.Where(filter).Find(&out)
+	return out, res.Error
+}
+
+func filterTeamList(in, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	v, ok := in.Interface().([]Team)
+	if !ok {
+		return nil, &pongo2.Error{Sender: "teamList", OrigError: errors.New("team list was not a list")}
+	}
+	return pongo2.AsValue(v[param.Integer()-1].Name), nil
 }
 
 func (m *Module) uiViewListTeams(w http.ResponseWriter, r *http.Request) {

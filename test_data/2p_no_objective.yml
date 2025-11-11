@@ -9,11 +9,9 @@ field:
       id: 2
       color1: 5b7ab6
       color2: 9fb1d4
-    - name: green
-      id: 3
-      color1: 8de98d
-      color2: bef3be
-    - name: yellow
-      id: 4
-      color1: f5f551
-      color2: fcfcd3
+
+phases:
+  - name: seeding
+    id: 1
+    scoresummation: AverageWithMulligan
+    scheduletype: RandomSeeding

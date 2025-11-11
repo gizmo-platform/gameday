@@ -1,0 +1,41 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Game Configuration{% endblock %}
+
+{% block content %}
+<div class="foreground box flex-container flex-row flex-center">
+  <div class="flex-item">
+    <h2>Phase Configuration</h2>
+    <table>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Advance From</th>
+        <th>Advance Count</th>
+        <th>Division Aware</th>
+        <th>Score Summation</th>
+        <th>Schedule Type</th>
+        <th>Actions</th>
+      </tr>
+      {% for phase in phases %}
+      <tr>
+        <td>{{ phase.ID }}</td>
+        <td>{{ phase.Name }}</td>
+        <td>{{ phase.AdvanceFrom }}</td>
+        <td>{{ phase.AdvanceCount }}</td>
+        <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
+        <td>{{ phase.ScoreSummation }}</td>
+        <td>{{ phase.ScheduleType }}</td>
+        <td class="flex-container flex-row">
+          {% if schedule[phase.ID] %}
+          <a class="flex-item button" href="schedule/phases/{{ phase.ID }}">View Schedule</a>
+          {% else %}
+          <a class="flex-item button" href="schedule/phases/{{ phase.ID }}/select-teams?st={{ phase.ScheduleType }}">Generate Schedule</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

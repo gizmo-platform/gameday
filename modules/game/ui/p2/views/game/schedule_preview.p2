@@ -1,0 +1,101 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Preview Schedule{% endblock %}
+
+{% block content %}
+<div class="foreground box flex-container flex-row flex-center">
+  <div class="flex-item">
+    <h2>Preview Schedule</h2>
+    <p>You may preview the schedule below.  The schedule is not yet finalized until you select to accept it at the bottom of this page.</p>
+    <div class="flex-container flex-row flex-center">
+      <table class="flex-item">
+        <tr>
+          <th colspan="2">Team Statistics</th>
+        </tr>
+        <tr>
+          <td>Best Score</td>
+          <td>{{ schedule.TeamBestScore }}</td>
+        </tr>
+        <tr>
+          <td>Worst Score</td>
+          <td>{{ schedule.TeamWorstScore }}</td>
+        </tr>
+        <tr>
+          <td>Average Score</td>
+          <td>{{ schedule.TeamAvgScore }}</td>
+        </tr>
+      </table>
+      <table class="flex-item">
+        <tr>
+          <th colspan="2">Schedule Statistics</th>
+        </tr>
+        <tr>
+          <td>Closest Replay</td>
+          <td>{{ schedule.ClosestReplay }}</td>
+        </tr>
+        <tr>
+          <td>Closest Replay Match</td>
+          <td>{{ schedule.ClosestReplayMatch }}</td>
+        </tr>
+        <tr>
+          <td>Closest Replay Round</td>
+          <td>{{ schedule.ClosestReplayRound }}</td>
+        </tr>
+      </table>
+      <table class="flex-item">
+        <tr>
+          <th colspan="2">Diversity</th>
+        </tr>
+        <tr>
+          <td>Worst Position Diversity</td>
+          <td>{{ schedule.WorstPositionDiversity }}</td>
+        </tr>
+        <tr>
+          <td>Worst Field Diversity</td>
+          <td>{{ schedule.WorstFieldDiversity }}</td>
+        </tr>
+      </table>
+    </div>
+    <div>
+      <table>
+        <tr>
+          <td colspan="2"></td>
+          {% for field in fields %}
+          <th colspan="{{ positions | length }}">{{ field.Name }}</th>
+          {% endfor %}
+        </tr>
+        <tr>
+          <th>R</th>
+          <th>M</th>
+          {% for field in fields %}
+          {% for position in positions %}
+          <th>{{ position.Name | capfirst }}</th>
+          {% endfor %}
+          {% endfor %}
+        </tr>
+        {% for round in schedule.Rounds %}
+        {% for match in round.Matches %}
+        <tr>
+          <td>{{ forloop.Parentloop.Counter }}</td>
+          {% set matchNum = forloop.Counter + ((forloop.Parentloop.Counter-1) * round.Matches|length) %}
+          <td>{{ matchNum }}</td>
+          {% for field in fields %}
+          {% for position in positions %}
+          {% if match.Team(field.ID|integer, position.ID|integer) > 0 %}
+          <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ teams | teamList:match.Team(field.ID|integer, position.ID|integer) }}</td>
+          {% else %}
+          <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </table>
+      <form class="flex-container flex-row flex-center" method="post" action="accept-schedule">
+        <input class="flex-item" type="submit" value="Accept Schedule" />
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

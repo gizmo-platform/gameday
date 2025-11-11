@@ -6,6 +6,12 @@ import (
 	"math/rand"
 )
 
+const (
+	TypeRandomSeeding = "RandomSeeding"
+	TypeSemifinal     = "Semifinal"
+	TypeFinal         = "Final"
+)
+
 // Config sets up the schedule that should be generated.
 type Config struct {
 	Fields    int
