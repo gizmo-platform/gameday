@@ -92,7 +92,15 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		sr.Placements[fmt.Sprintf("%d-%d", p.FieldID, p.PositionID)] = p.Team
 	}
 
+	phase := GamePhase{}
+	if res := m.db.Where(&GamePhase{ID: gPhase}).Find(&phase); res.Error != nil {
+		slog.Error("Error retreiving phase", "error", res.Error)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		return
+	}
+
 	ctx := pongo2.Context{
+		"phase":     phase,
 		"fields":    fields,
 		"positions": positions,
 		"schedule":  schedule,
