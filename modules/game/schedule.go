@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -106,7 +107,27 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		"schedule":  schedule,
 	}
 
-	m.ws.DoTemplate(w, r, "views/game/schedule.p2", ctx)
+	switch r.URL.Query().Get("format") {
+	case "csv":
+		cw := csv.NewWriter(w)
+
+		for _, row := range schedule {
+			cFields := []string{}
+			for _, field := range fields {
+				for _, position := range positions {
+					cFields = append(cFields, row.Placements[fmt.Sprintf("%d-%d", field.ID, position.ID)].Name)
+				}
+			}
+			slog.Debug("Schedule CSV", "row", cFields)
+			if err := cw.Write(cFields); err != nil {
+				slog.Error("Error writing CSV", "error", err)
+			}
+		}
+		cw.Flush()
+
+	default:
+		m.ws.DoTemplate(w, r, "views/game/schedule.p2", ctx)
+	}
 }
 
 func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.Request) {
