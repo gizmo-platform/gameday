@@ -37,7 +37,7 @@
     <th>Schedule Type</th>
     <th>Score Summation</th>
   </tr>
-  {% for phase in config.Phases %}
+  {% for phase in config.Game.Phases %}
   <tr>
     <td>{{ phase.ID }}</td>
     <td>{{ phase.Name }}</td>
@@ -49,6 +49,34 @@
   </tr>
   {% endfor %}
 </table>
+
+<h2>Element Configuration</h2>
+<ol>
+  {% for element in config.Game.Elements %}
+  <li>
+    Name: {{ element.Name }}
+    <br />
+    {% if element.Desc %}
+    Description: {{ element.Desc }}
+    <br />
+    {% endif %}
+    Type: {{ element.Type }}
+    <br />
+    States:
+    <ul>
+    {% for state in element.States %}
+    <li>
+      Name: {{ state.Name }}
+      <br />
+      {% if state.Des %}
+      Description: {{ state.Desc }}
+      {% endif %}
+    </li>
+    {% endfor %}
+    </ul>
+  </li>
+  {% endfor %}
+</ol>
 {% endif %}
 </div>
 {% endblock %}

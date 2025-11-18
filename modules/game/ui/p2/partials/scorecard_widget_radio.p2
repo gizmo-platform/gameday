@@ -1,0 +1,17 @@
+<div class="flex-container flex-row flex-justify">
+  {% for value in state.Values %}
+  <div>
+    <label for="{{ field_id }}_{{ value.VID }}">
+      {{ value.Name }}
+    </label>
+    <input type="radio"
+           id="{{ field_id }}_{{ value.VID }}"
+           name="{{ field_id }}"
+           value="{{ forloop.Counter }}"
+           data-points="{{ value.Points }}"
+           {% if ScorecardData|key:field_id == forloop.Counter %}checked{% endif %}
+           {% if edit_disable %}disabled{% endif %}
+           />
+  </div>
+  {% endfor %}
+</div>

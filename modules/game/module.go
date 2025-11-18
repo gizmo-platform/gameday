@@ -23,8 +23,8 @@ var efs embed.FS
 // Field represents a field of play, and has at least one position on
 // which a team can be placed.
 type Config struct {
-	Field  ConfigField
-	Phases []GamePhase
+	Field ConfigField
+	Game  Game
 }
 
 type ConfigField struct {
@@ -46,6 +46,12 @@ type Field struct {
 	Name string
 }
 
+// Game defines the components related to a playable game.
+type Game struct {
+	Phases   []GamePhase
+	Elements []GameElement
+}
+
 // GamePhase is a single phase of play that is part of a larger
 // schedule.
 type GamePhase struct {
@@ -56,6 +62,44 @@ type GamePhase struct {
 	DivisionAware  bool
 	ScheduleType   string
 	ScoreSummation string
+}
+
+// GameElement represents a single game element that may be
+// manipulated.
+type GameElement struct {
+	ID uint
+
+	EID    string
+	Name   string
+	Desc   string
+	Type   string
+	States []GameElementState
+}
+
+// GameElementState represents a state that the game element may be
+// in.
+type GameElementState struct {
+	ID            uint
+	GameElementID uint
+
+	SID  string
+	Name string
+	Desc string
+	Each int
+	Max  int
+
+	Values []GameElementStateValue
+}
+
+// GameElementStateValue is a selectable value for game element states
+// that do not use a linear scoring configuration.
+type GameElementStateValue struct {
+	ID                 uint
+	GameElementStateID uint
+
+	Name   string
+	VID    string
+	Points int
 }
 
 // MatchPlacement binds a team to a given field placement.
@@ -73,6 +117,17 @@ type MatchPlacement struct {
 	FieldID    uint
 	Position   FieldPosition
 	PositionID uint
+}
+
+// ScorecardElement is a single attribute from a scorecard that has been scored.
+type ScorecardElement struct {
+	ID uint
+
+	MatchPlacement   MatchPlacement
+	MatchPlacementID uint
+
+	ElementID string
+	Value     int
 }
 
 type TeamModule interface {
@@ -101,6 +156,8 @@ func New(opts ...Option) *Module {
 		o(&m)
 	}
 
+	pongo2.RegisterFilter("key", filterGetValueByKey)
+
 	m.r.Route("/", func(r chi.Router) {
 		r.Get("/", m.uiViewGame)
 		r.Get("/setup", m.uiViewSetupForm)
@@ -122,6 +179,11 @@ func New(opts ...Option) *Module {
 			r.Post("/phases/{id}/select-teams", m.uiViewPhaseSchedulePreview)
 			r.Post("/phases/{id}/accept-schedule", m.uiViewPhaseScheduleAccept)
 		})
+
+		r.Route("/scorecard", func(r chi.Router) {
+			r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
+			r.Post("/{phase}/{match}/{field}/{position}", m.uiViewScorecardSubmit)
+		})
 	})
 
 	return &m
@@ -133,10 +195,14 @@ func (m *Module) Router() chi.Router {
 
 func (m *Module) Migrate() error {
 	return m.db.AutoMigrate(
-		Field{},
 		FieldPosition{},
+		Field{},
+		GameElementStateValue{},
+		GameElementState{},
+		GameElement{},
 		GamePhase{},
 		MatchPlacement{},
+		ScorecardElement{},
 	)
 }
 

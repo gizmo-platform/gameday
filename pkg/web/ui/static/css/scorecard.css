@@ -1,0 +1,17 @@
+#scorecard_header {
+    margin-bottom: 1em;
+}
+
+#scorecard_total {
+    font-size: 8em;
+    font-weight: 600;
+}
+
+.scorecard-element {
+    margin-bottom: 0.5em;
+}
+
+.scorecard-line {
+    margin-top: 0.125em;
+    margin-bottom: 0.125em;
+}

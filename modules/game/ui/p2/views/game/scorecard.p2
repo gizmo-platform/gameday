@@ -1,0 +1,13 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Scorecard{% endblock %}
+
+{% block head %}
+<link href="/static/css/scorecard.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+{% include "../../partials/scorecard.p2" %}
+</div>
+{% endblock %}

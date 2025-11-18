@@ -1,0 +1,164 @@
+---
+field:
+  positions:
+    - name: red
+      id: 1
+      color1: ec5e5e
+      color2: f4a2a2
+    - name: blue
+      id: 2
+      color1: 5b7ab6
+      color2: 9fb1d4
+    - name: green
+      id: 3
+      color1: 8de98d
+      color2: bef3be
+    - name: yellow
+      id: 4
+      color1: f5f551
+      color2: fcfcd3
+
+game:
+  phases:
+    - name: seeding
+      id: 1
+      scoresummation: AverageWithMulligan
+      scheduletype: RandomSeeding
+    - name: semifinal
+      id: 2
+      scoresummation: Total
+      advancefrom: 1
+      advancecount: 8
+      divisionaware: true
+      scheduletype: Semifinal
+    - name: finals
+      scoresummation: Total
+      id: 3
+      advancefrom: 2
+      advancecount: 4
+      divisionaware: true
+      scheduletype: Final
+
+  elements:
+    - id: 1
+      eid: factoids
+      name: Net True Factoids
+      desc: Scores as net-true.
+      type: count
+      states:
+        - id: 1
+          sid: collected
+          name: Collected
+          desc: Resting on the robot.
+          each: 10
+        - id: 2
+          sid: sorted
+          name: Sorted
+          desc: Inside the True sorting tray.
+          each: 5
+        - id: 3
+          sid: installed
+          name: Installed
+          desc: Inside a Neural Net Node.
+          each: 15
+    - id: 2
+      eid: loc_factoids
+      name: LOC Factoids
+      type: boolean
+      states:
+        - id: 4
+          sid: white
+          name: White LOC Factoid
+          desc: Any legal scoring position.
+          each: 100
+        - id: 5
+          sid: gold
+          name: Golden LOC Factoid
+          desc: Any legal scoring position.
+          each: 100
+    - id: 3
+      eid: net_connections
+      name: Network Connections
+      type: count
+      states:
+        - id: 6
+          sid: 2_node
+          name: 2-Node Connections
+          each: 20
+          max: 4
+        - id: 7
+          sid: 3_node
+          name: 3-Node Connections
+          each: 60
+          max: 2
+    - id: 4
+      eid: net_bonus
+      name: Network Connection Bonus
+      type: count
+      states:
+        - id: 8
+          sid: 2_node
+          name: 2-Node Live Net Connection Bonus
+          each: 30
+          max: 4
+        - id: 9
+          sid: 3_node
+          name: 3-Node Live Net Connection Bonus
+          each: 90
+          max: 2
+    - id: 5
+      eid: tweeter_tower
+      name: Tweeter Tower Activation
+      type: count
+      states:
+        - id: 10
+          sid: activated
+          name: Activated
+          each: 7
+          max: 4
+    - id: 6
+      eid: wsd_gate_latch
+      name: WSD Gate Latch
+      type: radio
+      states:
+        - id: 11
+          sid: released
+          name: Latches Released
+          values:
+            - id: 1
+              vid: one_released
+              name: 1 Released
+              points: 100
+            - id: 2
+              vid: two_released
+              name: 2 Released
+              points: 130
+            - id: 3
+              vid: three_released
+              name: 3 Released
+              points: 140
+            - id: 4
+              vid: four_released
+              name: 4 Released
+              points: 145
+    - id: 7
+      eid: network_configuration
+      name: Network Configuration
+      type: radio
+      states:
+        - id: 12
+          sid: selected
+          name: Selected
+          values:
+            - id: 5
+              vid: config_a
+              name: Configuration A
+              points: 100
+            - id: 6
+              vid: config_b
+              name: Configuration B
+              points: 125
+            - id: 7
+              vid: config_c
+              name: Configuration C
+              points: 150

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func (m *Module) uiViewGame(w http.ResponseWriter, r *http.Request) {
@@ -22,8 +23,14 @@ func (m *Module) uiViewGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if res := m.db.Find(&c.Phases); res.Error != nil {
+	if res := m.db.Find(&c.Game.Phases); res.Error != nil {
 		slog.Error("Error retreiving game phases", "error", res.Error)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		return
+	}
+
+	if res := m.db.Preload(clause.Associations).Find(&c.Game.Elements); res.Error != nil {
+		slog.Error("Error retreiving game elements", "error", res.Error)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
 		return
 	}
@@ -60,11 +67,37 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	for _, phase := range c.Phases {
+	for _, phase := range c.Game.Phases {
 		if res := m.db.Save(&phase); res.Error != nil {
 			slog.Error("Error saving phases", "error", res.Error)
 			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
 			return
+		}
+	}
+
+	for _, element := range c.Game.Elements {
+		if res := m.db.Save(&element); res.Error != nil {
+			slog.Error("Error saving element", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return
+		}
+
+		for _, state := range element.States {
+			state.GameElementID = element.ID
+			if res := m.db.Save(&state); res.Error != nil {
+				slog.Error("Error saving element state", "error", res.Error)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+				return
+			}
+
+			for _, value := range state.Values {
+				value.GameElementStateID = state.ID
+				if res := m.db.Save(&value); res.Error != nil {
+					slog.Error("Error saving state value", "error", res.Error)
+					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+					return
+				}
+			}
 		}
 	}
 

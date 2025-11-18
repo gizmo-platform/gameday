@@ -60,6 +60,10 @@ table, tr, td {
     transition: background-color 100ms linear;
 }
 
+.center {
+    text-align: center;
+}
+
 .flex-center {
     align-items: center;
     justify-content: center;
@@ -79,6 +83,11 @@ table, tr, td {
 
 .flex-item {
     padding: 1em;
+}
+
+.flex-justify {
+    align-items: center;
+    justify-content: space-between;
 }
 
 .flex-max {
