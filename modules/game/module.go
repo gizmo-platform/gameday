@@ -57,6 +57,7 @@ type Game struct {
 type GamePhase struct {
 	ID             uint
 	Name           string
+	Active         bool
 	AdvanceFrom    string
 	AdvanceCount   int
 	DivisionAware  bool
@@ -175,6 +176,7 @@ func New(opts ...Option) *Module {
 		r.Route("/schedule", func(r chi.Router) {
 			r.Get("/", m.uiViewPhaseList)
 			r.Get("/phases/{id}", m.uiViewPhaseSchedule)
+			r.Post("/phases/{id}/make-active", m.uiViewPhaseMakeActive)
 			r.Get("/phases/{id}/select-teams", m.uiViewPhaseScheduleSelectTeams)
 			r.Post("/phases/{id}/select-teams", m.uiViewPhaseSchedulePreview)
 			r.Post("/phases/{id}/accept-schedule", m.uiViewPhaseScheduleAccept)

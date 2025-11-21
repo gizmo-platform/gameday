@@ -10,6 +10,7 @@ import (
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/gizmo-platform/gameday/modules/team"
@@ -131,6 +132,27 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 	default:
 		m.ws.DoTemplate(w, r, "views/game/schedule.p2", ctx)
 	}
+}
+
+func (m *Module) uiViewPhaseMakeActive(w http.ResponseWriter, r *http.Request) {
+	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	m.db.Transaction(func(tx *gorm.DB) error {
+		if res := tx.Model(&GamePhase{}).Where(&GamePhase{Active: true}).Update("Active", false); res.Error != nil {
+			slog.Error("Error deactivating all schedule phases", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return res.Error
+		}
+
+		if res := tx.Model(&GamePhase{}).Where(&GamePhase{ID: gPhase}).Update("Active", true); res.Error != nil {
+			slog.Error("Error activating schedule phase", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return res.Error
+		}
+
+		return nil
+	})
+	http.Redirect(w, r, path.Join(m.basePath, "schedule"), http.StatusSeeOther)
 }
 
 func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.Request) {
@@ -256,12 +278,28 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 func (m *Module) uiViewPhaseScheduleAccept(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 
-	res := m.db.Model(&MatchPlacement{}).Where(&MatchPlacement{PhaseID: CandidatePhase}).Update("PhaseID", gPhase)
-	if res.Error != nil {
-		slog.Error("Error updating schedule phase", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
-		return
-	}
+	m.db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&MatchPlacement{}).Where(&MatchPlacement{PhaseID: CandidatePhase}).Update("PhaseID", gPhase)
+		if res.Error != nil {
+			slog.Error("Error updating schedule phase", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return res.Error
+		}
+
+		if res := tx.Model(&GamePhase{}).Where(&GamePhase{Active: true}).Update("Active", false); res.Error != nil {
+			slog.Error("Error deactivating all schedule phases", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return res.Error
+		}
+
+		if res := tx.Model(&GamePhase{}).Where(&GamePhase{ID: gPhase}).Update("Active", true); res.Error != nil {
+			slog.Error("Error activating schedule phase", "error", res.Error)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			return res.Error
+		}
+
+		return nil
+	})
 
 	http.Redirect(w, r, path.Join(m.basePath, "schedule"), http.StatusSeeOther)
 }
