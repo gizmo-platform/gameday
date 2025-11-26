@@ -142,7 +142,7 @@ func Generate(c Config) *Schedule {
 		bestDowntime := 0
 		downtime := make(map[int]int)
 		bestPositionScore := 0
-		for range 1 {
+		for range 1000 {
 			positionScore := 0
 			worstDowntime := 99
 
