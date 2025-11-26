@@ -92,6 +92,9 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 		sr.Placements[fmt.Sprintf("%d-%d", p.FieldID, p.PositionID)] = p.Team
 	}
+	if len(sr.Placements)>0 {
+		schedule = append(schedule, sr)
+	}
 
 	phase := GamePhase{}
 	if res := m.db.Where(&GamePhase{ID: gPhase}).Find(&phase); res.Error != nil {
