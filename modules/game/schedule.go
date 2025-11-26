@@ -189,6 +189,11 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 
 		s = schedgen.Generate(c)
 		s.Score()
+		if err := s.Validate(); err != nil {
+			slog.Error("Error generating schedule", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
 	}
 
 	teams := []team.Team{}
@@ -210,10 +215,10 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 
 	for rNum, round := range s.Rounds {
 		for mNum, match := range round.Matches {
-			for _, field := range fields {
-				for _, position := range positions {
-					tID := match.Team(int(field.ID), int(position.ID)) - 1
-					if tID < 1 {
+			for fNum, field := range fields {
+				for pNum, position := range positions {
+					tID := match.Team(fNum, pNum)
+					if tID < 0 {
 						continue
 					}
 					t := teams[tID]

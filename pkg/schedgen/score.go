@@ -11,7 +11,7 @@ type teamStats struct {
 	ClosestReplayMatch int
 	ClosestReplayRound int
 	PlayedMatches      []int
-	PlayedLocations    map[string]struct{}
+	PlayedLocations    map[Location]struct{}
 	OtherTeams         map[int]struct{}
 }
 
@@ -27,31 +27,29 @@ func (s *Schedule) Score() int {
 
 	ts := make(map[int]*teamStats)
 	for team := range s.Config.Teams {
-		ts[team+1] = &teamStats{
+		ts[team] = &teamStats{
 			ClosestReplay:   99,
-			PlayedLocations: make(map[string]struct{}),
+			PlayedLocations: make(map[Location]struct{}),
 			OtherTeams:      make(map[int]struct{}),
 		}
 	}
 
-	m := 1
 	for roundID, round := range s.Rounds {
 		for matchNum, match := range round.Matches {
 			matchNum = matchNum + roundID*len(round.Matches)
 			for field := range s.Config.Fields {
 				for pos := range s.Config.Positions {
-					t := match.Team(field+1, pos+1)
+					t := match.Team(field, pos)
 					if t == -1 {
 						continue
 					}
 					ts[t].PlayedMatches = append(ts[t].PlayedMatches, matchNum)
-					ts[t].PlayedLocations[fmt.Sprintf("%d-%d", field, pos)] = struct{}{}
-					for _, peer := range match.PeerTeams(field+1, pos+1, s.Config.Positions) {
+					ts[t].PlayedLocations[Location{field, pos}] = struct{}{}
+					for _, peer := range match.PeerTeams(field, pos, s.Config.Positions) {
 						ts[t].OtherTeams[peer] = struct{}{}
 					}
 				}
 			}
-			m++
 		}
 	}
 
@@ -68,7 +66,6 @@ func (s *Schedule) Score() int {
 	}
 
 	for t := range s.Config.Teams {
-		t = t + 1
 		tsc := ts[t].Score()
 
 		if tsc > s.TeamBestScore {
@@ -104,4 +101,42 @@ func (s *Schedule) Score() int {
 	s.TeamAvgScore = s.TeamAvgScore / s.Config.Teams
 
 	return total / (s.Config.Fields * s.Config.Positions)
+}
+
+func (s *Schedule) Validate() error {
+	teamMatches := make(map[int][]int)
+
+	for roundID, round := range s.Rounds {
+		for matchNum, match := range round.Matches {
+			matchNum = matchNum + roundID*len(round.Matches)
+			for field := range s.Config.Fields {
+				for pos := range s.Config.Positions {
+					t := match.Team(field, pos)
+					if t == -1 {
+						continue
+					}
+
+					teamMatches[t] = append(teamMatches[t], matchNum)
+				}
+			}
+		}
+	}
+
+	for team := range teamMatches {
+		if len(teamMatches[team]) != s.Config.Rounds {
+			slog.Error("Team does not play expected number of rounds",
+				"team", team,
+				"expected", s.Config.Rounds,
+				"actual", len(teamMatches[team]),
+			)
+			return InvariantViolation{msg: "team does not play expected number of rounds"}
+		}
+	}
+
+	for i := range s.Config.Teams {
+		if _, found := teamMatches[i]; !found {
+			return InvariantViolation{msg: fmt.Sprintf("team %d does not appear in schedule", i)}
+		}
+	}
+	return nil
 }

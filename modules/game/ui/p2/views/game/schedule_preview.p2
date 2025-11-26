@@ -77,12 +77,12 @@
         {% for match in round.Matches %}
         <tr>
           <td>{{ forloop.Parentloop.Counter }}</td>
-          {% set matchNum = forloop.Counter + ((forloop.Parentloop.Counter-1) * round.Matches|length) %}
+          {% set matchNum = forloop.Counter + (forloop.Parentloop.Counter0 * round.Matches|length) %}
           <td>{{ matchNum }}</td>
           {% for field in fields %}
           {% for position in positions %}
-          {% if match.Team(field.ID|integer, position.ID|integer) > 0 %}
-          <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ teams | teamList:match.Team(field.ID|integer, position.ID|integer) }}</td>
+          {% if match.Team(forloop.Parentloop.Counter0, forloop.Counter0) > -1 %}
+          <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ teams | teamList:match.Team(forloop.Parentloop.Counter0, forloop.Counter0) }}</td>
           {% else %}
           <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
           {% endif %}

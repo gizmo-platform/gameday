@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
@@ -23,7 +24,6 @@ func init() {
 }
 
 func bakeScheduleCmdRun(c *cobra.Command, args []string) {
-
 	cfg := schedgen.Config{
 		Rounds:    strToInt(args[0]),
 		Fields:    strToInt(args[1]),
@@ -39,7 +39,7 @@ func bakeScheduleCmdRun(c *cobra.Command, args []string) {
 	h := []interface{}{"Round", "Match"}
 	for field := range strToInt(args[1]) {
 		for pos := range strToInt(args[2]) {
-			h = append(h, fmt.Sprintf("F%d-P%d", field+1, pos+1))
+			h = append(h, schedgen.Location{field, pos}.String())
 		}
 	}
 	tw.AppendHeader(h)
@@ -49,8 +49,8 @@ func bakeScheduleCmdRun(c *cobra.Command, args []string) {
 			t := []interface{}{r + 1, m}
 			for field := range strToInt(args[1]) {
 				for pos := range strToInt(args[2]) {
-					ft := match.Team(field+1, pos+1)
-					if ft > 0 {
+					ft := match.Team(field, pos)
+					if ft >= 0 {
 						t = append(t, ft)
 					}
 				}
@@ -61,6 +61,11 @@ func bakeScheduleCmdRun(c *cobra.Command, args []string) {
 	}
 
 	fmt.Println(tw.Render())
+
+	if err := s.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error validating schedule %v\n", err)
+		return
+	}
 
 	totalScore := s.Score()
 

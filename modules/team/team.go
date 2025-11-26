@@ -104,7 +104,7 @@ func filterTeamList(in, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 	if !ok {
 		return nil, &pongo2.Error{Sender: "teamList", OrigError: errors.New("team list was not a list")}
 	}
-	return pongo2.AsValue(v[param.Integer()-1].Name), nil
+	return pongo2.AsValue(v[param.Integer()].Name), nil
 }
 
 func (m *Module) uiViewListTeams(w http.ResponseWriter, r *http.Request) {
