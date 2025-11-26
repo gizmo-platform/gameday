@@ -175,40 +175,41 @@ func Generate(c Config) *Schedule {
 	return &s
 }
 
-// GenerateRound generates a single potential round and returns it for
-// evaluation to determine if the schedule should accept it.
 func (s *Schedule) GenerateRound() Round {
 	r := Round{}
-	m := 0
-	placements := make(map[string]int)
-	appearances := make(map[int]int)
+	r.TeamAppearances = make(map[int]int)
 
-	f := 1
-	p := 1
-	for i, t := range rand.Perm(s.Config.Teams) {
-		slog.Debug("Placed Team",
-			"field", f,
-			"position", p,
-			"team", t+1,
-		)
-		placements[fmt.Sprintf("%d-%d", f, p)] = t
-		appearances[t] = m
-		p++
-
-		// Something in here is wrong.  its not saving rounds that are partially filled.
-		if p > s.Config.Positions && f < s.Config.Fields {
-			p = 1
-			f++
-		} else if (p > s.Config.Positions && f >= s.Config.Fields) || i == s.Config.Teams-1 {
-			f = 1
-			p = 1
-			r.Matches = append(r.Matches, Match{Placements: placements})
-			placements = make(map[string]int)
-			m++
+	slots := []string{}
+	for f := range s.Config.Fields {
+		for p := range s.Config.Positions {
+			slots = append(slots, fmt.Sprintf("%d-%d", f+1, p+1))
 		}
 	}
 
-	r.TeamAppearances = appearances
-	return r
+	teams := rand.Perm(s.Config.Teams)
+	match := 0
+	placements := make(map[string]int)
+	for i := range s.Config.Teams {
+		slot := slots[i%len(slots)]
+		placements[slot] = teams[i]
+		r.TeamAppearances[teams[i]] = match
 
+		if i%len(slots) == len(slots)-1 {
+			r.Matches = append(r.Matches, Match{Placements: placements})
+			placements = make(map[string]int)
+			match++
+		}
+	}
+	if len(placements) > 0 {
+		// This commits the leftover partial match that can
+		// exist when the number of teams doesn't cleanly
+		// divide into the available slots.
+		r.Matches = append(r.Matches, Match{Placements: placements})
+	}
+
+	if len(r.TeamAppearances) != s.Config.Teams {
+		slog.Error("SCHEDULER INVARIANT VIOLATION", "expected-count", s.Config.Teams, "actual-count", len(r.TeamAppearances))
+	}
+
+	return r
 }

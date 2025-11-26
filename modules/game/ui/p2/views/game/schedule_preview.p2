@@ -48,11 +48,11 @@
         </tr>
         <tr>
           <td>Worst Position Diversity</td>
-          <td>{{ schedule.WorstPositionDiversity }}</td>
+          <td>{{ schedule.WorstLocationDiversity }}</td>
         </tr>
         <tr>
-          <td>Worst Field Diversity</td>
-          <td>{{ schedule.WorstFieldDiversity }}</td>
+          <td>Worst Competitor Diversity</td>
+          <td>{{ schedule.WorstCompetitorDiversity }}</td>
         </tr>
       </table>
     </div>
