@@ -1,6 +1,7 @@
 package schedgen
 
 import (
+	"fmt"
 	"log/slog"
 )
 
@@ -10,28 +11,26 @@ type teamStats struct {
 	ClosestReplayMatch int
 	ClosestReplayRound int
 	PlayedMatches      []int
-	Fields             map[int]struct{}
-	Positions          map[int]struct{}
+	PlayedLocations    map[string]struct{}
 	OtherTeams         map[int]struct{}
 }
 
 func (ts teamStats) Score() int {
-	return ts.ClosestReplay * len(ts.Fields) * len(ts.Positions) * len(ts.OtherTeams)
+	return ts.ClosestReplay * len(ts.PlayedLocations) * len(ts.OtherTeams)
 }
 
 // Score is used to work out how good a schedule is.
 func (s *Schedule) Score() int {
 	s.ClosestReplay = 99
-	s.WorstPositionDiversity = 99
-	s.WorstFieldDiversity = 99
+	s.WorstLocationDiversity = 99
+	s.WorstCompetitorDiversity = 99
 
 	ts := make(map[int]*teamStats)
 	for team := range s.Config.Teams {
 		ts[team+1] = &teamStats{
-			ClosestReplay: 99,
-			Fields:        make(map[int]struct{}),
-			Positions:     make(map[int]struct{}),
-			OtherTeams:    make(map[int]struct{}),
+			ClosestReplay:   99,
+			PlayedLocations: make(map[string]struct{}),
+			OtherTeams:      make(map[int]struct{}),
 		}
 	}
 
@@ -46,8 +45,7 @@ func (s *Schedule) Score() int {
 						continue
 					}
 					ts[t].PlayedMatches = append(ts[t].PlayedMatches, matchNum)
-					ts[t].Fields[field] = struct{}{}
-					ts[t].Positions[pos] = struct{}{}
+					ts[t].PlayedLocations[fmt.Sprintf("%d-%d", field, pos)] = struct{}{}
 					for _, peer := range match.PeerTeams(field+1, pos+1, s.Config.Positions) {
 						ts[t].OtherTeams[peer] = struct{}{}
 					}
@@ -94,11 +92,12 @@ func (s *Schedule) Score() int {
 			s.ClosestReplayMatch = ts[t].ClosestReplayMatch
 			s.ClosestReplayRound = ts[t].ClosestReplayRound
 		}
-		if s.WorstPositionDiversity > len(ts[t].Positions) {
-			s.WorstPositionDiversity = len(ts[t].Positions)
+		if s.WorstLocationDiversity > len(ts[t].PlayedLocations) {
+			s.WorstLocationDiversity = len(ts[t].PlayedLocations)
 		}
-		if s.WorstFieldDiversity > len(ts[t].Fields) {
-			s.WorstFieldDiversity = len(ts[t].Fields)
+
+		if s.WorstCompetitorDiversity > len(ts[t].OtherTeams) {
+			s.WorstCompetitorDiversity = len(ts[t].OtherTeams)
 		}
 	}
 	total := s.TeamAvgScore

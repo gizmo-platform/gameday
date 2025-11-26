@@ -29,11 +29,12 @@ type Schedule struct {
 	TeamWorstScore int
 	TeamAvgScore   int
 
-	ClosestReplay          int
-	ClosestReplayMatch     int
-	ClosestReplayRound     int
-	WorstPositionDiversity int
-	WorstFieldDiversity    int
+	ClosestReplay      int
+	ClosestReplayMatch int
+	ClosestReplayRound int
+
+	WorstLocationDiversity   int
+	WorstCompetitorDiversity int
 }
 
 // Round keeps track of the matches in a given round.
@@ -46,6 +47,18 @@ type Round struct {
 // a team appears in during a round.
 func (r Round) GetRelativeMatchForTeam(t int) int {
 	return r.TeamAppearances[t]
+}
+
+// PositionsPlayedByTeam is used in working out whether or not a round
+// improves position diversity.
+func (r Round) PositionsPlayedByTeam() map[int]string {
+	out := make(map[int]string)
+	for _, m := range r.Matches {
+		for loc, team := range m.Placements {
+			out[team] = loc
+		}
+	}
+	return out
 }
 
 // Match contains a single match.
@@ -79,14 +92,21 @@ func Generate(c Config) *Schedule {
 	s := Schedule{
 		Config: c,
 
-		ClosestReplay:          99,
-		WorstPositionDiversity: 99,
-		WorstFieldDiversity:    99,
+		ClosestReplay: 99,
 	}
 
 	// Pre-generate the zeroth round since all schedules must
 	// contain at least one round.
 	s.Rounds = []Round{s.GenerateRound()}
+
+	// PositionsPlayed needs to be pre-seeded for the 0th round,
+	// and then future rounds check to see if additional positions
+	// are being played.
+	positionsPlayed := make(map[int]map[string]struct{})
+	for team, loc := range s.Rounds[0].PositionsPlayedByTeam() {
+		positionsPlayed[team] = make(map[string]struct{})
+		positionsPlayed[team][loc] = struct{}{}
+	}
 
 	// Walk through remaining rounds, optimizing for distance
 	// between consecutive appearances for the same team.  This is
@@ -100,7 +120,9 @@ func Generate(c Config) *Schedule {
 		bestRound := r
 		bestDowntime := 0
 		downtime := make(map[int]int)
+		bestPositionScore := 0
 		for range 1000 {
+			positionScore := 0
 			worstDowntime := 99
 
 			// Downtime is how many matches a team has down
@@ -124,12 +146,27 @@ func Generate(c Config) *Schedule {
 				}
 			}
 
-			if worstDowntime > bestDowntime {
-				slog.Debug("Replacing best round", "old", bestDowntime, "new", worstDowntime)
+			for team, loc := range r.PositionsPlayedByTeam() {
+				if _, played := positionsPlayed[team][loc]; !played {
+					positionScore++
+				}
+			}
+
+			if (worstDowntime > bestDowntime) && (bestPositionScore < positionScore) {
+				slog.Warn("Replacing best round",
+					"old-downtime", bestDowntime,
+					"new-downtime", worstDowntime,
+					"old-position", bestPositionScore,
+					"new-position", positionScore,
+				)
 				bestDowntime = worstDowntime
+				bestPositionScore = positionScore
 				bestRound = r
 			}
 			r = s.GenerateRound()
+		}
+		for team, loc := range bestRound.PositionsPlayedByTeam() {
+			positionsPlayed[team][loc] = struct{}{}
 		}
 
 		s.Rounds = append(s.Rounds, bestRound)
@@ -142,11 +179,12 @@ func Generate(c Config) *Schedule {
 // evaluation to determine if the schedule should accept it.
 func (s *Schedule) GenerateRound() Round {
 	r := Round{}
-	f := 1
-	p := 1
 	m := 0
 	placements := make(map[string]int)
 	appearances := make(map[int]int)
+
+	f := 1
+	p := 1
 	for i, t := range rand.Perm(s.Config.Teams) {
 		slog.Debug("Placed Team",
 			"field", f,
@@ -169,6 +207,7 @@ func (s *Schedule) GenerateRound() Round {
 			m++
 		}
 	}
+
 	r.TeamAppearances = appearances
 	return r
 
