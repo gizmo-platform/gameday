@@ -9,6 +9,7 @@
   <hr />
   <div class="flex-container flex-center">
     <a class="flex-item button" href="{{ pageBase }}/import">Import Teams</a>
+    <a class="flex-item button" href="{{ pageBase }}/add">Add Single</a>
   </div>
   <hr />
 

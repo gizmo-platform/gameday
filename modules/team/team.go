@@ -55,6 +55,8 @@ func New(opts ...Option) *Module {
 		r.Get("/", m.uiViewListTeams)
 		r.Get("/import", m.uiViewImportTeams)
 		r.Post("/import", m.uiViewImportTeamsSubmit)
+		r.Get("/add", m.uiViewAddForm)
+		r.Post("/add", m.uiViewUpsert)
 
 		r.Get("/{id}/edit", m.uiViewEditForm)
 		r.Post("/{id}/edit", m.uiViewUpsert)
@@ -165,6 +167,31 @@ func (m *Module) uiViewImportTeamsSubmit(w http.ResponseWriter, r *http.Request)
 		m.db.Save(&Team{Name: team["Name"], Number: n, Division: team["Division"], Region: team["Region"]})
 	}
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
+}
+
+func (m *Module) uiViewAddForm(w http.ResponseWriter, r *http.Request) {
+	divisions := []string{}
+	if res := m.db.Model(&Team{}).Distinct("division").Find(&divisions); res.Error != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		return
+	}
+
+	regions := []string{}
+	if res := m.db.Model(&Team{}).Distinct("region").Find(&regions); res.Error != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		return
+	}
+
+	if len(divisions) == 0 {
+		divisions = append(divisions, "Open")
+	}
+
+	ctx := pongo2.Context{
+		"divisions": divisions,
+		"regions":   append(regions, "None"),
+	}
+
+	m.ws.DoTemplate(w, r, "views/team/form_single.p2", ctx)
 }
 
 func (m *Module) uiViewEditForm(w http.ResponseWriter, r *http.Request) {
