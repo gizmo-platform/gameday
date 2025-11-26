@@ -9,6 +9,7 @@ type teamStats struct {
 	ClosestReplay      int
 	ClosestReplayMatch int
 	ClosestReplayRound int
+	PlayedMatches      []int
 	Fields             map[int]struct{}
 	Positions          map[int]struct{}
 	OtherTeams         map[int]struct{}
@@ -36,20 +37,15 @@ func (s *Schedule) Score() int {
 
 	m := 1
 	for roundID, round := range s.Rounds {
-		for _, match := range round.Matches {
+		for matchNum, match := range round.Matches {
+			matchNum = matchNum + roundID*len(round.Matches)
 			for field := range s.Config.Fields {
 				for pos := range s.Config.Positions {
 					t := match.Team(field+1, pos+1)
 					if t == -1 {
 						continue
 					}
-					matchesSinceLast := m + 1 - ts[t].LastMatch
-					if matchesSinceLast < ts[t].ClosestReplay {
-						ts[t].ClosestReplay = matchesSinceLast
-						ts[t].ClosestReplayMatch = m
-						ts[t].ClosestReplayRound = roundID
-					}
-					ts[t].LastMatch = m + 1
+					ts[t].PlayedMatches = append(ts[t].PlayedMatches, matchNum)
 					ts[t].Fields[field] = struct{}{}
 					ts[t].Positions[pos] = struct{}{}
 					for _, peer := range match.PeerTeams(field+1, pos+1, s.Config.Positions) {
@@ -58,6 +54,18 @@ func (s *Schedule) Score() int {
 				}
 			}
 			m++
+		}
+	}
+
+	for t := range ts {
+		for i := 1; i < len(ts[t].PlayedMatches); i++ {
+			delta := (ts[t].PlayedMatches[i] - ts[t].PlayedMatches[i-1])
+			if ts[t].ClosestReplay > delta {
+				ts[t].ClosestReplay = delta
+				ts[t].LastMatch = ts[t].PlayedMatches[i-1]
+				ts[t].ClosestReplayMatch = ts[t].PlayedMatches[i]
+				ts[t].ClosestReplayRound = i
+			}
 		}
 	}
 
@@ -74,7 +82,14 @@ func (s *Schedule) Score() int {
 		s.TeamAvgScore += tsc
 
 		if s.ClosestReplay > ts[t].ClosestReplay {
-			slog.Debug("New closest replay match", "distance", ts[t].ClosestReplay, "team", t, "match", ts[t].ClosestReplayMatch)
+			slog.Debug("New closest replay match",
+				"distance", ts[t].ClosestReplay,
+				"team", t,
+				"match", ts[t].ClosestReplayMatch,
+				"last", ts[t].LastMatch,
+				"fault-round", ts[t].ClosestReplayRound,
+				"played-matches", ts[t].PlayedMatches,
+			)
 			s.ClosestReplay = ts[t].ClosestReplay
 			s.ClosestReplayMatch = ts[t].ClosestReplayMatch
 			s.ClosestReplayRound = ts[t].ClosestReplayRound
