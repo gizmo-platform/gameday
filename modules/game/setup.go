@@ -11,28 +11,43 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+
+	"github.com/gizmo-platform/gameday/pkg/db"
 )
 
 func (m *Module) uiViewGame(w http.ResponseWriter, r *http.Request) {
-	c := Config{}
-
-	if res := m.db.Find(&c.Field.Positions); res.Error != nil {
-		slog.Error("Error retreiving field positions", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	positions, err := gorm.G[FieldPosition](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving field positions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	if res := m.db.Find(&c.Game.Phases); res.Error != nil {
-		slog.Error("Error retreiving game phases", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	phases, err := gorm.G[GamePhase](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving game phases", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	if res := m.db.Preload(clause.Associations).Find(&c.Game.Elements); res.Error != nil {
-		slog.Error("Error retreiving game elements", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	elements, err := gorm.G[GameElement](m.db.DB).
+		Preload("States", nil).
+		Preload("States.Values", nil).
+		Find(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving game elements", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
+	}
+
+	c := Config{
+		Field: ConfigField{
+			Positions: positions,
+		},
+		Game: Game{
+			Phases:   phases,
+			Elements: elements,
+		},
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/config.p2", pongo2.Context{"config": c})
@@ -60,41 +75,41 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, pos := range c.Field.Positions {
-		if res := m.db.Save(&pos); res.Error != nil {
-			slog.Error("Error saving position", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		if err := db.InsertOrUpdate[FieldPosition](r.Context(), m.db.DB, &pos); err != nil {
+			slog.Error("Error saving position", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 			return
 		}
 	}
 
 	for _, phase := range c.Game.Phases {
-		if res := m.db.Save(&phase); res.Error != nil {
-			slog.Error("Error saving phases", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		if err := db.InsertOrUpdate[GamePhase](r.Context(), m.db.DB, &phase); err != nil {
+			slog.Error("Error saving phases", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 			return
 		}
 	}
 
 	for _, element := range c.Game.Elements {
-		if res := m.db.Save(&element); res.Error != nil {
-			slog.Error("Error saving element", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+		if err := db.InsertOrUpdate[GameElement](r.Context(), m.db.DB, &element); err != nil {
+			slog.Error("Error saving element", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 			return
 		}
 
 		for _, state := range element.States {
 			state.GameElementID = element.ID
-			if res := m.db.Save(&state); res.Error != nil {
-				slog.Error("Error saving element state", "error", res.Error)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+			if err := db.InsertOrUpdate[GameElementState](r.Context(), m.db.DB, &state); err != nil {
+				slog.Error("Error saving element state", "error", err)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 				return
 			}
 
 			for _, value := range state.Values {
 				value.GameElementStateID = state.ID
-				if res := m.db.Save(&value); res.Error != nil {
-					slog.Error("Error saving state value", "error", res.Error)
-					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+				if err := db.InsertOrUpdate[GameElementStateValue](r.Context(), m.db.DB, &value); err != nil {
+					slog.Error("Error saving state value", "error", err)
+					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 					return
 				}
 			}
@@ -105,11 +120,10 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) uiViewFieldList(w http.ResponseWriter, r *http.Request) {
-	fList := []Field{}
-
-	if res := m.db.Find(&fList); res.Error != nil {
-		slog.Error("Error loading fields", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	fList, err := gorm.G[Field](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading fields", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -119,10 +133,10 @@ func (m *Module) uiViewFieldList(w http.ResponseWriter, r *http.Request) {
 func (m *Module) uiViewFieldForm(w http.ResponseWriter, r *http.Request) {
 	fID := m.ws.StrToUint(chi.URLParam(r, "id"))
 
-	field := Field{}
-	if res := m.db.Where(&Field{ID: fID}).First(&field); res.Error != nil && !errors.Is(res.Error, gorm.ErrRecordNotFound) {
-		slog.Error("Error loading fields", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	field, err := gorm.G[Field](m.db.DB).Where("id = ?", fID).First(r.Context())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Error("Error loading fields", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	m.ws.DoTemplate(w, r, "views/game/field_form.p2", pongo2.Context{"field": field})
@@ -130,12 +144,14 @@ func (m *Module) uiViewFieldForm(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) uiViewFieldSubmit(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	field := Field{
+		ID:   m.ws.StrToUint(chi.URLParam(r, "id")),
+		Name: r.FormValue("field_name"),
+	}
 
-	fID := m.ws.StrToUint(chi.URLParam(r, "id"))
-
-	if res := m.db.Save(&Field{ID: fID, Name: r.FormValue("field_name")}); res.Error != nil {
-		slog.Error("Error saving position", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	if err := db.InsertOrUpdate[Field](r.Context(), m.db.DB, &field); err != nil {
+		slog.Error("Error saving position", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	http.Redirect(w, r, path.Join(m.basePath, "fields/"), http.StatusSeeOther)

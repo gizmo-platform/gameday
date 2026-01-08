@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"path"
@@ -132,7 +133,7 @@ type ScorecardElement struct {
 }
 
 type TeamModule interface {
-	ListTeams(team.Team) ([]team.Team, error)
+	ListTeams(context.Context, team.Team) ([]team.Team, error)
 }
 
 type Module struct {

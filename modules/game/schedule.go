@@ -11,26 +11,25 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/schedgen"
 )
 
 func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
-	phases := []GamePhase{}
-
-	if res := m.db.Find(&phases); res.Error != nil {
-		slog.Error("Error retreiving field positions", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	phases, err := gorm.G[GamePhase](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving field positions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	scheduleAvailable := make(map[uint]bool)
 	for _, phase := range phases {
-		tmp := []MatchPlacement{}
-		res := m.db.Where(&MatchPlacement{PhaseID: phase.ID}).Find(&tmp)
-		scheduleAvailable[phase.ID] = (len(tmp) > 0) && (res.Error == nil)
+		tmp, err := gorm.G[MatchPlacement](m.db.DB).
+			Where("phase_id = ?", phase.ID).
+			Find(r.Context())
+		scheduleAvailable[phase.ID] = (len(tmp) > 0) && (err == nil)
 	}
 
 	ctx := pongo2.Context{
@@ -44,24 +43,34 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 
-	fields := []Field{}
-	if res := m.db.Where("id in (select distinct(field_id) from match_placements where phase_id = ?)", gPhase).Find(&fields); res.Error != nil {
+	fields, err := gorm.G[Field](m.db.DB).
+		Where("id in (select distinct(field_id) from match_placements where phase_id = ?)", gPhase).
+		Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading fields", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
 	}
 	sort.Slice(fields, func(i, j int) bool {
 		return fields[i].ID < fields[j].ID
 	})
 
-	positions := []FieldPosition{}
-	if res := m.db.Find(&positions); res.Error != nil {
-		slog.Error("Error loading positions", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	positions, err := gorm.G[FieldPosition](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading positions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	placements := []MatchPlacement{}
-	if res := m.db.Preload(clause.Associations).Where(&MatchPlacement{PhaseID: gPhase}).Find(&placements); res.Error != nil {
-		slog.Error("Error retreiving match placements", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	placements, err := gorm.G[MatchPlacement](m.db.DB).
+		Preload("Team", nil).
+		Preload("Field", nil).
+		Preload("Position", nil).
+		Where(&MatchPlacement{PhaseID: gPhase}).
+		Find(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving match placements", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -93,14 +102,16 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 		sr.Placements[fmt.Sprintf("%d-%d", p.FieldID, p.PositionID)] = p.Team
 	}
-	if len(sr.Placements)>0 {
+	if len(sr.Placements) > 0 {
 		schedule = append(schedule, sr)
 	}
 
-	phase := GamePhase{}
-	if res := m.db.Where(&GamePhase{ID: gPhase}).Find(&phase); res.Error != nil {
-		slog.Error("Error retreiving phase", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	phase, err := gorm.G[GamePhase](m.db.DB).
+		Where(&GamePhase{ID: gPhase}).
+		First(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving phase", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -138,16 +149,22 @@ func (m *Module) uiViewPhaseMakeActive(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 
 	m.db.Transaction(func(tx *gorm.DB) error {
-		if res := tx.Model(&GamePhase{}).Where(&GamePhase{Active: true}).Update("Active", false); res.Error != nil {
-			slog.Error("Error deactivating all schedule phases", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
-			return res.Error
+		_, err := gorm.G[GamePhase](tx).
+			Where(&GamePhase{Active: true}).
+			Update(r.Context(), "Active", false)
+		if err != nil {
+			slog.Error("Error deactivating all schedule phases", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return err
 		}
 
-		if res := tx.Model(&GamePhase{}).Where(&GamePhase{ID: gPhase}).Update("Active", true); res.Error != nil {
-			slog.Error("Error activating schedule phase", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
-			return res.Error
+		_, err = gorm.G[GamePhase](tx).
+			Where(&GamePhase{ID: gPhase}).
+			Update(r.Context(), "Active", true)
+		if err != nil {
+			slog.Error("Error activating schedule phase", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return err
 		}
 
 		return nil
@@ -156,17 +173,17 @@ func (m *Module) uiViewPhaseMakeActive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.Request) {
-	teams, err := m.tm.ListTeams(team.Team{})
+	teams, err := m.tm.ListTeams(r.Context(), team.Team{})
 	if err != nil {
 		slog.Error("Error retreiving field positions", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	fields := []Field{}
-	if res := m.db.Find(&fields); res.Error != nil {
-		slog.Error("Error loading fields", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	fields, err := gorm.G[Field](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading fields", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -184,8 +201,10 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 
 	fields := []Field{}
 	for _, f := range r.Form["fields"] {
-		field := Field{}
-		if res := m.db.Where(&Field{ID: m.ws.StrToUint(f)}).Find(&field); res.Error != nil {
+		field, err := gorm.G[Field](m.db.DB).
+			Where(&Field{ID: m.ws.StrToUint(f)}).
+			First(r.Context())
+		if err != nil {
 			continue
 		}
 		fields = append(fields, field)
@@ -194,10 +213,10 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		return fields[i].ID < fields[j].ID
 	})
 
-	positions := []FieldPosition{}
-	if res := m.db.Find(&positions); res.Error != nil {
-		slog.Error("Error loading positions", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	positions, err := gorm.G[FieldPosition](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading positions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -223,7 +242,7 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 
 	teams := []team.Team{}
 	for _, t := range r.Form["selected_teams"] {
-		team, err := m.tm.ListTeams(team.Team{ID: m.ws.StrToUint(t)})
+		team, err := m.tm.ListTeams(r.Context(), team.Team{ID: m.ws.StrToUint(t)})
 		if err != nil {
 			slog.Error("Error loading team", "error", err)
 			continue
@@ -234,8 +253,8 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		return teams[i].ID < teams[j].ID
 	})
 
-	if res := m.db.Where(&MatchPlacement{PhaseID: CandidatePhase}).Delete(&MatchPlacement{}); res.Error != nil {
-		slog.Error("Error clearing candidate match", "error", res.Error)
+	if _, err := gorm.G[MatchPlacement](m.db.DB).Where(&MatchPlacement{PhaseID: CandidatePhase}).Delete(r.Context()); err != nil {
+		slog.Error("Error clearing candidate match", "error", err)
 	}
 
 	for rNum, round := range s.Rounds {
@@ -256,8 +275,8 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 						PositionID: position.ID,
 					}
 
-					if res := m.db.Save(&mp); res.Error != nil {
-						slog.Error("Error saving match placement", "error", res.Error)
+					if err := gorm.G[MatchPlacement](m.db.DB).Create(r.Context(), &mp); err != nil {
+						slog.Error("Error saving match placement", "error", err)
 						continue
 					}
 				}
@@ -279,23 +298,31 @@ func (m *Module) uiViewPhaseScheduleAccept(w http.ResponseWriter, r *http.Reques
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 
 	m.db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&MatchPlacement{}).Where(&MatchPlacement{PhaseID: CandidatePhase}).Update("PhaseID", gPhase)
-		if res.Error != nil {
-			slog.Error("Error updating schedule phase", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
-			return res.Error
+		_, err := gorm.G[MatchPlacement](tx).
+			Where(&MatchPlacement{PhaseID: CandidatePhase}).
+			Update(r.Context(), "PhaseID", gPhase)
+		if err != nil {
+			slog.Error("Error updating schedule phase", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return err
 		}
 
-		if res := tx.Model(&GamePhase{}).Where(&GamePhase{Active: true}).Update("Active", false); res.Error != nil {
-			slog.Error("Error deactivating all schedule phases", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
-			return res.Error
+		_, err = gorm.G[GamePhase](tx).
+			Where(&GamePhase{Active: true}).
+			Update(r.Context(), "Active", false)
+		if err != nil {
+			slog.Error("Error deactivating all schedule phases", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return err
 		}
 
-		if res := tx.Model(&GamePhase{}).Where(&GamePhase{ID: gPhase}).Update("Active", true); res.Error != nil {
-			slog.Error("Error activating schedule phase", "error", res.Error)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
-			return res.Error
+		_, err = gorm.G[GamePhase](tx).
+			Where(&GamePhase{ID: gPhase}).
+			Update(r.Context(), "Active", true)
+		if err != nil {
+			slog.Error("Error activating schedule phase", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return err
 		}
 
 		return nil

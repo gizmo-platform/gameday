@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -8,32 +9,41 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 func (m *Module) uiViewScorecard(w http.ResponseWriter, r *http.Request) {
-	placement := MatchPlacement{}
 	placementFilter := MatchPlacement{
 		PhaseID:    m.ws.StrToUint(chi.URLParam(r, "phase")),
 		Match:      int(m.ws.StrToUint(chi.URLParam(r, "match"))),
 		FieldID:    m.ws.StrToUint(chi.URLParam(r, "field")),
 		PositionID: m.ws.StrToUint(chi.URLParam(r, "position")),
 	}
-	if res := m.db.Preload(clause.Associations).Where(placementFilter).First(&placement); res.Error != nil {
-		slog.Error("Error retreiving scorecard", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	placement, err := gorm.G[MatchPlacement](m.db.DB).
+		Where(placementFilter).
+		First(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving scorecard", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	elements := []GameElement{}
-	if res := m.db.Preload("States.Values").Preload(clause.Associations).Find(&elements); res.Error != nil {
-		slog.Error("Error retreiving scorecard", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	elements, err := gorm.G[GameElement](m.db.DB).
+		Preload("States", nil).
+		Preload("States.Values", nil).
+		Find(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving scorecard", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	sce := []ScorecardElement{}
-	m.db.Where(&ScorecardElement{MatchPlacementID: placement.ID}).Find(&sce)
+	sce, err := gorm.G[ScorecardElement](m.db.DB).
+		Where(&ScorecardElement{MatchPlacementID: placement.ID}).Find(r.Context())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Error("Error retreiving scorecard elements", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
 	scd := make(map[string]int)
 	for _, e := range sce {
 		scd[e.ElementID] = e.Value
@@ -53,23 +63,27 @@ func (m *Module) uiViewScorecard(w http.ResponseWriter, r *http.Request) {
 func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	placement := MatchPlacement{}
 	placementFilter := MatchPlacement{
 		PhaseID:    m.ws.StrToUint(chi.URLParam(r, "phase")),
 		Match:      int(m.ws.StrToUint(chi.URLParam(r, "match"))),
 		FieldID:    m.ws.StrToUint(chi.URLParam(r, "field")),
 		PositionID: m.ws.StrToUint(chi.URLParam(r, "position")),
 	}
-	if res := m.db.Where(placementFilter).First(&placement); res.Error != nil {
-		slog.Error("Error retreiving scorecard", "error", res.Error)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	placement, err := gorm.G[MatchPlacement](m.db.DB).
+		Where(placementFilter).
+		First(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving scorecard", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	m.db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Where(&ScorecardElement{MatchPlacementID: placement.ID}).Delete(&ScorecardElement{})
-		if res.Error != nil {
-			return res.Error
+		_, err := gorm.G[ScorecardElement](tx).
+			Where(&ScorecardElement{MatchPlacementID: placement.ID}).
+			Delete(r.Context())
+		if err != nil {
+			return err
 		}
 
 		for key := range r.Form {
@@ -87,9 +101,9 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 				Value:            v,
 			}
 
-			if res := tx.Save(&sce); res.Error != nil {
-				slog.Error("Error saving scorecard element", "error", res.Error)
-				return res.Error
+			if err := gorm.G[ScorecardElement](tx).Create(r.Context(), &sce); err != nil {
+				slog.Error("Error saving scorecard element", "error", err)
+				return err
 			}
 		}
 		return nil

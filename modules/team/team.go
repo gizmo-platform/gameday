@@ -1,6 +1,7 @@
 package team
 
 import (
+	"context"
 	"embed"
 	"encoding/csv"
 	"errors"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
@@ -95,10 +97,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 }
 
 // ListTeams returns a selection of teams matching the filter.
-func (m *Module) ListTeams(filter Team) ([]Team, error) {
-	out := []Team{}
-	res := m.db.Where(filter).Find(&out)
-	return out, res.Error
+func (m *Module) ListTeams(ctx context.Context, filter Team) ([]Team, error) {
+	out, err := gorm.G[Team](m.db.DB).Where(filter).Find(ctx)
+	return out, err
 }
 
 func filterTeamList(in, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
@@ -110,9 +111,9 @@ func filterTeamList(in, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 }
 
 func (m *Module) uiViewListTeams(w http.ResponseWriter, r *http.Request) {
-	teams := []Team{}
-	if res := m.db.Find(&teams); res.Error != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	teams, err := m.ListTeams(r.Context(), Team{})
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -164,7 +165,7 @@ func (m *Module) uiViewImportTeamsSubmit(w http.ResponseWriter, r *http.Request)
 
 	for _, team := range teams {
 		n, _ := strconv.Atoi(team["Number"])
-		m.db.Save(&Team{Name: team["Name"], Number: n, Division: team["Division"], Region: team["Region"]})
+		db.InsertOrUpdate[Team](r.Context(), m.db.DB, &Team{Name: team["Name"], Number: n, Division: team["Division"], Region: team["Region"]})
 	}
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
 }
@@ -195,9 +196,11 @@ func (m *Module) uiViewAddForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) uiViewEditForm(w http.ResponseWriter, r *http.Request) {
-	t := Team{}
-	if res := m.db.Where(&Team{ID: strToUint(chi.URLParam(r, "id"))}).First(&t); res.Error != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	t, err := gorm.G[Team](m.db.DB).
+		Where(&Team{ID: m.ws.StrToUint(chi.URLParam(r, "id"))}).
+		First(r.Context())
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -225,21 +228,16 @@ func (m *Module) uiViewEditForm(w http.ResponseWriter, r *http.Request) {
 func (m *Module) uiViewUpsert(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	t := Team{
-		ID:       strToUint(chi.URLParam(r, "id")),
+		ID:       m.ws.StrToUint(chi.URLParam(r, "id")),
 		Name:     r.FormValue("team_name"),
-		Number:   int(strToUint(r.FormValue("team_number"))),
+		Number:   int(m.ws.StrToUint(r.FormValue("team_number"))),
 		Division: r.FormValue("team_division"),
 		Region:   r.FormValue("team_region"),
 	}
 
-	if res := m.db.Save(&t); res.Error != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	if err := db.InsertOrUpdate[Team](r.Context(), m.db.DB, &t); err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
-}
-
-func strToUint(s string) uint {
-	n, _ := strconv.Atoi(s)
-	return uint(n)
 }

@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"os"
 
 	"gorm.io/driver/sqlite"
@@ -28,4 +30,12 @@ func New() (*DB, error) {
 
 func (d *DB) Migrate(tables ...interface{}) error {
 	return d.AutoMigrate(tables)
+}
+
+func InsertOrUpdate[T any](ctx context.Context, db *gorm.DB, data *T) error {
+	_, err := gorm.G[T](db).Updates(ctx, *data)
+	if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, gorm.ErrMissingWhereClause) {
+		err = gorm.G[T](db).Create(ctx, data)
+	}
+	return err
 }
