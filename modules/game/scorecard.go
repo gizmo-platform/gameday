@@ -19,6 +19,10 @@ func (m *Module) uiViewScorecard(w http.ResponseWriter, r *http.Request) {
 		PositionID: m.ws.StrToUint(chi.URLParam(r, "position")),
 	}
 	placement, err := gorm.G[MatchPlacement](m.db.DB).
+		Preload("Phase", nil).
+		Preload("Team", nil).
+		Preload("Field", nil).
+		Preload("Position", nil).
 		Where(placementFilter).
 		First(r.Context())
 	if err != nil {
