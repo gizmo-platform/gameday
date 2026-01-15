@@ -2,11 +2,11 @@ package db
 
 import (
 	"context"
-	"errors"
 	"os"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type DB struct {
@@ -33,9 +33,8 @@ func (d *DB) Migrate(tables ...interface{}) error {
 }
 
 func InsertOrUpdate[T any](ctx context.Context, db *gorm.DB, data *T) error {
-	_, err := gorm.G[T](db).Updates(ctx, *data)
-	if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, gorm.ErrMissingWhereClause) {
-		err = gorm.G[T](db).Create(ctx, data)
-	}
+	err := gorm.G[T](db, clause.OnConflict{
+		UpdateAll: true,
+	}).Create(ctx, data)
 	return err
 }
