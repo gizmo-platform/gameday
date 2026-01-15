@@ -126,18 +126,23 @@ game:
           name: Latches Released
           values:
             - id: 1
+              vid: none
+              name: None Released
+              points: 0
+              default: true
+            - id: 2
               vid: one_released
               name: 1 Released
               points: 100
-            - id: 2
+            - id: 3
               vid: two_released
               name: 2 Released
               points: 130
-            - id: 3
+            - id: 4
               vid: three_released
               name: 3 Released
               points: 140
-            - id: 4
+            - id: 5
               vid: four_released
               name: 4 Released
               points: 145
@@ -150,15 +155,20 @@ game:
           sid: selected
           name: Selected
           values:
-            - id: 5
+            - id: 6
+              vid: none
+              name: None Selected
+              points: 0
+              default: true
+            - id: 7
               vid: config_a
               name: Configuration A
               points: 100
-            - id: 6
+            - id: 8
               vid: config_b
               name: Configuration B
               points: 125
-            - id: 7
+            - id: 9
               vid: config_c
               name: Configuration C
               points: 150

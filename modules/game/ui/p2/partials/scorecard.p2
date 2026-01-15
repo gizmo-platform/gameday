@@ -69,8 +69,11 @@
          totalScore += {{ state.Each }};
      }
      {%- elif element.Type == "radio" %}
-     idx = scorecardForm.elements.namedItem('{{ field_id }}').value;
-     totalScore += +(scorecardForm.elements.namedItem('{{ field_id }}')[idx-1].dataset.points);
+     scorecardForm.elements.namedItem('{{ field_id }}').forEach((node) => {
+         if (node.checked) {
+             totalScore += +(node.dataset.points);
+         }
+     });
      {%- endif %}
      {%- endwith %}
      {%- endfor %}

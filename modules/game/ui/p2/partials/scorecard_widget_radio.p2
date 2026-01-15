@@ -7,9 +7,11 @@
     <input type="radio"
            id="{{ field_id }}_{{ value.VID }}"
            name="{{ field_id }}"
-           value="{{ forloop.Counter }}"
+           value="{{ value.ID }}"
            data-points="{{ value.Points }}"
-           {% if ScorecardData|key:field_id == forloop.Counter %}checked{% endif %}
+           data-present="{{ ScorecardData|key:field_id }}"
+           data-should-default="{{ (ScorecardData|key:field_id == 0) && value.Default }}"
+           {% if (ScorecardData|key:field_id == value.ID) || ((ScorecardData|key:field_id == 0) && value.Default) %}checked{% endif %}
            {% if edit_disable %}disabled{% endif %}
            />
   </div>

@@ -99,9 +99,10 @@ type GameElementStateValue struct {
 	ID                 uint
 	GameElementStateID uint
 
-	Name   string
-	VID    string
-	Points int
+	Name    string
+	VID     string
+	Points  int
+	Default bool
 }
 
 // MatchPlacement binds a team to a given field placement.
