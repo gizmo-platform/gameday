@@ -18,6 +18,78 @@ const (
 	CandidatePhase = 99
 )
 
+// MatchState is an enum of states that a match can be in, used for
+// filtering.
+type MatchState uint
+
+const (
+	_ = iota
+	// MatchStateScheduled refers to a match that exists in the
+	// schedule, and can be played.
+	MatchStateScheduled MatchState = iota
+
+	// MatchStateQueued is used when a team is present in queuing
+	// and is ready to play.
+	MatchStateQueued
+
+	// MatchStateRunning is used to identify when the clock is
+	// running on a given match, and is primarily used to drive
+	// external automations.
+	MatchStateRunning
+
+	// MatchStateScorable is defined as a match that is able to be
+	// scored and is not in an otherwise terminal state.
+	MatchStateScorable
+
+	// MatchStateComplete is used to identify a match that is done
+	// and does not require further scorecard manipulation.
+	MatchStateComplete
+
+	// MatchStateNoShow is used to identify a match placement
+	// where the team never made it to the match, and forces a
+	// zero score.
+	MatchStateNoShow
+
+	// MatchStateDisqualified is used to identify a team that may
+	// have made it to a match, potentially was scored, but was
+	// then disqualified from earning any points during the match
+	// in question.
+	MatchStateDisqualified
+)
+
+var (
+	MatchStates = []MatchState{
+		MatchStateScheduled,
+		MatchStateQueued,
+		MatchStateRunning,
+		MatchStateScorable,
+		MatchStateComplete,
+		MatchStateNoShow,
+		MatchStateDisqualified,
+	}
+)
+
+func (m MatchState) String() string {
+	switch m {
+	case MatchStateScheduled:
+		return "scheduled"
+	case MatchStateQueued:
+		return "queued"
+	case MatchStateRunning:
+		return "running"
+	case MatchStateScorable:
+		return "scorable"
+	case MatchStateComplete:
+		return "complete"
+	case MatchStateNoShow:
+		return "no-show"
+	case MatchStateDisqualified:
+		return "disqualified"
+	default:
+		return "unknown"
+	}
+}
+
 //go:embed ui/*
 var efs embed.FS
 
@@ -120,6 +192,8 @@ type MatchPlacement struct {
 	FieldID    uint
 	Position   FieldPosition
 	PositionID uint
+
+	State MatchState
 }
 
 // ScorecardElement is a single attribute from a scorecard that has been scored.
@@ -185,6 +259,7 @@ func New(opts ...Option) *Module {
 		})
 
 		r.Route("/scorecard", func(r chi.Router) {
+			r.Get("/", m.uiViewScorecardList)
 			r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
 			r.Post("/{phase}/{match}/{field}/{position}", m.uiViewScorecardSubmit)
 		})

@@ -273,6 +273,7 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 						TeamID:     t.ID,
 						FieldID:    field.ID,
 						PositionID: position.ID,
+						State:      MatchStateScheduled,
 					}
 
 					if err := gorm.G[MatchPlacement](m.db.DB).Create(r.Context(), &mp); err != nil {
