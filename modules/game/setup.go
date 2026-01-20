@@ -90,6 +90,7 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sceID := uint(1)
 	for _, element := range c.Game.Elements {
 		if err := db.InsertOrUpdate[GameElement](r.Context(), m.db.DB, &element); err != nil {
 			slog.Error("Error saving element", "error", err)
@@ -104,6 +105,19 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 				return
 			}
+
+			err := db.InsertOrUpdate[ScorecardElement](r.Context(), m.db.DB, &ScorecardElement{
+				ID:      sceID,
+				Element: element.EID + "_" + state.SID,
+				Type:    element.Type,
+				Expr:    exprForElementState(element, state),
+			})
+			if err != nil {
+				slog.Error("Error saving element state", "error", err)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+				return
+			}
+			sceID++
 
 			for _, value := range state.Values {
 				value.GameElementStateID = state.ID

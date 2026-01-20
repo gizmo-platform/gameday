@@ -124,7 +124,7 @@
           <td>{{ placement.Team.Name }}</td>
           <td>{{ placement.State.String()|capfirst }}</td>
           <td>
-            <a class="button" href="{{ placement.Phase.ID }}/{{ placement.Match }}/{{ placement.Field.ID }}/{{ placement.Position.ID }}">View</a>
+            <a class="button" href="scorecard/{{ placement.Phase.ID }}/{{ placement.Match }}/{{ placement.Field.ID }}/{{ placement.Position.ID }}">View</a>
           </td>
         </tr>
         {% empty%}

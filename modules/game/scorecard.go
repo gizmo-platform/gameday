@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/expr-lang/expr"
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
@@ -164,8 +166,8 @@ func (m *Module) uiViewScorecard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sce, err := gorm.G[ScorecardElement](m.db.DB).
-		Where(&ScorecardElement{MatchPlacementID: placement.ID}).Find(r.Context())
+	sce, err := gorm.G[ScorecardValue](m.db.DB).
+		Where(&ScorecardValue{MatchPlacementID: placement.ID}).Find(r.Context())
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("Error retreiving scorecard elements", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
@@ -173,7 +175,7 @@ func (m *Module) uiViewScorecard(w http.ResponseWriter, r *http.Request) {
 	}
 	scd := make(map[string]int)
 	for _, e := range sce {
-		scd[e.ElementID] = e.Value
+		scd[e.Element] = e.Value
 	}
 
 	slog.Debug("scorecard data", "mi", placement.Match, "data", scd)
@@ -206,13 +208,21 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.db.Transaction(func(tx *gorm.DB) error {
-		_, err := gorm.G[ScorecardElement](tx).
-			Where(&ScorecardElement{MatchPlacementID: placement.ID}).
+		_, err := gorm.G[ScorecardValue](tx).
+			Where(&ScorecardValue{MatchPlacementID: placement.ID}).
 			Delete(r.Context())
 		if err != nil {
 			return err
 		}
 
+		_, err = gorm.G[MatchScore](tx).
+			Where(&MatchScore{ID: placement.ID}).
+			Delete(r.Context())
+		if err != nil {
+			return err
+		}
+
+		vMap := make(map[string]int)
 		for key := range r.Form {
 			slog.Debug("form value", "key", key, "value", r.FormValue(key))
 
@@ -222,17 +232,49 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 				return err
 			}
-			sce := ScorecardElement{
+			scv := ScorecardValue{
 				MatchPlacementID: placement.ID,
-				ElementID:        key,
+				Element:          key,
 				Value:            v,
 			}
+			vMap[key] = v
 
-			if err := gorm.G[ScorecardElement](tx).Create(r.Context(), &sce); err != nil {
-				slog.Error("Error saving scorecard element", "error", err)
+			if err := gorm.G[ScorecardValue](tx).Create(r.Context(), &scv); err != nil {
+				slog.Error("Error saving scorecard value", "error", err)
 				return err
 			}
 		}
+
+		elements, err := gorm.G[ScorecardElement](tx).Find(r.Context())
+		if err != nil {
+			slog.Error("Error fetching scorecard elements", "error", err)
+			return err
+		}
+		exprFragments := make([]string, len(elements))
+		for i := range elements {
+			exprFragments[i] = elements[i].Expr
+		}
+
+		score, err := expr.Eval(strings.Join(exprFragments, " + "), vMap)
+		if err != nil {
+			slog.Error("Error evaluating scorecard", "error", err)
+			return err
+		}
+		err = gorm.G[MatchScore](tx).Create(r.Context(), &MatchScore{
+			ID:               placement.ID,
+			MatchPlacementID: placement.ID,
+			GamePhaseID:      placement.PhaseID,
+			TeamID:           placement.TeamID,
+			Score:            score.(int),
+		})
+		if err != nil {
+			slog.Error("Error saving match score", "error", err)
+			return err
+		}
+
+		slog.Info("Scorecard Evaluated", "score", score)
 		return nil
 	})
+
+	http.Redirect(w, r, "../../../../scorecard", http.StatusSeeOther)
 }

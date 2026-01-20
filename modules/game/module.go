@@ -177,6 +177,27 @@ type GameElementStateValue struct {
 	Default bool
 }
 
+// ScorecardElement is a single line from a scorecard that uses the ID
+// format from the scorecards.
+type ScorecardElement struct {
+	ID uint
+
+	Element string
+	Type    string
+	Expr    string
+}
+
+// ScorecardValue is a single attribute from a scorecard that has been scored.
+type ScorecardValue struct {
+	ID uint
+
+	MatchPlacement   MatchPlacement
+	MatchPlacementID uint
+
+	Element string
+	Value   int
+}
+
 // MatchPlacement binds a team to a given field placement.
 type MatchPlacement struct {
 	ID uint
@@ -196,15 +217,20 @@ type MatchPlacement struct {
 	State MatchState
 }
 
-// ScorecardElement is a single attribute from a scorecard that has been scored.
-type ScorecardElement struct {
+// MatchScore is used to store the actual numeric score as finalized
+// from a MatchPlacement and collection of ScorecardValue elements.
+type MatchScore struct {
 	ID uint
 
+	Score            int
 	MatchPlacement   MatchPlacement
 	MatchPlacementID uint
 
-	ElementID string
-	Value     int
+	GamePhase   GamePhase
+	GamePhaseID uint
+
+	Team   team.Team
+	TeamID uint
 }
 
 type TeamModule interface {
@@ -281,7 +307,9 @@ func (m *Module) Migrate() error {
 		GameElement{},
 		GamePhase{},
 		MatchPlacement{},
+		MatchScore{},
 		ScorecardElement{},
+		ScorecardValue{},
 	)
 }
 
@@ -303,10 +331,13 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 			Target: path.Join(prefix, "/setup"),
 		}, {
 			Text:   "Fields",
-			Target: path.Join(prefix, "/fields/"),
+			Target: path.Join(prefix, "/fields"),
 		}, {
 			Text:   "Schedule",
-			Target: path.Join(prefix, "/schedule/"),
+			Target: path.Join(prefix, "/schedule"),
+		}, {
+			Text:   "Scorecards",
+			Target: path.Join(prefix, "/scorecard"),
 		}},
 	}}
 }
