@@ -38,6 +38,11 @@ table, tr, td {
     background-color: #7e7e7e;
 }
 
+.bigbox {
+    width: 90vw !important;
+    height: 90vh !important;
+}
+
 .box {
     padding: 1em;
     border: 1px solid black;

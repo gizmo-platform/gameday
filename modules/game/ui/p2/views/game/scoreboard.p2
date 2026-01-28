@@ -1,0 +1,59 @@
+{% extends "../../fullscreen.p2" %}
+
+{% block title %}Phase Scoreboard{% endblock %}
+
+{% block content %}
+<div class="grid-center">
+  <div class="foreground box bigbox">
+    <div id="scorebox"></div>
+  </div>
+</div>
+
+{% verbatim %}
+<script id="tpl-board" type="x-tmpl-mustache">
+  <table>
+    <thead>
+      <tr>
+        <th>Score</th>
+        <th>Team</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#scores}}
+      <tr>
+        <td> {{ Score }}</td>
+        <td> {{ Team.Name }}</td>
+      </tr>
+      {{/scores}}
+      {{^scores}}
+      <tr><td colspan="2">No Scores for Phase</td></tr>
+      {{/scores}}
+    </tbody>
+  </table>
+</script>
+{% endverbatim %}
+
+<script defer src="/static/js/mustache.js"></script>
+<script>
+ const boardTemplate = document.getElementById('tpl-board').innerHTML;
+ const boardContainer = document.getElementById('scorebox');
+
+ async function fetchScores() {
+     try {
+         const resp = await fetch('/ui/mod/game/scoreboard/data' + window.location.search);
+         if (!resp.ok) {
+             throw new Error(`HTTP error! status: ${resp.status}`);
+         }
+
+         const data = await resp.json();
+         console.log(data);
+         const rendered = Mustache.render(boardTemplate, {'scores': data});
+         boardContainer.innerHTML = rendered;
+     } catch (error) {
+         console.error('Error fetching data:', error);
+     }
+ }
+
+ setTimeout(fetchScores, 1000);
+</script>
+{% endblock %}

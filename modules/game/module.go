@@ -289,6 +289,10 @@ func New(opts ...Option) *Module {
 			r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
 			r.Post("/{phase}/{match}/{field}/{position}", m.uiViewScorecardSubmit)
 		})
+		r.Route("/scoreboard", func(r chi.Router) {
+			r.Get("/", m.uiViewScoreboard)
+			r.Get("/data", m.uiViewScoreboardData)
+		})
 	})
 
 	return &m
