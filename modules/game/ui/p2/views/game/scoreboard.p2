@@ -4,29 +4,33 @@
 
 {% block content %}
 <div class="grid-center">
-  <div class="foreground box bigbox">
+  <div class="foreground box bigbox flex-container flex-center">
     <div id="scorebox"></div>
   </div>
 </div>
 
 {% verbatim %}
 <script id="tpl-board" type="x-tmpl-mustache">
-  <table>
+  <table id="scoreboard">
     <thead>
       <tr>
+        <th>Rank</th>
         <th>Score</th>
         <th>Team</th>
+        <th>Division</th>
       </tr>
     </thead>
     <tbody>
       {{#scores}}
       <tr>
+        <td> {{ Rank }}</td>
         <td> {{ Score }}</td>
         <td> {{ Team.Name }}</td>
+        <td> {{ Team.Division }}</td>
       </tr>
       {{/scores}}
       {{^scores}}
-      <tr><td colspan="2">No Scores for Phase</td></tr>
+      <tr><td colspan="4">No Scores for Phase</td></tr>
       {{/scores}}
     </tbody>
   </table>
@@ -38,6 +42,16 @@
  const boardTemplate = document.getElementById('tpl-board').innerHTML;
  const boardContainer = document.getElementById('scorebox');
 
+ const pageSize = 10;
+ const dwellPerRow = 750;
+ const minPageDwell = 2000;
+
+ let currentPage = 1;
+ let maxPage = 1;
+ let cycles = 0;
+ let maxCycles = 2;
+ let pageDwell = 1000;
+
  async function fetchScores() {
      try {
          const resp = await fetch('/ui/mod/game/scoreboard/data' + window.location.search);
@@ -46,14 +60,57 @@
          }
 
          const data = await resp.json();
-         console.log(data);
          const rendered = Mustache.render(boardTemplate, {'scores': data});
          boardContainer.innerHTML = rendered;
+         const tbl = document.getElementById('scoreboard');
+         maxPage = Math.ceil(tbl.tBodies[0].rows.length / pageSize);
+         changePage(0);
      } catch (error) {
          console.error('Error fetching data:', error);
      }
  }
 
- setTimeout(fetchScores, 1000);
+ function changePage(page) {
+     // Validate page number
+     if (page < 1) page = 1;
+     if (page > maxPage) page = maxPage;
+     currentPage = page;
+
+     const tbl = document.getElementById('scoreboard');
+     const startIndex = (currentPage - 1) * pageSize;
+     let endIndex = startIndex + pageSize;
+
+     if (endIndex > tbl.tBodies[0].rows.length) {
+         endIndex = tbl.tBodies[0].rows.length;
+     }
+     pageDwell = dwellPerRow * (endIndex - startIndex);
+     if (pageDwell < minPageDwell) {
+         pageDwell = minPageDwell;
+     }
+
+     // Hide all rows, then show only rows for the current page
+     for (let i = 0; i < tbl.tBodies[0].rows.length; i++) {
+         // Set display to 'none' to hide rows outside the current range
+         tbl.tBodies[0].rows[i].style.display = (i >= startIndex && i < endIndex) ? '' : 'none';
+     }
+ }
+
+ function cycleBoard() {
+     if (currentPage + 1 > maxPage) {
+         changePage(1);
+     } else {
+         changePage(currentPage+1);
+     }
+     if (cycles > maxCycles) {
+         cycles = 0;
+         fetchScores();
+     }
+     cycles++;
+
+     setTimeout(cycleBoard, pageDwell)
+ }
+
+ setTimeout(fetchScores, 100);
+ setTimeout(cycleBoard, 2000);
 </script>
 {% endblock %}

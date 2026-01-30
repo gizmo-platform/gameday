@@ -5,8 +5,21 @@ html, body {
     margin: 0;
 }
 
+table {
+    border-collapse: collapse;
+}
+
 table, tr, td {
     padding: 0.25em;
+}
+
+th {
+    padding-left; 0.25em;
+    padding-right: 0.25em;
+}
+
+tr:nth-child(even) {
+    background-color: #eeeeee
 }
 
 #logomark {
@@ -32,6 +45,10 @@ table, tr, td {
 #logbox-anchor {
     overflow-anchor: auto;
     height: 1px;
+}
+
+#scoreboard {
+    font-size: 5vh;
 }
 
 .background {

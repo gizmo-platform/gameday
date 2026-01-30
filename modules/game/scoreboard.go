@@ -15,6 +15,7 @@ import (
 type scoreboardRow struct {
 	Team     team.Team
 	TeamID   uint
+	Rank     int
 	Average  int `gorm:"column:avg"`
 	Mulligan int
 	Total    int
@@ -45,7 +46,7 @@ func (m *Module) uiViewScoreboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	orderBy := "mulligan"
-	switch(phase.ScoreSummation) {
+	switch phase.ScoreSummation {
 	case "Total":
 		orderBy = "total"
 	}
@@ -62,9 +63,9 @@ func (m *Module) uiViewScoreboardData(w http.ResponseWriter, r *http.Request) {
 		clause.Select{
 			Expression: clause.CommaExpression{Exprs: []clause.Expression{
 				clause.NamedExpr{"?", []interface{}{clause.Column{Name: "team_id"}}},
-				clause.NamedExpr{"AVG(?) AS avg", []interface{}{clause.Column{Name: "score"}}},
+				clause.NamedExpr{"CAST(AVG(?) AS INT) AS avg", []interface{}{clause.Column{Name: "score"}}},
 				clause.NamedExpr{
-					"COALESCE((SUM(?) - MIN(?)) / (COUNT(?) - 1), AVG(?)) AS mulligan",
+					"COALESCE((SUM(?) - MIN(?)) / (COUNT(?) - 1), CAST(AVG(?) AS INT)) AS mulligan",
 					[]interface{}{
 						clause.Column{Name: "score"},
 						clause.Column{Name: "score"},
@@ -83,7 +84,7 @@ func (m *Module) uiViewScoreboardData(w http.ResponseWriter, r *http.Request) {
 		clause.GroupBy{Columns: []clause.Column{{Name: "team_id"}}},
 		clause.OrderBy{Columns: []clause.OrderByColumn{{
 			Column: clause.Column{Name: orderBy},
-			Desc: true,
+			Desc:   true,
 		}}},
 	).Preload("Team", nil).Find(r.Context())
 	if err != nil {
@@ -92,13 +93,21 @@ func (m *Module) uiViewScoreboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rank := 1
 	for i, row := range rowData {
-		switch(phase.ScoreSummation) {
+		switch phase.ScoreSummation {
 		case "Total":
 			rowData[i].Score = row.Total
 		case "AverageWithMulligan":
 			rowData[i].Score = row.Mulligan
 		}
+
+		// Setup the rank, which is different than the index
+		// because of ties.
+		if i > 0 && rowData[i-1].Score != rowData[i].Score {
+			rank++
+		}
+		rowData[i].Rank = rank
 	}
 
 	if err := json.NewEncoder(w).Encode(rowData); err != nil {
