@@ -31,8 +31,6 @@
   <tr>
     <th>ID</th>
     <th>Name</th>
-    <th>Advance From</th>
-    <th>Advance Count</th>
     <th>Division Aware</th>
     <th>Schedule Type</th>
     <th>Score Summation</th>
@@ -41,8 +39,6 @@
   <tr>
     <td>{{ phase.ID }}</td>
     <td>{{ phase.Name }}</td>
-    <td>{{ phase.AdvanceFrom }}</td>
-    <td>{{ phase.AdvanceCount }}</td>
     <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
     <td>{{ phase.ScheduleType }}</td>
     <td>{{ phase.ScoreSummation }}</td>

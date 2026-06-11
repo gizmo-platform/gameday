@@ -3,8 +3,10 @@ package game
 import (
 	"context"
 	"embed"
+	"errors"
 	"io/fs"
 	"path"
+	"strings"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -90,6 +92,55 @@ func (m MatchState) String() string {
 	}
 }
 
+// GamePhaseAdvancementFilterMode is used to identify whether a filter
+// is an include filter or an exclude filter.  Exclude filters are
+// processed first to prune the list of teams that may be advanced,
+// and then include filters are used to select from the teams that
+// remain.
+type GamePhaseAdvancementFilterMode uint8
+
+const (
+	// GamePhaseAdvancementFilterModeInclude is used to identify
+	// an include filter that will match and return teams.
+	GamePhaseAdvancementFilterModeInclude GamePhaseAdvancementFilterMode = iota
+
+	// GamePhaseAdvancementFilterModeExclude is used to identify a
+	// filter that is used to exclude teams from consideration for
+	// advancement, possibly because they have already been
+	// advanced via a parallel path.
+	GamePhaseAdvancementFilterModeExclude
+)
+
+var (
+	GamePhaseAdvancementFilterModes = []GamePhaseAdvancementFilterMode{
+		GamePhaseAdvancementFilterModeInclude,
+		GamePhaseAdvancementFilterModeExclude,
+	}
+)
+
+func (gmpf GamePhaseAdvancementFilterMode) String() string {
+	switch gmpf {
+	case GamePhaseAdvancementFilterModeInclude:
+		return "include"
+	case GamePhaseAdvancementFilterModeExclude:
+		return "exclude"
+	default:
+		return "unknown"
+	}
+}
+
+func (gmpf *GamePhaseAdvancementFilterMode) UnmarshalText(b []byte) error {
+	switch strings.ToLower(string(b)) {
+	case "include":
+		*gmpf = GamePhaseAdvancementFilterModeInclude
+	case "exclude":
+		*gmpf = GamePhaseAdvancementFilterModeExclude
+	default:
+		return errors.New("mode must be 'include' or 'exclude'")
+	}
+	return nil
+}
+
 //go:embed ui/*
 var efs embed.FS
 
@@ -128,12 +179,25 @@ type Game struct {
 // GamePhase is a single phase of play that is part of a larger
 // schedule.
 type GamePhase struct {
-	ID             uint
-	Name           string
-	Active         bool
-	DivisionAware  bool
-	ScheduleType   string
-	ScoreSummation string
+	ID                 uint
+	Name               string
+	Active             bool
+	AdvancementFilters []GamePhaseAdvancementFilter
+	DivisionAware      bool
+	ScheduleType       string
+	ScoreSummation     string
+}
+
+// GamePhaseAdvancementFilter captures the expressions that are used
+// to count a number of teams to move phase to phase and the criteria
+// on which to select them.
+type GamePhaseAdvancementFilter struct {
+	ID          uint
+	GamePhaseID uint
+	Rule        string
+	Mode        GamePhaseAdvancementFilterMode
+	SelectFrom  uint
+	SliceExpr   string
 }
 
 // GameElement represents a single game element that may be
@@ -307,6 +371,7 @@ func (m *Module) Migrate() error {
 		GameElementStateValue{},
 		GameElementState{},
 		GameElement{},
+		GamePhaseAdvancementFilter{},
 		GamePhase{},
 		MatchPlacement{},
 		MatchScore{},

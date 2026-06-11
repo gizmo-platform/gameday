@@ -82,7 +82,20 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	advFilterID := uint(1)
 	for _, phase := range c.Game.Phases {
+		for _, filter := range phase.AdvancementFilters {
+			filter.GamePhaseID = phase.ID
+			filter.ID = advFilterID
+			slog.Debug("Loading filter", "id", advFilterID, "filter", filter)
+			if err := db.InsertOrUpdate[GamePhaseAdvancementFilter](r.Context(), m.db.DB, &filter); err != nil {
+				slog.Error("Error saving phase advancement", "error", err)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+				return
+			}
+			advFilterID++
+		}
+		phase.AdvancementFilters = nil
 		if err := db.InsertOrUpdate[GamePhase](r.Context(), m.db.DB, &phase); err != nil {
 			slog.Error("Error saving phases", "error", err)
 			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
