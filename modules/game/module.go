@@ -131,8 +131,6 @@ type GamePhase struct {
 	ID             uint
 	Name           string
 	Active         bool
-	AdvanceFrom    string
-	AdvanceCount   int
 	DivisionAware  bool
 	ScheduleType   string
 	ScoreSummation string

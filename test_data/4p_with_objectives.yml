@@ -27,15 +27,11 @@ game:
     - name: semifinal
       id: 2
       scoresummation: Total
-      advancefrom: 1
-      advancecount: 8
       divisionaware: true
       scheduletype: Semifinal
     - name: finals
       scoresummation: Total
       id: 3
-      advancefrom: 2
-      advancecount: 4
       divisionaware: true
       scheduletype: Final
 
