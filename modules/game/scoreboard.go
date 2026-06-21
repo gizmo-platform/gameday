@@ -6,22 +6,7 @@ import (
 	"net/http"
 
 	"github.com/flosch/pongo2/v6"
-
-	"github.com/gizmo-platform/gameday/modules/team"
 )
-
-type scoreboardRow struct {
-	Team     team.Team
-	TeamID   uint
-	Rank     int
-	Average  int `gorm:"column:avg"`
-	Mulligan int
-	Total    int
-	Score    int
-	Max      int
-	Min      int
-	Count    int
-}
 
 func (m *Module) uiViewScoreboard(w http.ResponseWriter, r *http.Request) {
 	m.ws.DoTemplate(w, r, "views/game/scoreboard.p2", nil)

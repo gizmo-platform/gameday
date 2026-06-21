@@ -6,7 +6,22 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/gizmo-platform/gameday/modules/team"
 )
+
+type scoreboardRow struct {
+	Team     team.Team
+	TeamID   uint
+	Rank     int
+	Average  int `gorm:"column:avg"`
+	Mulligan int
+	Total    int
+	Score    int
+	Max      int
+	Min      int
+	Count    int
+}
 
 func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint) ([]scoreboardRow, error) {
 	var phase GamePhase

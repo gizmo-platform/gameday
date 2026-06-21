@@ -3,47 +3,79 @@
 {% block title %}Select Teams{% endblock %}
 
 {% block content %}
-<div class="foreground box flex-container flex-row flex-center">
-  <div class="flex-item">
-    <h2>Select Teams</h2>
-    <p>Select the teams that should be included in this phase.  You may select multiple teams by holding shift and selecting a contiguous range, or holding control to select a non-contiguous selection.</p>
+  <div class="foreground box flex-container flex-row flex-center">
+    <div class="flex-item">
+      <h1>Phase Schedule Generation - {{ phase.Name }}</h1>
+      {% if (phase.AdvancementFilters | length) > 0 %}
+        <div class="alert-warn">
+          This phase has automated advancement rules!  Do not modify
+          the selected teams in the boxes below unless you know
+          exactly why you are overriding automatic values.
 
-    <form method="POST">
-      <table>
-        <tr>
-          <th>Parameter</th>
-          <th>Value</th>
-        </tr>
-        <tr>
-          <td><label for="selected_teams">Selected Teams</label></td>
-          <td>
-            <select name="selected_teams" size="25" multiple>
-              {% for team in teams %}
-              <option value="{{ team.ID }}">{{ team.Number }} - {{ team.Name }} ({{ team.Division}} / {{ team.Region }})</option>
-              {% endfor %}
-            </select>
-          </td>
-        </tr>
-        <tr>
-          <td><label for="fields">Schedule to Fields</label></td>
-          <td>
-            <select name="fields" multiple>
-              {% for field in fields %}
-              <option value="{{ field.ID }}" selected>{{ field.Name }}</option>
-              {% endfor %}
-            </select>
-          </td>
-        </tr>
-        <tr>
-          <td><label for="rounds">Rounds</label></td>
-          <td><input type="number" name="rounds" value="7" /></td>
-        </tr>
-        <tr>
-          <td colspan="2"><input type="submit" /></td>
-        </tr>
-      </table>
-      <input type="hidden" name="schedule_type" value="{{ scheduletype }}" />
-    </form>
+          <div class="flex-container flex-row flex-center">
+            <div class="flex-item">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Filter</th>
+                    <th>Rule</th>
+                    <th>Result</th>
+                    <th>Team</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for reason in advancementReasons %}
+                    <tr>
+                      <td>{{ reason.Filter }}</td>
+                      <td>{{ reason.Rule }}</td>
+                      <td>{{ reason.Result }}</td>
+                      <td>{{ reason.Team.Name }}</td>
+                      <td>{{ reason.Reason }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+      <hr />
+      <form method="POST">
+        <div class="flex-container flex-row">
+          <div class="flex-item flex-half" {% if !manualEnabled %}inert{% endif %}>
+            <h3>Select Teams</h3>
+            <p>Select the teams that should be included in this phase.
+              You may select multiple teams by holding shift and
+              selecting a contiguous range, or holding control to select
+              a non-contiguous selection.</p>
+              <select name="selected_teams" size="25" multiple>
+                {% for team in teams %}
+                  <option value="{{ team.ID }}" {% if advancingTeams[team.ID] %}selected{% endif %}>{{ team.Number }} - {{ team.Name }} ({{ team.Division }} / {{ team.Region }})</option>
+                {% endfor %}
+              </select>
+          </div>
+          <div class="flex-item flex-half flex-container flex-column">
+            <div class="flex-item">
+              <h3>Select Fields</h3>
+              <select name="fields" multiple>
+                {% for field in fields %}
+                  <option value="{{ field.ID }}" selected>{{ field.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="flex-item">
+              <h3>Rounds</h3>
+              <input type="number" name="rounds" value="7" />
+            </div>
+          </div>
+        </div>
+        <div class="flex-container flex-row flex-center">
+          <div class="flex-item"><input type="submit" /></div>
+          <input type="hidden" name="schedule_type" value="{{ scheduletype }}" />
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 {% endblock %}

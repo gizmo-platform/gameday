@@ -55,6 +55,13 @@ tr:nth-child(even) {
     font-size: 5vh;
 }
 
+.alert-warn {
+    background-color: #fff3cd;
+    border-radius: 0.25em;
+    border: 4px solid #ffeeba;
+    padding: 1em;
+}
+
 .background {
     background-color: #7e7e7e;
 }
@@ -109,6 +116,10 @@ tr:nth-child(even) {
 
 .flex-column {
     flex-direction: column;
+}
+
+.flex-half {
+    flex-basis: 50%;
 }
 
 .flex-item {

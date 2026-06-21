@@ -32,7 +32,6 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 			Find(r.Context())
 		scheduleAvailable[phase.ID] = (len(tmp) > 0) && (err == nil)
 
-
 		completed, err1 := gorm.G[MatchPlacement](m.db.DB).
 			Where(&MatchPlacement{PhaseID: phase.ID}).
 			Where("state in (?)", []MatchState{
@@ -49,7 +48,7 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 				MatchStateDisqualified,
 			}).
 			Count(r.Context(), "*")
-		phaseComplete[phase.ID] = (count == 0) && (completed > 0 ) && (err1 == nil) && (err2 == nil)
+		phaseComplete[phase.ID] = (count == 0) && (completed > 0) && (err1 == nil) && (err2 == nil)
 		slog.Debug("Phase completion state", "phase_id", phase.ID, "playable", count, "completed", completed)
 	}
 
@@ -239,6 +238,18 @@ func (m *Module) uiViewPhaseMakeFrozen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.Request) {
+	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+	phase, err := gorm.G[GamePhase](m.db.DB).
+		Preload("AdvancementFilters", nil).
+		Where(&GamePhase{ID: gPhase}).
+		First(r.Context())
+	if err != nil {
+		slog.Error("Error loading phase for schedule parameter selection", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	slog.Debug("Selected game phase", "phase", phase)
+
 	teams, err := m.tm.ListTeams(r.Context(), team.Team{})
 	if err != nil {
 		slog.Error("Error retreiving field positions", "error", err)
@@ -254,9 +265,53 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := pongo2.Context{
-		"teams":        teams,
-		"fields":       fields,
-		"scheduletype": r.URL.Query().Get("st"),
+		"phase":         phase,
+		"teams":         teams,
+		"manualEnabled": true,
+		"fields":        fields,
+		"scheduletype":  r.URL.Query().Get("st"),
+	}
+
+	advancingTeams := make(map[uint]struct{})
+	if len(phase.AdvancementFilters) > 0 {
+		ctx["manualEnabled"] = false
+
+		sctx := AdvancementFilterContext{
+			Roster:     make(map[uint]team.Team),
+			Candidates: make(map[uint]team.Team),
+		}
+		for _, team := range teams {
+			sctx.Roster[team.ID] = team
+		}
+
+		for _, filter := range phase.AdvancementFilters {
+			rowData, err := m.scoreboardRankings(r.Context(), filter.SelectFrom)
+			if err != nil {
+				slog.Error("Error retrieving filter scoreboard", "filter", filter)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+				return
+			}
+			sctx.Scoreboard = rowData
+
+			f, exists := filters[filter.Filter]
+			if !exists {
+				slog.Error("Tried to load unregistered filter", "filter", filter)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+				return
+			}
+			f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr)
+		}
+
+		// After all filters have been applied, the remaining
+		// candidates advance.
+		for _, t := range sctx.Candidates {
+			advancingTeams[t.ID] = struct{}{}
+		}
+		ctx["advancingTeams"] = advancingTeams
+		ctx["advancementReasons"] = sctx.Determinations
+	}
+	if r.URL.Query().Get("override") != "" {
+		ctx["manualEnabled"] = false
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/schedule_select_teams.p2", ctx)
