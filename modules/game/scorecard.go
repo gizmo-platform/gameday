@@ -272,6 +272,14 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
+		_, err = gorm.G[MatchPlacement](tx).
+			Where(&MatchPlacement{ID: placement.ID}).
+			Update(r.Context(), "state", MatchStateComplete)
+		if err != nil {
+			slog.Error("Error finalizing match", "error", err)
+			return err
+		}
+
 		slog.Info("Scorecard Evaluated", "score", score)
 		return nil
 	})

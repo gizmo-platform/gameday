@@ -182,6 +182,7 @@ type GamePhase struct {
 	ID                 uint
 	Name               string
 	Active             bool
+	Frozen             bool
 	AdvancementFilters []GamePhaseAdvancementFilter
 	DivisionAware      bool
 	ScheduleType       string
@@ -194,6 +195,7 @@ type GamePhase struct {
 type GamePhaseAdvancementFilter struct {
 	ID          uint
 	GamePhaseID uint
+	Filter      string
 	Rule        string
 	Mode        GamePhaseAdvancementFilterMode
 	SelectFrom  uint
@@ -341,6 +343,7 @@ func New(opts ...Option) *Module {
 			r.Get("/", m.uiViewPhaseList)
 			r.Get("/phases/{id}", m.uiViewPhaseSchedule)
 			r.Post("/phases/{id}/make-active", m.uiViewPhaseMakeActive)
+			r.Post("/phases/{id}/make-frozen", m.uiViewPhaseMakeFrozen)
 			r.Get("/phases/{id}/select-teams", m.uiViewPhaseScheduleSelectTeams)
 			r.Post("/phases/{id}/select-teams", m.uiViewPhaseSchedulePreview)
 			r.Post("/phases/{id}/accept-schedule", m.uiViewPhaseScheduleAccept)

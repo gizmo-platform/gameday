@@ -22,6 +22,7 @@ game:
       scheduletype: FinalBracket
       advancementfilters:
         - rule: PickTop4
+          filter: ScoreboardRanking
           mode: include
           selectfrom: 1
           sliceexpr: 4

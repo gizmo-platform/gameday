@@ -118,6 +118,14 @@ func (m *Module) DebugGenerateScores(phaseID uint) error {
 				slog.Error("Error saving match score", "error", err)
 				return err
 			}
+
+			_, err = gorm.G[MatchPlacement](tx).
+				Where(&MatchPlacement{ID: placement.ID}).
+				Update(ctx, "state", MatchStateComplete)
+			if err != nil {
+				slog.Error("Error finalizing match", "error", err)
+				return err
+			}
 		}
 
 		return nil

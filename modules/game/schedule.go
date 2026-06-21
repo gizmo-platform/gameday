@@ -25,16 +25,68 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scheduleAvailable := make(map[uint]bool)
+	phaseComplete := make(map[uint]bool)
 	for _, phase := range phases {
 		tmp, err := gorm.G[MatchPlacement](m.db.DB).
 			Where("phase_id = ?", phase.ID).
 			Find(r.Context())
 		scheduleAvailable[phase.ID] = (len(tmp) > 0) && (err == nil)
+
+
+		completed, err1 := gorm.G[MatchPlacement](m.db.DB).
+			Where(&MatchPlacement{PhaseID: phase.ID}).
+			Where("state in (?)", []MatchState{
+				MatchStateComplete,
+				MatchStateNoShow,
+				MatchStateDisqualified,
+			}).
+			Count(r.Context(), "*")
+		count, err2 := gorm.G[MatchPlacement](m.db.DB).
+			Where(&MatchPlacement{PhaseID: phase.ID}).
+			Where("state not in (?)", []MatchState{
+				MatchStateComplete,
+				MatchStateNoShow,
+				MatchStateDisqualified,
+			}).
+			Count(r.Context(), "*")
+		phaseComplete[phase.ID] = (count == 0) && (completed > 0 ) && (err1 == nil) && (err2 == nil)
+		slog.Debug("Phase completion state", "phase_id", phase.ID, "playable", count, "completed", completed)
+	}
+
+	// This has to be a second pass to ensure that all the phasing
+	// information is populated.  This could be pushed down into
+	// the database by a more skilled programmer.
+	canSchedule := make(map[uint]bool)
+	for _, phase := range phases {
+		can := true
+
+		filters, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).
+			Where(&GamePhaseAdvancementFilter{GamePhaseID: phase.ID}).
+			Find(r.Context())
+		if err != nil {
+			slog.Debug("Could not load advancement filters for phase", "phase", phase.ID, "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
+		for _, filter := range filters {
+			slog.Debug("Evaluating filter satisfaction",
+				"phase", phase.Name,
+				"rule", filter.Rule,
+				"source_id", filter.SelectFrom,
+				"source_complete", phaseComplete[filter.SelectFrom],
+				"source_frozen", phases[filter.SelectFrom-1].Frozen,
+			)
+			can = can && phaseComplete[filter.SelectFrom] && phases[filter.SelectFrom-1].Frozen
+		}
+
+		canSchedule[phase.ID] = can
 	}
 
 	ctx := pongo2.Context{
-		"phases":   phases,
-		"schedule": scheduleAvailable,
+		"phases":      phases,
+		"completed":   phaseComplete,
+		"schedule":    scheduleAvailable,
+		"canSchedule": canSchedule,
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/phases.p2", ctx)
@@ -169,6 +221,20 @@ func (m *Module) uiViewPhaseMakeActive(w http.ResponseWriter, r *http.Request) {
 
 		return nil
 	})
+	http.Redirect(w, r, path.Join(m.basePath, "schedule"), http.StatusSeeOther)
+}
+
+func (m *Module) uiViewPhaseMakeFrozen(w http.ResponseWriter, r *http.Request) {
+	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	_, err := gorm.G[GamePhase](m.db.DB).
+		Where(&GamePhase{ID: gPhase}).
+		Update(r.Context(), "Frozen", true)
+	if err != nil {
+		slog.Error("Error freezing schedule phase", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
 	http.Redirect(w, r, path.Join(m.basePath, "schedule"), http.StatusSeeOther)
 }
 

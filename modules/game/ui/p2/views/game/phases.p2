@@ -16,7 +16,7 @@
         <th>Actions</th>
       </tr>
       {% for phase in phases %}
-      <tr>
+      <tr class="{% if phase.Frozen %}dim-row{% endif %}">
         <td>{{ phase.ID }}</td>
         <td>{{ phase.Name }}</td>
         <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
@@ -30,7 +30,12 @@
             <input class="flex-item button" type="submit" value="Activate" />
           </form>
           {% endif %}
-          {% else %}
+          {% if phase.Active and completed[phase.ID] and not phase.Frozen %}
+            <form method="POST" action="schedule/phases/{{ phase.ID }}/make-frozen">
+              <input class="flex-item button" type="submit" value="Freeze" />
+            </form>
+          {% endif %}
+          {% elif canSchedule[phase.ID] %}
           <a class="flex-item button" href="schedule/phases/{{ phase.ID }}/select-teams?st={{ phase.ScheduleType }}">Generate Schedule</a>
           {% endif %}
         </td>

@@ -5,6 +5,10 @@ html, body {
     margin: 0;
 }
 
+input {
+    font-size: 16px;
+}
+
 table {
     border-collapse: collapse;
 }
@@ -85,6 +89,10 @@ tr:nth-child(even) {
 
 .center {
     text-align: center;
+}
+
+.dim-row {
+    opacity: 50%;
 }
 
 .flex-center {
