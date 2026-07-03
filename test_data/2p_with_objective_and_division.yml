@@ -1,0 +1,48 @@
+---
+field:
+  positions:
+    - name: red
+      id: 1
+      color1: ec5e5e
+      color2: f4a2a2
+    - name: blue
+      id: 2
+      color1: 5b7ab6
+      color2: 9fb1d4
+
+game:
+  phases:
+    - name: seeding
+      id: 1
+      scoresummation: AverageWithMulligan
+      scheduletype: RandomSeeding
+    - name: deathmatch
+      id: 2
+      scoresummation: Total
+      scheduletype: FinalBracket
+      divisionaware: true
+      advancementfilters:
+        - rule: PickTop4
+          filter: ScoreboardRanking
+          mode: include
+          selectfrom: 1
+          sliceexpr: 4
+  elements:
+    - id: 1
+      eid: widgets
+      name: Widgets Fabricated
+      desc: Scores as count completed.
+      type: count
+      states:
+        - id: 1
+          sid: fabricated
+          name: Fabricated
+          desc: Fabrication Completed.
+          each: 10
+          max: 10
+        - id: 2
+          sid: delivered
+          name: Delivered
+          desc: Delivered to the Dock
+          each: 20
+          max: 10

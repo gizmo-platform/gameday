@@ -12,7 +12,7 @@ import (
 
 var (
 	bakeScheduleCmd = &cobra.Command{
-		Use:   "schedule <rounds> <fields> <positions> <teams>",
+		Use:   "schedule <scheduler> <rounds> <fields> <positions> <teams>",
 		Short: "generate a schedule with the given parameters",
 		Run:   bakeScheduleCmdRun,
 		Args:  cobra.ExactArgs(4),
@@ -24,15 +24,19 @@ func init() {
 }
 
 func bakeScheduleCmdRun(c *cobra.Command, args []string) {
+	scheduler := args[0]
 	cfg := schedgen.Config{
-		Rounds:    strToInt(args[0]),
-		Fields:    strToInt(args[1]),
-		Positions: strToInt(args[2]),
-		Teams:     strToInt(args[3]),
+		Rounds:    strToInt(args[1]),
+		Fields:    strToInt(args[2]),
+		Positions: strToInt(args[3]),
+		Teams:     strToInt(args[4]),
 	}
 
-	s := schedgen.Generate(cfg)
-
+	s, err := schedgen.GenerateSchedule(scheduler, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not generate schedule: %s\n", err)
+		return
+	}
 	s.Score()
 
 	tw := table.NewWriter()

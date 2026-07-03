@@ -276,39 +276,55 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 	if len(phase.AdvancementFilters) > 0 {
 		ctx["manualEnabled"] = false
 
-		sctx := AdvancementFilterContext{
-			Roster:     make(map[uint]team.Team),
-			Candidates: make(map[uint]team.Team),
-		}
-		for _, team := range teams {
-			sctx.Roster[team.ID] = team
-		}
-
-		for _, filter := range phase.AdvancementFilters {
-			rowData, err := m.scoreboardRankings(r.Context(), filter.SelectFrom)
-			if err != nil {
-				slog.Error("Error retrieving filter scoreboard", "filter", filter)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		// A blank division list will result in the
+		// advancement filters being called with an empty
+		// filter, which will select all teams across all
+		// divisions.
+		divisions := []string{""}
+		if phase.DivisionAware {
+			if res := m.db.Model(&team.Team{}).Distinct("division").Find(&divisions); res.Error != nil {
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
 				return
 			}
-			sctx.Scoreboard = rowData
-
-			f, exists := filters[filter.Filter]
-			if !exists {
-				slog.Error("Tried to load unregistered filter", "filter", filter)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return
-			}
-			f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr)
 		}
 
-		// After all filters have been applied, the remaining
-		// candidates advance.
-		for _, t := range sctx.Candidates {
-			advancingTeams[t.ID] = struct{}{}
+		determinations := []AdvancementDeterminationResult{}
+		for _, division := range divisions {
+			sctx := AdvancementFilterContext{
+				Roster:     make(map[uint]team.Team),
+				Candidates: make(map[uint]team.Team),
+			}
+			for _, team := range teams {
+				sctx.Roster[team.ID] = team
+			}
+
+			for _, filter := range phase.AdvancementFilters {
+				rowData, err := m.scoreboardRankings(r.Context(), filter.SelectFrom, division)
+				if err != nil {
+					slog.Error("Error retrieving filter scoreboard", "filter", filter)
+					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+					return
+				}
+				sctx.Scoreboard = rowData
+
+				f, exists := filters[filter.Filter]
+				if !exists {
+					slog.Error("Tried to load unregistered filter", "filter", filter)
+					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+					return
+				}
+				f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr)
+			}
+
+			// After all filters have been applied, the remaining
+			// candidates advance.
+			for _, t := range sctx.Candidates {
+				advancingTeams[t.ID] = struct{}{}
+			}
+			determinations = append(determinations, sctx.Determinations...)
 		}
 		ctx["advancingTeams"] = advancingTeams
-		ctx["advancementReasons"] = sctx.Determinations
+		ctx["advancementReasons"] = determinations
 	}
 	if r.URL.Query().Get("override") != "" {
 		ctx["manualEnabled"] = false
@@ -341,24 +357,24 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var s *schedgen.Schedule
+	c := schedgen.Config{
+		Fields:    len(r.Form["fields"]),
+		Positions: len(positions),
+		Teams:     len(r.Form["selected_teams"]),
+		Rounds:    int(m.ws.StrToUint(r.FormValue("rounds"))),
+	}
 
-	switch r.FormValue("schedule_type") {
-	case schedgen.TypeRandomSeeding:
-		c := schedgen.Config{
-			Fields:    len(r.Form["fields"]),
-			Positions: len(positions),
-			Teams:     len(r.Form["selected_teams"]),
-			Rounds:    int(m.ws.StrToUint(r.FormValue("rounds"))),
-		}
-
-		s = schedgen.Generate(c)
-		s.Score()
-		if err := s.Validate(); err != nil {
-			slog.Error("Error generating schedule", "error", err)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
-		}
+	s, err := schedgen.GenerateSchedule(r.FormValue("schedule_type"), c)
+	if err != nil {
+		slog.Error("Error generating schedule", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	s.Score()
+	if err := s.Validate(); err != nil {
+		slog.Error("Error generating schedule", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
 	}
 
 	teams := []team.Team{}

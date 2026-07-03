@@ -19,7 +19,7 @@ const (
 )
 
 func (ad AdvancementDetermination) String() string {
-	switch(ad) {
+	switch ad {
 	case AdvancementDeterminationAccept:
 		return "Accept"
 	case AdvancementDeterminationReject:
@@ -42,10 +42,10 @@ type AdvancementFilter interface {
 // and any filter configuration.  The candidates map is blank until a
 // filter adds a team to the list.
 type AdvancementFilterContext struct {
-	Roster      map[uint]team.Team
-	Candidates  map[uint]team.Team
-	Scoreboard  []scoreboardRow
- 
+	Roster     map[uint]team.Team
+	Candidates map[uint]team.Team
+	Scoreboard []scoreboardRow
+
 	Determinations []AdvancementDeterminationResult
 }
 

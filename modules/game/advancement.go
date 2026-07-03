@@ -1,8 +1,8 @@
 package game
 
 import (
-	"log/slog"
 	"context"
+	"log/slog"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -23,7 +23,7 @@ type scoreboardRow struct {
 	Count    int
 }
 
-func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint) ([]scoreboardRow, error) {
+func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division string) ([]scoreboardRow, error) {
 	var phase GamePhase
 	var err error
 	if phaseID == 0 {
@@ -83,22 +83,30 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint) ([]scoreb
 		return nil, err
 	}
 
+	out := []scoreboardRow{}
+	for _, row := range rowData {
+		if row.Team.Division != division && division != "" {
+			continue
+		}
+		out = append(out, row)
+	}
+
 	rank := 1
-	for i, row := range rowData {
+	for i, row := range out {
 		switch phase.ScoreSummation {
 		case "Total":
-			rowData[i].Score = row.Total
+			out[i].Score = row.Total
 		case "AverageWithMulligan":
-			rowData[i].Score = row.Mulligan
+			out[i].Score = row.Mulligan
 		}
 
 		// Setup the rank, which is different than the index
 		// because of ties.
-		if i > 0 && rowData[i-1].Score != rowData[i].Score {
+		if i > 0 && out[i-1].Score != out[i].Score {
 			rank++
 		}
-		rowData[i].Rank = rank
+		out[i].Rank = rank
 	}
 
-	return rowData, nil
+	return out, nil
 }

@@ -1,8 +1,8 @@
 package game
 
 import (
-	"log/slog"
 	"fmt"
+	"log/slog"
 
 	"github.com/expr-lang/expr"
 )
