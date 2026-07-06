@@ -7,7 +7,16 @@ import (
 
 func init() {
 	RegisterGenerator("RandomSeeding", NewRandom)
+	RegisterGeneratorConfig("RandomSeeding", RandomScheduleConfig{})
 }
+
+// RandomScheduleConfig provides information on the configuration
+// defaults for a scheduler.
+type RandomScheduleConfig struct{}
+
+func (rsc RandomScheduleConfig) MaxRounds() int { return 10 }
+
+func (rsc RandomScheduleConfig) DefaultRounds() int { return 7 }
 
 func NewRandom(c Config) Generator {
 	r := RandomSchedule{

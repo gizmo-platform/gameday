@@ -7,6 +7,7 @@ import (
 
 var (
 	generators = make(map[string]GeneratorFactory)
+	configs    = make(map[string]GeneratorConfig)
 )
 
 // Generator is implemented by schedule generators which produce a
@@ -15,6 +16,13 @@ type Generator interface {
 	Generate() *Schedule
 	Score() int
 	Validate() error
+}
+
+// GeneratorConfig is used to return the limits for a scheduler to be
+// templated as default items into other parts of the system.
+type GeneratorConfig interface {
+	MaxRounds() int
+	DefaultRounds() int
 }
 
 // GeneratorFactory produces a generator from a given config.
@@ -30,6 +38,16 @@ func RegisterGenerator(name string, g GeneratorFactory) {
 	generators[name] = g
 }
 
+// RegisterGeneratorConfig is called by an implementation to register
+// its configuration provider.
+func RegisterGeneratorConfig(name string, g GeneratorConfig) {
+	if _, exists := configs[name]; exists {
+		slog.Warn("Attempted to register duplicated config", "generator", name)
+		return
+	}
+	configs[name] = g
+}
+
 // GenerateSchedule is used to wrap all the logic of schedule
 // implementations and allow for consumers to just pass a generator
 // name and a config and get back a schedule.
@@ -40,6 +58,16 @@ func GenerateSchedule(g string, c Config) (*Schedule, error) {
 	}
 	gen := gf(c)
 	return gen.Generate(), nil
+}
+
+// GetConfig returns the configuration implementation for a given
+// scheduler if it is registered.
+func GetConfig(g string) (GeneratorConfig, error) {
+	gf, exists := configs[g]
+	if !exists {
+		return nil, &UnknownGenerator{msg: "generator does not exist (" + g + ")"}
+	}
+	return gf, nil
 }
 
 // UnknownGenerator is returned when a generator is requested that has

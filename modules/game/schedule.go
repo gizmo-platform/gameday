@@ -264,12 +264,21 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	scfg, err := schedgen.GetConfig(r.URL.Query().Get("st"))
+	if err != nil {
+		slog.Error("Error getting scheduler config", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
 	ctx := pongo2.Context{
 		"phase":         phase,
 		"teams":         teams,
 		"manualEnabled": true,
 		"fields":        fields,
 		"scheduletype":  r.URL.Query().Get("st"),
+		"schedulemax":   scfg.MaxRounds(),
+		"scheduledef":   scfg.DefaultRounds(),
 	}
 
 	advancingTeams := make(map[uint]struct{})
