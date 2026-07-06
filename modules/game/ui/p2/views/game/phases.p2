@@ -25,7 +25,7 @@
         <td class="flex-container flex-row">
           {% if schedule[phase.ID] %}
           <a class="flex-item button" href="schedule/phases/{{ phase.ID }}">View Schedule</a>
-          {% if !phase.Active %}
+          {% if !phase.Active and !phase.Frozen %}
           <form method="POST" action="schedule/phases/{{ phase.ID }}/make-active">
             <input class="flex-item button" type="submit" value="Activate" />
           </form>
