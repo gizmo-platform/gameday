@@ -18,6 +18,8 @@ func (rsc RandomScheduleConfig) MaxRounds() int { return 10 }
 
 func (rsc RandomScheduleConfig) DefaultRounds() int { return 7 }
 
+func (rsc RandomScheduleConfig) RoundsDynamic() bool { return false }
+
 func NewRandom(c Config) Generator {
 	r := RandomSchedule{
 		Schedule: Schedule{

@@ -23,6 +23,7 @@ type Generator interface {
 type GeneratorConfig interface {
 	MaxRounds() int
 	DefaultRounds() int
+	RoundsDynamic() bool
 }
 
 // GeneratorFactory produces a generator from a given config.
@@ -105,6 +106,10 @@ type Schedule struct {
 
 	WorstLocationDiversity   int
 	WorstCompetitorDiversity int
+
+	// RoundsDynamic is true when the scheduler ignores Config.Rounds
+	// and computes rounds dynamically (e.g. BIBD).
+	RoundsDynamic bool
 }
 
 // Location represents a Field and Position on that field as a unique

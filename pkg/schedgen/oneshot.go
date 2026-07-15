@@ -18,6 +18,8 @@ func (rsc OneShotScheduleConfig) MaxRounds() int { return 1 }
 
 func (rsc OneShotScheduleConfig) DefaultRounds() int { return 1 }
 
+func (rsc OneShotScheduleConfig) RoundsDynamic() bool { return false }
+
 func NewOneShot(c Config) Generator {
 	o := OneShotSchedule{
 		Schedule: Schedule{
