@@ -28,6 +28,10 @@ func New() (*DB, error) {
 	return &DB{d}, nil
 }
 
+func (d *DB) Raw() *gorm.DB {
+	return d.DB
+}
+
 func (d *DB) Migrate(tables ...interface{}) error {
 	return d.AutoMigrate(tables)
 }

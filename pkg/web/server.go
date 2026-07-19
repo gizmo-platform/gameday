@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"gorm.io/gorm"
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,10 +17,14 @@ import (
 //go:embed ui/*
 var uifs embed.FS
 
+// Option is used to configure the server
+type Option func(*Server) error
+
 // Server manages the HTTP serving components
 type Server struct {
 	r chi.Router
 	n *http.Server
+	d *gorm.DB
 
 	tpl *pongo2.TemplateSet
 
@@ -27,7 +32,7 @@ type Server struct {
 }
 
 // NewServer returns a running field controller.
-func NewServer() (*Server, error) {
+func NewServer(opts ...Option) (*Server, error) {
 	sub, _ := fs.Sub(uifs, "ui/p2")
 	ldr := pongo2.NewFSLoader(sub)
 
@@ -35,6 +40,18 @@ func NewServer() (*Server, error) {
 	x.r = chi.NewRouter()
 	x.n = &http.Server{}
 	x.tpl = pongo2.NewSet("html", ldr)
+
+	for _, o := range opts {
+		if err := o(x); err != nil {
+			slog.Warn("Error configuring webserver", "error", err)
+			return nil, err
+		}
+	}
+
+	if err := x.d.AutoMigrate(Profile{}); err != nil {
+		slog.Error("Error migrating web core table", "error", err)
+		return nil, err
+	}
 
 	basic, err := authware.NewAuth()
 	if err != nil {
@@ -44,6 +61,7 @@ func NewServer() (*Server, error) {
 
 	x.r.Use(middleware.Heartbeat("/-/alive"))
 	x.r.Use(basic.SessionHandler())
+	x.r.Use(x.profileMiddleware)
 
 	sfs, _ := fs.Sub(uifs, "ui")
 	x.r.Handle("/static/*", http.FileServer(http.FS(sfs)))
@@ -52,6 +70,10 @@ func NewServer() (*Server, error) {
 	x.r.Post("/login", basic.LoginFormHandler("username", "password", "/ui"))
 	x.r.Get("/logout", basic.LogoutHandler("/ui"))
 	x.r.Get("/ui", x.uiViewLanding)
+
+	x.r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui", http.StatusMovedPermanently)
+	})
 
 	return x, nil
 }
