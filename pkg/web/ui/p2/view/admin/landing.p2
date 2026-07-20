@@ -1,0 +1,9 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Admin{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <p>Admin Landing</p>
+</div>
+{% endblock %}

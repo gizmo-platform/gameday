@@ -1,0 +1,32 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Profiles{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <div class="flex-container flex-row flex-center">
+    <div class="flex-item">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Identity</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for profile in profiles %}
+          <tr>
+            <td>{{ profile.ID }}</td>
+            <td>{{ profile.Username }}</td>
+            <td class="flex-container flex-row">
+              <a class="flex-item button" href="/admin/profile/{{ profile.ID }}/permissions">Permissions</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

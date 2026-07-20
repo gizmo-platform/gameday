@@ -14,6 +14,8 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
+
+	"github.com/gizmo-platform/gameday/pkg/web"
 )
 
 func (m *Module) uiViewScorecardList(w http.ResponseWriter, r *http.Request) {
@@ -180,10 +182,13 @@ func (m *Module) uiViewScorecard(w http.ResponseWriter, r *http.Request) {
 
 	slog.Debug("scorecard data", "mi", placement.Match, "data", scd)
 
+	profile, _ := r.Context().Value(web.ProfileKey{}).(web.Profile)
+
 	ctx := pongo2.Context{
 		"MatchInfo":     placement,
 		"Elements":      elements,
 		"ScorecardData": scd,
+		"edit_disable":  !profile.HasPermission(web.Permission{Module: ModuleName, Grant: PermissionReferee}),
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/scorecard.p2", ctx)

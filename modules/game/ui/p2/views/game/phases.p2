@@ -25,17 +25,17 @@
         <td class="flex-container flex-row">
           {% if schedule[phase.ID] %}
           <a class="flex-item button" href="schedule/phases/{{ phase.ID }}">View Schedule</a>
-          {% if !phase.Active and !phase.Frozen %}
+          {% if !phase.Active and !phase.Frozen and (profile | hasPermission:"GAME:SCHEDULE") %}
           <form method="POST" action="schedule/phases/{{ phase.ID }}/make-active">
             <input class="flex-item button" type="submit" value="Activate" />
           </form>
           {% endif %}
-          {% if phase.Active and completed[phase.ID] and not phase.Frozen %}
-            <form method="POST" action="schedule/phases/{{ phase.ID }}/make-frozen">
-              <input class="flex-item button" type="submit" value="Freeze" />
-            </form>
+          {% if phase.Active and completed[phase.ID] and not phase.Frozen and (profile | hasPermission:"GAME:SCHEDULE") %}
+          <form method="POST" action="schedule/phases/{{ phase.ID }}/make-frozen">
+            <input class="flex-item button" type="submit" value="Freeze" />
+          </form>
           {% endif %}
-          {% elif canSchedule[phase.ID] %}
+          {% elif canSchedule[phase.ID] and (profile | hasPermission:"GAME:SCHEDULE") %}
           <a class="flex-item button" href="schedule/phases/{{ phase.ID }}/select-teams?st={{ phase.ScheduleType }}">Generate Schedule</a>
           {% endif %}
         </td>

@@ -7,11 +7,13 @@
   <p>Below is a list of all teams that Gameday knows about.</p>
   <br />
   <hr />
+  {% if profile | hasPermission:"TEAM:ADMIN" %}
   <div class="flex-container flex-center">
     <a class="flex-item button" href="{{ pageBase }}/import">Import Teams</a>
     <a class="flex-item button" href="{{ pageBase }}/add">Add Single</a>
   </div>
   <hr />
+  {% endif %}
 
   <div class="flex-container flex-center">
     <table class="flex-item flex-max">
@@ -20,7 +22,9 @@
         <th>Name</th>
         <th>Division</th>
         <th>Region</th>
+        {% if profile | hasPermission:"TEAM:ADMIN" %}
         <th>Actions</th>
+        {% endif %}
       </tr>
       {% for team in teams %}
       <tr>
@@ -28,9 +32,11 @@
         <td>{{ team.Name }}</td>
         <td>{{ team.Division }}</td>
         <td>{{ team.Region }}</td>
+        {% if profile | hasPermission:"TEAM:ADMIN" %}
         <td class="flex-container">
           <a class="flex-item button" href="{{ pageBase }}/{{ team.ID }}/edit">Edit</a>
         </td>
+        {% endif %}
       </tr>
       {% endfor %}
     </table>

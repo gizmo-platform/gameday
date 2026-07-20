@@ -17,7 +17,8 @@ func (s *Server) DoTemplate(w http.ResponseWriter, r *http.Request, tmpl string,
 		ctx = pongo2.Context{}
 	}
 	ctx["user"], _ = r.Context().Value(authware.UserKey{}).(authware.User)
-	ctx["navElements"] = s.nav
+	ctx["profile"], _ = r.Context().Value(ProfileKey{}).(Profile)
+	ctx["navElements"] = s.accessibleNavElements(r)
 	ctx["pageBase"] = r.URL.Path
 	t, err := s.tpl.FromCache(tmpl)
 	if err != nil {

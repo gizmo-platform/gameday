@@ -7,11 +7,17 @@ import (
 	"log/slog"
 	"net/http"
 
-	"gorm.io/gorm"
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/the-maldridge/authware"
+	"gorm.io/gorm"
+)
+
+const (
+	ModuleName = "CORE"
+
+	PermissionAdmin = "ADMIN"
 )
 
 //go:embed ui/*
@@ -41,6 +47,9 @@ func NewServer(opts ...Option) (*Server, error) {
 	x.n = &http.Server{}
 	x.tpl = pongo2.NewSet("html", ldr)
 
+	pongo2.RegisterFilter("hasPermission", x.filterHasPermission)
+	pongo2.RegisterFilter("hasPermissionExact", x.filterHasPermissionExact)
+
 	for _, o := range opts {
 		if err := o(x); err != nil {
 			slog.Warn("Error configuring webserver", "error", err)
@@ -48,10 +57,24 @@ func NewServer(opts ...Option) (*Server, error) {
 		}
 	}
 
-	if err := x.d.AutoMigrate(Profile{}); err != nil {
+	if err := x.d.AutoMigrate(Profile{}, Permission{}); err != nil {
 		slog.Error("Error migrating web core table", "error", err)
 		return nil, err
 	}
+
+	if err := x.InstallPermission(context.Background(), ModuleName, PermissionAdmin); err != nil {
+		return nil, err
+	}
+
+	x.AddNavElement(NavElement{
+		Weight: 99,
+		Text:   "Admin",
+		Children: []NavChild{{
+			Text:       "Profiles",
+			Target:     "/admin/profile/",
+			Permission: Permission{Module: ModuleName, Grant: PermissionAdmin},
+		}},
+	})
 
 	basic, err := authware.NewAuth()
 	if err != nil {
@@ -65,6 +88,16 @@ func NewServer(opts ...Option) (*Server, error) {
 
 	sfs, _ := fs.Sub(uifs, "ui")
 	x.r.Handle("/static/*", http.FileServer(http.FS(sfs)))
+
+	x.r.Route("/admin", func(r chi.Router) {
+		r.Get("/", x.uiViewAdminLanding)
+		r.Route("/profile", func(r chi.Router) {
+			r.Get("/", x.uiViewAdminProfileList)
+
+			r.Get("/{id}/permissions", x.uiViewAdminProfilePermissionsForm)
+			r.Post("/{id}/permissions", x.uiViewAdminProfilePermissionsSubmit)
+		})
+	})
 
 	x.r.Get("/login", x.uiViewLogin)
 	x.r.Post("/login", basic.LoginFormHandler("username", "password", "/ui"))

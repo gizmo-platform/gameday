@@ -1,0 +1,27 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Profile Permissions{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <div class="flex-container flex-row flex-center">
+    <div class="flex-item">
+      <p>Use this page to modify the permissions for a given profile.
+      Select multiple items by holding Control/Option on your keyboard
+      while clicking on items in the list.</p>
+      <form method="POST">
+        <select name="permissions" size="15" multiple>
+          {% for permission in permissions %}
+          {% set perm = permission.Module + ":" + permission.Grant %}
+          <p>{{ profile | hasPermissionExact:perm }}</p>
+          <option value="{{ permission.ID }}" {% if profile | hasPermissionExact:perm %}selected{% endif %}>{{ permission.Module }} | {{ permission.Grant }}</option>
+          {% endfor %}
+        </select>
+        <br />
+
+        <input type="submit" value="Save Permissions">
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

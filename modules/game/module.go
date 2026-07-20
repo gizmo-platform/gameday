@@ -18,6 +18,12 @@ import (
 
 const (
 	CandidatePhase = 99
+
+	ModuleName = "GAME"
+
+	PermissionAdmin    = "ADMIN"
+	PermissionSchedule = "SCHEDULE"
+	PermissionReferee  = "REFEREE"
 )
 
 // MatchState is an enum of states that a match can be in, used for
@@ -323,14 +329,25 @@ func New(opts ...Option) *Module {
 		o(&m)
 	}
 
+	for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee} {
+		if err := m.ws.InstallPermission(context.Background(), ModuleName, p); err != nil {
+			return nil
+		}
+	}
+
 	pongo2.RegisterFilter("key", filterGetValueByKey)
 
+	pAdmin := web.Permission{Module: ModuleName, Grant: PermissionAdmin}
+	pSchedule := web.Permission{Module: ModuleName, Grant: PermissionSchedule}
+	pReferee := web.Permission{Module: ModuleName, Grant: PermissionReferee}
 	m.r.Route("/", func(r chi.Router) {
 		r.Get("/", m.uiViewGame)
-		r.Get("/setup", m.uiViewSetupForm)
-		r.Post("/setup", m.uiViewSetupSubmit)
+		r.Get("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupForm))
+		r.Post("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupSubmit))
 
 		r.Route("/fields", func(r chi.Router) {
+			r.Use(m.ws.RequirePermission(pSchedule))
+
 			r.Get("/", m.uiViewFieldList)
 			r.Get("/add", m.uiViewFieldForm)
 			r.Post("/add", m.uiViewFieldSubmit)
@@ -342,17 +359,17 @@ func New(opts ...Option) *Module {
 		r.Route("/schedule", func(r chi.Router) {
 			r.Get("/", m.uiViewPhaseList)
 			r.Get("/phases/{id}", m.uiViewPhaseSchedule)
-			r.Post("/phases/{id}/make-active", m.uiViewPhaseMakeActive)
-			r.Post("/phases/{id}/make-frozen", m.uiViewPhaseMakeFrozen)
-			r.Get("/phases/{id}/select-teams", m.uiViewPhaseScheduleSelectTeams)
-			r.Post("/phases/{id}/select-teams", m.uiViewPhaseSchedulePreview)
-			r.Post("/phases/{id}/accept-schedule", m.uiViewPhaseScheduleAccept)
+			r.Post("/phases/{id}/make-active", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeActive))
+			r.Post("/phases/{id}/make-frozen", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeFrozen))
+			r.Get("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleSelectTeams))
+			r.Post("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseSchedulePreview))
+			r.Post("/phases/{id}/accept-schedule", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleAccept))
 		})
 
 		r.Route("/scorecard", func(r chi.Router) {
 			r.Get("/", m.uiViewScorecardList)
 			r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
-			r.Post("/{phase}/{match}/{field}/{position}", m.uiViewScorecardSubmit)
+			r.Post("/{phase}/{match}/{field}/{position}", m.ws.GuardRoute(pReferee, m.uiViewScorecardSubmit))
 		})
 		r.Route("/scoreboard", func(r chi.Router) {
 			r.Get("/", m.uiViewScoreboard)
@@ -397,17 +414,22 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 			Text:   "Configuration",
 			Target: prefix,
 		}, {
-			Text:   "Setup",
-			Target: path.Join(prefix, "/setup"),
+			Text:       "Setup",
+			Target:     path.Join(prefix, "/setup"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}, {
-			Text:   "Fields",
-			Target: path.Join(prefix, "/fields"),
+			Text:       "Fields",
+			Target:     path.Join(prefix, "/fields"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}, {
 			Text:   "Schedule",
 			Target: path.Join(prefix, "/schedule"),
 		}, {
 			Text:   "Scorecards",
 			Target: path.Join(prefix, "/scorecard"),
+		}, {
+			Text:   "Scoreboard",
+			Target: path.Join(prefix, "/scoreboard"),
 		}},
 	}}
 }

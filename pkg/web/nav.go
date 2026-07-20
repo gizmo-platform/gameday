@@ -12,8 +12,9 @@ type NavElement struct {
 }
 
 type NavChild struct {
-	Text   string
-	Target string
+	Text       string
+	Target     string
+	Permission Permission
 }
 
 func (s *Server) AddNavElement(n ...NavElement) {

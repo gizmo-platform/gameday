@@ -1,14 +1,14 @@
 package web
 
 import (
-	"net/http"
-	"log/slog"
 	"context"
 	"errors"
+	"log/slog"
+	"net/http"
 
-	"gorm.io/gorm"
 	"github.com/flosch/pongo2/v6"
 	"github.com/the-maldridge/authware"
+	"gorm.io/gorm"
 )
 
 // ProfileKey is used to retrieve the profile from the request
@@ -17,7 +17,32 @@ type ProfileKey struct{}
 
 // Profile is used to store attributes related to a given user.
 type Profile struct {
-	Username string
+	ID          uint
+	Username    string
+	Permissions []Permission `gorm:"many2many:profile_permissions;"`
+}
+
+// HasPermission checks if a profile has a given permission.
+func (p Profile) HasPermission(test Permission) bool {
+	for _, perm := range p.Permissions {
+		if perm.Is(test) ||
+			perm.Is(Permission{Module: "CORE", Grant: "ADMIN"}) ||
+			perm.Is(Permission{Module: test.Module, Grant: "ADMIN"}) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasPermissionExact checks if a profile has a given permission
+// directly and is not satisfied by other admin roles.
+func (p Profile) HasPermissionExact(test Permission) bool {
+	for _, perm := range p.Permissions {
+		if perm.Is(test) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) profileMiddleware(next http.Handler) http.Handler {
@@ -25,8 +50,12 @@ func (s *Server) profileMiddleware(next http.Handler) http.Handler {
 		user, ok := r.Context().Value(authware.UserKey{}).(authware.User)
 		if !ok {
 			next.ServeHTTP(w, r)
+			return
 		}
-		profile, err := gorm.G[Profile](s.d).Where(&Profile{Username: user.Identity}).First(r.Context())
+		profile, err := gorm.G[Profile](s.d).
+			Where(&Profile{Username: user.Identity}).
+			Preload("Permissions", nil).
+			First(r.Context())
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			profile := Profile{Username: user.Identity}
 			slog.Info("Creating profile", "profile", profile)

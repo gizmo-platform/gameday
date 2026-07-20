@@ -21,6 +21,12 @@ import (
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
 
+const (
+	ModuleName = "TEAM"
+
+	PermissionAdmin = "ADMIN"
+)
+
 //go:embed ui/*
 var efs embed.FS
 
@@ -53,15 +59,21 @@ func New(opts ...Option) *Module {
 		o(&m)
 	}
 
+	if err := m.ws.InstallPermission(context.Background(), ModuleName, PermissionAdmin); err != nil {
+		return nil
+	}
+
+	pAdmin := web.Permission{Module: ModuleName, Grant: PermissionAdmin}
+
 	m.r.Route("/", func(r chi.Router) {
 		r.Get("/", m.uiViewListTeams)
-		r.Get("/import", m.uiViewImportTeams)
-		r.Post("/import", m.uiViewImportTeamsSubmit)
-		r.Get("/add", m.uiViewAddForm)
-		r.Post("/add", m.uiViewUpsert)
+		r.Get("/import", m.ws.GuardRoute(pAdmin, m.uiViewImportTeams))
+		r.Post("/import", m.ws.GuardRoute(pAdmin, m.uiViewImportTeamsSubmit))
+		r.Get("/add", m.ws.GuardRoute(pAdmin, m.uiViewAddForm))
+		r.Post("/add", m.ws.GuardRoute(pAdmin, m.uiViewUpsert))
 
-		r.Get("/{id}/edit", m.uiViewEditForm)
-		r.Post("/{id}/edit", m.uiViewUpsert)
+		r.Get("/{id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewEditForm))
+		r.Post("/{id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewUpsert))
 	})
 
 	pongo2.RegisterFilter("teamList", filterTeamList)
@@ -85,13 +97,15 @@ func (m *Module) TemplateLoader() pongo2.TemplateLoader {
 func (m *Module) NavList(prefix string) []web.NavElement {
 	m.basePath = prefix
 	return []web.NavElement{{
-		Text: "Team",
+		Text:   "Team",
+		Weight: 80,
 		Children: []web.NavChild{{
 			Text:   "List",
 			Target: path.Join(prefix, "/"),
 		}, {
-			Text:   "Bulk Import",
-			Target: path.Join(prefix, "/import"),
+			Text:       "Bulk Import",
+			Target:     path.Join(prefix, "/import"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}},
 	}}
 }

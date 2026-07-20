@@ -290,13 +290,24 @@ func (b *BIDSchedule) findSTSBaseBlocks(v, numBase int) [][]int {
 
 	var diffsFromTriplet func(j, k int) []int
 	diffsFromTriplet = func(j, k int) []int {
-		d1 := (j - 0) % v; if d1 < 0 { d1 += v }
-		d2 := (k - j) % v; if d2 < 0 { d2 += v }
-		d3 := (k - 0) % v; if d3 < 0 { d3 += v }
+		d1 := (j - 0) % v
+		if d1 < 0 {
+			d1 += v
+		}
+		d2 := (k - j) % v
+		if d2 < 0 {
+			d2 += v
+		}
+		d3 := (k - 0) % v
+		if d3 < 0 {
+			d3 += v
+		}
 		// Store smaller half-rep of each difference
 		out := []int{}
 		for _, d := range []int{d1, d2, d3} {
-			if d > v/2 { d = v - d }
+			if d > v/2 {
+				d = v - d
+			}
 			out = append(out, d)
 		}
 		return out
