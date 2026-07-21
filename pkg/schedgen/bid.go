@@ -92,6 +92,87 @@ func (b *BIDSchedule) Generate() *Schedule {
 		blocks = b.greedyBID(pairs, v, k, totalBlocks)
 	}
 
+	// Honor Config.Rounds as a minimum number of appearances per team.
+	// Count actual appearances from base blocks, then greedily append
+	// extra blocks that always pick teams with the fewest appearances
+	// first, so all teams end up with exactly the same count.
+	if b.Config.Rounds > rVal {
+		counts := make([]int, v)
+		for _, blk := range blocks {
+			for _, t := range blk {
+				counts[t]++
+			}
+		}
+
+		// Target is at least Config.Rounds and at least the current max.
+		target := b.Config.Rounds
+		for _, c := range counts {
+			if c > target {
+				target = c
+			}
+		}
+
+		maxIter := v * target // hard ceiling to prevent infinite loops
+		iteration := 0
+		for iteration < maxIter {
+			iteration++
+			// Check if all teams already reached target.
+			allMet := true
+			for t := 0; t < v; t++ {
+				if counts[t] < target {
+					allMet = false
+					break
+				}
+			}
+			if allMet {
+				break
+			}
+
+			// Build a candidate list sorted by ascending appearance count
+			// (teams with fewest appearances come first).
+			candidates := make([]int, v)
+			for i := 0; i < v; i++ {
+				candidates[i] = i
+			}
+			// Simple insertion sort by count (fine for typical team counts).
+			for i := 1; i < v; i++ {
+				for j := i; j > 0 && counts[candidates[j]] < counts[candidates[j-1]]; j-- {
+					candidates[j], candidates[j-1] = candidates[j-1], candidates[j]
+				}
+			}
+
+			// Pick first k candidates that haven't already hit the target.
+			blk := []int{}
+			seen := make(map[int]bool)
+			for _, c := range candidates {
+				if len(blk) >= k {
+					break
+				}
+				if !seen[c] && counts[c] < target {
+					blk = append(blk, c)
+					seen[c] = true
+				}
+			}
+
+			// If we couldn't fill a full block, we can't add more without
+			// over-representing some teams — stop.
+			if len(blk) < k {
+				slog.Warn("Cannot fill balanced block without exceeding target — stopping",
+					"filled", len(blk), "block_size", k, "target", target)
+				break
+			}
+
+			for _, t := range blk {
+				counts[t]++
+			}
+			blocks = append(blocks, blk)
+		}
+
+		slog.Info("Balanced extra blocks to meet Config.Rounds",
+			"rounds", b.Config.Rounds, "r_val", rVal,
+			"target", target, "total_blocks", len(blocks))
+	}
+
 	// Convert blocks into matches with field/position placements.
 	slots := []Location{}
 	for f := range b.Config.Fields {
