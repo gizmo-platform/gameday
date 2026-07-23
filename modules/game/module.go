@@ -329,9 +329,11 @@ func New(opts ...Option) *Module {
 		o(&m)
 	}
 
-	for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee} {
-		if err := m.ws.InstallPermission(context.Background(), ModuleName, p); err != nil {
-			return nil
+	if m.ws != nil {
+		for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee} {
+			if err := m.ws.InstallPermission(context.Background(), ModuleName, p); err != nil {
+				return nil
+			}
 		}
 	}
 
