@@ -15,3 +15,82 @@
     margin-top: 0.125em;
     margin-bottom: 0.125em;
 }
+
+.count-control {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.count-btn {
+    box-sizing: border-box;
+    display: none;
+    width: 1.5em;
+    height: 1.5em;
+    font-size: 1.2em;
+    font-weight: bold;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.count-btn:hover {
+    background: #e0e0e0;
+}
+
+.count-btn:active {
+    background: #d0d0d0;
+}
+
+.count-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+
+.count-control input[type="number"] {
+    border-radius: 0;
+    text-align: center;
+    box-sizing: border-box;
+    height: 1.5em;
+    width: 4ch;
+    min-width: 4ch;
+    max-width: 4ch;
+    padding: 0;
+    font-size: 1.2em;
+    -moz-appearance: textfield;
+}
+
+.count-control input[type="number"]::-webkit-outer-spin-button,
+.count-control input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Show touch-friendly buttons only on coarse pointers (touch) */
+@media (pointer: coarse) {
+    .count-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.25em;
+        height: 2.25em;
+        font-size: 1.8em;
+    }
+
+    .count-control input[type="number"] {
+        font-size: 1.8em;
+        height: 2.25em;
+    }
+
+    #scorecard input[type="reset"],
+    #scorecard input[type="submit"] {
+        font-size: 1.8em;
+        padding: 0.3em 1.2em;
+    }
+}

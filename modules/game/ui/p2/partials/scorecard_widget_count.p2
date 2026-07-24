@@ -2,13 +2,25 @@
   <label for="{{ field_id }}">
     {{ state.Name }}{% if state.Desc %} (<em>{{ state.Desc }}</em>){% endif %}
   </label>
-  <input type="number"
-         style="width: 4em;"
-         id="{{ field_id }}"
-         name="{{ field_id }}"
-         min="0"
-         {% if state.Max>0 %}max="{{ state.Max }}"{% endif %}
-         value="{{ ScorecardData|key:field_id }}"
-         {% if edit_disable %}disabled{% endif %}
-         />
+  <div class="count-control">
+    <button type="button"
+            class="count-btn count-btn-minus"
+            data-target="{{ field_id }}"
+            {% if edit_disable %}disabled{% endif %}
+            aria-label="Decrease">−</button>
+    <input type="number"
+           id="{{ field_id }}"
+           name="{{ field_id }}"
+           min="0"
+           {% if state.Max>0 %}max="{{ state.Max }}"{% endif %}
+           value="{{ ScorecardData|key:field_id }}"
+           {% if edit_disable %}disabled{% endif %}
+           />
+    <button type="button"
+            class="count-btn count-btn-plus"
+            data-target="{{ field_id }}"
+            {% if edit_disable %}disabled{% endif %}
+            aria-label="Increase">+</button>
+  </div>
 </div>
+

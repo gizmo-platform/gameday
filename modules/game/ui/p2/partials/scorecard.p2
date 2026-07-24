@@ -54,6 +54,25 @@
      Array.from(scorecardForm.elements).forEach((element) => {
          element.addEventListener('change', computeScore);
      });
+
+     scorecardForm.addEventListener('click', (event) => {
+         const btn = event.target.closest('.count-btn');
+         if (!btn) return;
+         const targetId = btn.dataset.target;
+         const input = document.getElementById(targetId);
+         if (!input || input.disabled) return;
+         const min = input.min !== '' ? parseInt(input.min) : -Infinity;
+         const max = input.max !== '' ? parseInt(input.max) : Infinity;
+         let val = parseInt(input.value) || 0;
+         if (btn.classList.contains('count-btn-plus')) {
+             val = Math.min(val + 1, max);
+         } else {
+             val = Math.max(val - 1, min);
+         }
+         input.value = val;
+         computeScore();
+         event.preventDefault();
+     });
  }
 
  function computeScore() {
