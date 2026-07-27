@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/the-maldridge/authware"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -67,6 +68,11 @@ func NewServer(opts ...Option) (*Server, error) {
 		return nil, err
 	}
 
+	if err := x.doUserInit(); err != nil {
+		slog.Warn("Error initializing default admin", "error", err)
+		return nil, err
+	}
+
 	x.AddNavElement(NavElement{
 		Weight: 99,
 		Text:   "Admin",
@@ -100,6 +106,8 @@ func NewServer(opts ...Option) (*Server, error) {
 	x.r.Handle("/static/*", http.FileServer(http.FS(sfs)))
 
 	x.r.Route("/admin", func(r chi.Router) {
+		r.Use(x.RequirePermission(Permission{Module: ModuleName, Grant: PermissionAdmin}))
+
 		r.Get("/", x.uiViewAdminLanding)
 		r.Route("/user", func(r chi.Router) {
 			r.Get("/", x.uiViewUserList)
@@ -152,4 +160,49 @@ func (s *Server) Mount(path string, router chi.Router) {
 func (s *Server) Shutdown(ctx context.Context) error {
 	slog.Info("HTTP Stopping...")
 	return s.n.Shutdown(ctx)
+}
+
+// doUserInit makes sure that a bootstrap admin user exists, but only
+// fires if there are no users defined at all.
+func (s *Server) doUserInit() error {
+	ctx := context.Background()
+	var count int64
+
+	s.d.Model(&User{}).Count(&count)
+	if count != 0 {
+		return nil
+	}
+	slog.Info("No users exist, will create default admin")
+
+	cAdmin, err := gorm.G[Permission](s.d).
+		Where(&Permission{Module: ModuleName, Grant: PermissionAdmin}).
+		First(ctx)
+	if err != nil {
+		return err
+	}
+
+	pw := os.Getenv("GAMEDAY_ADMIN_INIT_PW")
+	if pw == "" {
+		pw = "GameOn!"
+		slog.Warn("No GAMEDAY_ADMIN_INIT_PW found, using default", "password", pw)
+	}
+	bytes, _ := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	u := User{Login: "admin", Secret: bytes}
+	p := Profile{Username: "admin"}
+	perms := []Permission{{ID: cAdmin.ID}}
+
+	if err := gorm.G[Profile](s.d).Create(ctx, &p); err != nil {
+		return err
+	}
+	u.ProfileID = p.ID
+
+	if err := gorm.G[User](s.d).Create(ctx, &u); err != nil {
+		return err
+	}
+
+	if err := s.d.Model(&Profile{ID: p.ID}).Association("Permissions").Replace(perms); err != nil {
+		return err
+	}
+
+	return nil
 }
