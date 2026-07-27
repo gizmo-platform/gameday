@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/flosch/pongo2/v6"
@@ -28,11 +29,12 @@ func (s *Server) uiViewAdminProfileList(w http.ResponseWriter, r *http.Request) 
 func (s *Server) uiViewAdminProfilePermissionsForm(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
 
-	profile, err := gorm.G[Profile](s.d).Where(&Profile{ID: id}).First(r.Context())
+	profile, err := gorm.G[Profile](s.d).Where(&Profile{ID: id}).Preload("Permissions", nil).First(r.Context())
 	if err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
+	slog.Debug("Loaded profile", "profile", profile)
 
 	permissions, err := gorm.G[Permission](s.d).Find(r.Context())
 	if err != nil {
@@ -41,7 +43,7 @@ func (s *Server) uiViewAdminProfilePermissionsForm(w http.ResponseWriter, r *htt
 	}
 
 	ctx := pongo2.Context{
-		"profile":     profile,
+		"pprofile":    profile,
 		"permissions": permissions,
 	}
 	s.DoTemplate(w, r, "view/admin/profile_perms.p2", ctx)

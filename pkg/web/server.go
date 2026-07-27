@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -57,7 +58,7 @@ func NewServer(opts ...Option) (*Server, error) {
 		}
 	}
 
-	if err := x.d.AutoMigrate(Profile{}, Permission{}); err != nil {
+	if err := x.d.AutoMigrate(Permission{}, Profile{}, User{}); err != nil {
 		slog.Error("Error migrating web core table", "error", err)
 		return nil, err
 	}
@@ -70,12 +71,21 @@ func NewServer(opts ...Option) (*Server, error) {
 		Weight: 99,
 		Text:   "Admin",
 		Children: []NavChild{{
+			Text:       "Local Users",
+			Target:     "/admin/user/",
+			Permission: Permission{Module: ModuleName, Grant: PermissionAdmin},
+		}, {
 			Text:       "Profiles",
 			Target:     "/admin/profile/",
 			Permission: Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}},
 	})
 
+	authware.RegisterFactory("gameday", newAuthwareBackend(x.d))
+
+	if mechs := os.Getenv("AUTHWARE_BASIC_MECHS"); mechs == "" {
+		os.Setenv("AUTHWARE_BASIC_MECHS", "gameday")
+	}
 	basic, err := authware.NewAuth()
 	if err != nil {
 		slog.Error("Error initializing auth", "error", err)
@@ -91,6 +101,18 @@ func NewServer(opts ...Option) (*Server, error) {
 
 	x.r.Route("/admin", func(r chi.Router) {
 		r.Get("/", x.uiViewAdminLanding)
+		r.Route("/user", func(r chi.Router) {
+			r.Get("/", x.uiViewUserList)
+
+			r.Get("/create", x.uiViewUserForm)
+			r.Post("/create", x.uiViewUserFormSubmit)
+
+			r.Get("/{id}/reset-password", x.uiViewUserPasswordForm)
+			r.Post("/{id}/reset-password", x.uiViewUserPasswordFormSubmit)
+
+			r.Get("/{id}/delete", x.uiViewUserDeleteForm)
+			r.Post("/{id}/delete", x.uiViewUserDeleteFormSubmit)
+		})
 		r.Route("/profile", func(r chi.Router) {
 			r.Get("/", x.uiViewAdminProfileList)
 

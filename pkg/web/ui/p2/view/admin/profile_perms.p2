@@ -13,8 +13,7 @@
         <select name="permissions" size="15" multiple>
           {% for permission in permissions %}
           {% set perm = permission.Module + ":" + permission.Grant %}
-          <p>{{ profile | hasPermissionExact:perm }}</p>
-          <option value="{{ permission.ID }}" {% if profile | hasPermissionExact:perm %}selected{% endif %}>{{ permission.Module }} | {{ permission.Grant }}</option>
+          <option value="{{ permission.ID }}" {% if pprofile | hasPermissionExact:perm %}selected{% endif %}>{{ permission.Module }} | {{ permission.Grant }}</option>
           {% endfor %}
         </select>
         <br />

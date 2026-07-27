@@ -1,0 +1,19 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Delete Local User{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <div class="flex-container flex-row flex-center">
+    <div class="flex-item">
+      <form method="POST">
+        <p>Are you sure you want to delete the user "{{ user.Login }}"?  This action cannot be un-done!</p>
+        <div class="flex-container flex-row flex-center">
+          <a class="button flex-item" href="../">Cancel</a>
+          <input class="button flex-item" type="submit" value="Delete" />
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
