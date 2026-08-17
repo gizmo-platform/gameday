@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -125,10 +126,22 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build a map of match -> whether all placements are complete
+	matchComplete := make(map[int]bool)
+	for _, p := range placements {
+		if _, ok := matchComplete[p.Match]; !ok {
+			matchComplete[p.Match] = true
+		}
+		if p.State != MatchStateComplete && p.State != MatchStateNoShow && p.State != MatchStateDisqualified {
+			matchComplete[p.Match] = false
+		}
+	}
+
 	type scheduleRow struct {
 		Round      int
 		Match      int
 		Placements map[string]team.Team
+		Completed  bool
 	}
 
 	schedule := []scheduleRow{}
@@ -139,6 +152,7 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		Round:      round,
 		Match:      match,
 		Placements: make(map[string]team.Team),
+		Completed:  matchComplete[match],
 	}
 	for _, p := range placements {
 		if p.Match != match {
@@ -149,6 +163,7 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 				Round:      round + 1,
 				Match:      match,
 				Placements: make(map[string]team.Team),
+				Completed:  matchComplete[match],
 			}
 		}
 		sr.Placements[fmt.Sprintf("%d-%d", p.FieldID, p.PositionID)] = p.Team
@@ -164,6 +179,18 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error retreiving phase", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
+	}
+
+	// Filter completed matches from the schedule display unless ?all is set
+	showAll := strings.ToLower(r.URL.Query().Get("all")) != ""
+	if !showAll {
+		filtered := []scheduleRow{}
+		for _, row := range schedule {
+			if !row.Completed {
+				filtered = append(filtered, row)
+			}
+		}
+		schedule = filtered
 	}
 
 	ctx := pongo2.Context{
