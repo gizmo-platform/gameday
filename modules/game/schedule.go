@@ -264,6 +264,22 @@ func (m *Module) uiViewPhaseMakeFrozen(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, path.Join(m.basePath, "schedule"), http.StatusSeeOther)
 }
 
+func (m *Module) uiViewPhaseToggleScoresVisibility(w http.ResponseWriter, r *http.Request) {
+	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	hide := strings.HasSuffix(r.URL.Path, "make-scores-hidden")
+
+	_, err := gorm.G[GamePhase](m.db.DB).
+		Where(&GamePhase{ID: gPhase}).
+		Update(r.Context(), "HideScores", hide)
+	if err != nil {
+		slog.Error("Error toggling hide scores", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	http.Redirect(w, r, path.Join(m.basePath, "schedule"), http.StatusSeeOther)
+}
+
 func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 	phase, err := gorm.G[GamePhase](m.db.DB).

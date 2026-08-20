@@ -193,6 +193,7 @@ type GamePhase struct {
 	DivisionAware      bool
 	ScheduleType       string
 	ScoreSummation     string
+	HideScores         bool
 }
 
 // GamePhaseAdvancementFilter captures the expressions that are used
@@ -363,6 +364,8 @@ func New(opts ...Option) *Module {
 			r.Get("/phases/{id}", m.uiViewPhaseSchedule)
 			r.Post("/phases/{id}/make-active", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeActive))
 			r.Post("/phases/{id}/make-frozen", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeFrozen))
+			r.Post("/phases/{id}/make-scores-hidden", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))
+			r.Post("/phases/{id}/make-scores-visible", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))
 			r.Get("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleSelectTeams))
 			r.Post("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseSchedulePreview))
 			r.Post("/phases/{id}/accept-schedule", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleAccept))

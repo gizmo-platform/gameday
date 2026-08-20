@@ -13,6 +13,7 @@
         <th>Division Aware</th>
         <th>Score Summation</th>
         <th>Schedule Type</th>
+        <th>Hide Scores</th>
         <th>Actions</th>
       </tr>
       {% for phase in phases %}
@@ -22,6 +23,19 @@
         <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
         <td>{{ phase.ScoreSummation }}</td>
         <td>{{ phase.ScheduleType }}</td>
+        <td>
+          {% if profile | hasPermission:"GAME:SCHEDULE" %}
+          {% if !phase.HideScores %}
+          <form method="POST" action="schedule/phases/{{ phase.ID }}/make-scores-hidden">
+            <input class="flex-item button" type="submit" value="Hide Scores" />
+          </form>
+          {% elif phase.HideScores %}
+          <form method="POST" action="schedule/phases/{{ phase.ID }}/make-scores-visible">
+            <input class="flex-item button" type="submit" value="Show Scores" />
+          </form>
+          {% endif %}
+          {% endif %}
+        </td>
         <td class="flex-container flex-row">
           {% if schedule[phase.ID] %}
           <a class="flex-item button" href="schedule/phases/{{ phase.ID }}">View Schedule</a>

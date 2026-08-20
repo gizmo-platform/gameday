@@ -60,6 +60,12 @@
          }
 
          const data = await resp.json();
+
+         if (data.hidden) {
+         boardContainer.innerHTML = `<div class="hidden-message">${data.message || 'Scores are currently hidden for this phase.'}</div>`;
+         return;
+         }
+
          const rendered = Mustache.render(boardTemplate, {'scores': data});
          boardContainer.innerHTML = rendered;
          const tbl = document.getElementById('scoreboard');
@@ -96,19 +102,28 @@
  }
 
  function cycleBoard() {
-     if (currentPage + 1 > maxPage) {
-         changePage(1);
-     } else {
-         changePage(currentPage+1);
-     }
-     if (cycles > maxCycles) {
-         cycles = 0;
-         fetchScores();
-     }
-     cycles++;
+    const tbl = document.getElementById('scoreboard');
+    if (!tbl) {
+        /* Board is hidden — re-fetch and re-schedule the cycle so we
+           pick up when scores become visible again. */
+        setTimeout(fetchScores, 5000);
+        setTimeout(cycleBoard, 5000);
+        return;
+    }
 
-     setTimeout(cycleBoard, pageDwell)
- }
+    if (currentPage + 1 > maxPage) {
+        changePage(1);
+    } else {
+        changePage(currentPage+1);
+    }
+    if (cycles > maxCycles) {
+        cycles = 0;
+        fetchScores();
+    }
+    cycles++;
+
+    setTimeout(cycleBoard, pageDwell)
+}
 
  setTimeout(fetchScores, 100);
  setTimeout(cycleBoard, 2000);
