@@ -51,7 +51,7 @@
               a non-contiguous selection.</p>
               <select name="selected_teams" size="25" multiple>
                 {% for team in teams %}
-                  <option value="{{ team.ID }}" {% if advancingTeams[team.ID] %}selected{% endif %}>{{ team.Number }} - {{ team.Name }} ({{ team.Division }} / {{ team.Region }})</option>
+                  <option value="{{ team.ID }}" {% if advancingTeams[team.ID] %}selected{% endif %}>{{ team.Number }} - {{ team.Name }} ({{ team.Division.Name }} / {{ team.Region }})</option>
                 {% endfor %}
               </select>
           </div>

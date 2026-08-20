@@ -26,7 +26,7 @@
         <td> {{ Rank }}</td>
         <td> {{ Score }}</td>
         <td> {{ Team.Name }}</td>
-        <td> {{ Team.Division }}</td>
+        <td> {{ Team.Division.Name }}</td>
       </tr>
       {{/scores}}
       {{^scores}}

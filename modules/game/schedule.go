@@ -115,7 +115,7 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	placements, err := gorm.G[MatchPlacement](m.db.DB).
-		Preload("Team", nil).
+		Preload("Team.Division", nil).
 		Preload("Field", nil).
 		Preload("Position", nil).
 		Where(&MatchPlacement{PhaseID: gPhase}).

@@ -77,7 +77,7 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 			Column: clause.Column{Name: orderBy},
 			Desc:   true,
 		}}},
-	).Preload("Team", nil).Find(ctx)
+	).Preload("Team.Division", nil).Find(ctx)
 	if err != nil {
 		slog.Error("Error selecting scoreboard data", "error", err)
 		return nil, err
@@ -85,7 +85,7 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 
 	out := []scoreboardRow{}
 	for _, row := range rowData {
-		if row.Team.Division != division && division != "" {
+		if row.Team.Division.Name != division && division != "" {
 			continue
 		}
 		out = append(out, row)

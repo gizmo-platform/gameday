@@ -1,16 +1,15 @@
-{% extends "../../base.p2" %}
+{% extends "../../../base.p2" %}
 
-{% block title %}Team List{% endblock %}
+{% block title %}Divisions{% endblock %}
 
 {% block content %}
 <div class="foreground box">
-  <p>Below is a list of all teams that Gameday knows about.</p>
+  <p>Below is a list of all divisions.</p>
   <br />
   <hr />
   {% if profile | hasPermission:"TEAM:ADMIN" %}
   <div class="flex-container flex-center">
-    <a class="flex-item button" href="{{ pageBase }}/import">Import Teams</a>
-    <a class="flex-item button" href="{{ pageBase }}/add">Add Single</a>
+    <a class="flex-item button" href="{{ pageBase }}/add">Add Division</a>
   </div>
   <hr />
   {% endif %}
@@ -18,23 +17,21 @@
   <div class="flex-container flex-center">
     <table class="flex-item flex-max">
       <tr>
-        <th>Number</th>
+        <th>ID</th>
         <th>Name</th>
-        <th>Division</th>
-        <th>Region</th>
         {% if profile | hasPermission:"TEAM:ADMIN" %}
         <th>Actions</th>
         {% endif %}
       </tr>
-      {% for team in teams %}
+      {% for division in divisions %}
       <tr>
-        <td>{{ team.Number }}</td>
-        <td>{{ team.Name }}</td>
-        <td>{{ team.Division.Name }}</td>
-        <td>{{ team.Region }}</td>
+        <td>{{ division.ID }}</td>
+        <td>{{ division.Name }}{% if division.Static %} <span class="badge">Static</span>{% endif %}</td>
         {% if profile | hasPermission:"TEAM:ADMIN" %}
         <td class="flex-container">
-          <a class="flex-item button" href="{{ pageBase }}/{{ team.ID }}/edit">Edit</a>
+          {% if not division.Static %}
+          <a class="flex-item button" href="{{ pageBase }}/{{ division.ID }}/delete">Delete</a>
+          {% endif %}
         </td>
         {% endif %}
       </tr>

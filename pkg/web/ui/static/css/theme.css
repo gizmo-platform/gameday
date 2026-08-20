@@ -82,6 +82,20 @@ tr:nth-child(even) {
     background-color: #7e7e7e;
 }
 
+.badge {
+    display: inline-block;
+    font-size: 0.7em;
+    font-weight: 700;
+    color: #fff;
+    background-color: #3b82f6;
+    border-radius: 999px;
+    padding: 0.15em 0.5em;
+    margin-left: 0.5em;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
 .bigbox {
     width: 90vw !important;
     height: 90vh !important;

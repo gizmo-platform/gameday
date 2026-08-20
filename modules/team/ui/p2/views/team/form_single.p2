@@ -26,7 +26,7 @@
         <td>
           <select name="team_division">
             {% for division in divisions %}
-            <option value="{{ division }}" {% if division == team.Division %}selected{% endif %}>{{ division }}</option>
+            <option value="{{ division.ID }}" {% if division.ID == team.DivisionID %}selected{% endif %}>{{ division.Name }}</option>
             {% endfor %}
           </select>
         </td>
