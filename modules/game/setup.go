@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strings"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
 	"gorm.io/gorm"
 
+	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/db"
 )
 
@@ -147,7 +149,7 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Module) uiViewFieldList(w http.ResponseWriter, r *http.Request) {
-	fList, err := gorm.G[Field](m.db.DB).Find(r.Context())
+	fList, err := m.ListFields(r.Context(), Field{})
 	if err != nil {
 		slog.Error("Error loading fields", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
@@ -160,13 +162,28 @@ func (m *Module) uiViewFieldList(w http.ResponseWriter, r *http.Request) {
 func (m *Module) uiViewFieldForm(w http.ResponseWriter, r *http.Request) {
 	fID := m.ws.StrToUint(chi.URLParam(r, "id"))
 
-	field, err := gorm.G[Field](m.db.DB).Where("id = ?", fID).First(r.Context())
+	fieldList, err := m.ListFields(r.Context(), Field{ID: fID})
+	field := Field{}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		slog.Error("Error loading fields", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
-	m.ws.DoTemplate(w, r, "views/game/field_form.p2", pongo2.Context{"field": field})
+	if len(fieldList) > 0 {
+		field = fieldList[0]
+	}
+
+	divisions, err := gorm.G[team.Division](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading divisions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	m.ws.DoTemplate(w, r, "views/game/field_form.p2", pongo2.Context{
+		"field":     field,
+		"divisions": divisions,
+	})
 }
 
 func (m *Module) uiViewFieldSubmit(w http.ResponseWriter, r *http.Request) {
@@ -177,9 +194,35 @@ func (m *Module) uiViewFieldSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.InsertOrUpdate[Field](r.Context(), m.db.DB, &field); err != nil {
-		slog.Error("Error saving position", "error", err)
+		slog.Error("Error saving field", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
+
+	// Update field-division associations
+	divs := m.selectedDivisions(r)
+	divsIface := make([]interface{}, len(divs))
+	for i, d := range divs {
+		divsIface[i] = d
+	}
+	if err := m.db.Raw().Model(&field).Association("Divisions").Replace(divsIface...); err != nil {
+		slog.Error("Error updating field divisions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
 	http.Redirect(w, r, path.Join(m.basePath, "fields/"), http.StatusSeeOther)
+}
+
+func (m *Module) selectedDivisions(r *http.Request) []team.Division {
+	divisions := make([]team.Division, 0)
+	for key, values := range r.PostForm {
+		if len(values) > 0 && strings.HasPrefix(key, "division_") {
+			id := m.ws.StrToUint(strings.TrimPrefix(key, "division_"))
+			if id > 0 {
+				divisions = append(divisions, team.Division{ID: id})
+			}
+		}
+	}
+	return divisions
 }

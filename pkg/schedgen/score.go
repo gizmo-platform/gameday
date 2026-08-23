@@ -123,7 +123,7 @@ func (s *Schedule) Validate() error {
 	}
 
 	for team := range teamMatches {
-		if !s.RoundsDynamic && len(teamMatches[team]) != s.Config.Rounds {
+		if !s.RoundsDynamic && !s.Interleaved && len(teamMatches[team]) != s.Config.Rounds {
 			slog.Error("Team does not play expected number of rounds",
 				"team", team,
 				"expected", s.Config.Rounds,

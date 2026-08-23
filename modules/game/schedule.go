@@ -96,6 +96,7 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 
 	fields, err := gorm.G[Field](m.db.DB).
+		Preload("Divisions", nil).
 		Where("id in (select distinct(field_id) from match_placements where phase_id = ?)", gPhase).
 		Find(r.Context())
 	if err != nil {
@@ -300,7 +301,7 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	fields, err := gorm.G[Field](m.db.DB).Find(r.Context())
+	fields, err := m.ListFields(r.Context(), Field{})
 	if err != nil {
 		slog.Error("Error loading fields", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
@@ -328,20 +329,24 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 	if len(phase.AdvancementFilters) > 0 {
 		ctx["manualEnabled"] = false
 
-		// A blank division list will result in the
-		// advancement filters being called with an empty
-		// filter, which will select all teams across all
-		// divisions.
-		divisions := []string{""}
+		// A blank division will result in the advancement
+		// filters being called with an empty filter, which
+		// will select all teams across all divisions.
+		divisionNames := []string{""}
 		if phase.DivisionAware {
-			if res := m.db.Model(&team.Team{}).Distinct("division").Find(&divisions); res.Error != nil {
+			var divisions []team.Division
+			if res := m.db.Raw().Model(&team.Division{}).Find(&divisions); res.Error != nil {
 				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
 				return
+			}
+			divisionNames = make([]string, len(divisions))
+			for i, d := range divisions {
+				divisionNames[i] = d.Name
 			}
 		}
 
 		determinations := []AdvancementDeterminationResult{}
-		for _, division := range divisions {
+		for _, division := range divisionNames {
 			sctx := AdvancementFilterContext{
 				Roster:     make(map[uint]team.Team),
 				Candidates: make(map[uint]team.Team),
@@ -388,15 +393,23 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
+	phaseID := m.ws.StrToUint(chi.URLParam(r, "id"))
+	phase, err := gorm.G[GamePhase](m.db.DB).Where(&GamePhase{ID: phaseID}).First(r.Context())
+	if err != nil {
+		slog.Error("Error loading phase", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
 	fields := []Field{}
 	for _, f := range r.Form["fields"] {
-		field, err := gorm.G[Field](m.db.DB).
-			Where(&Field{ID: m.ws.StrToUint(f)}).
-			First(r.Context())
+		field, err := m.ListFields(r.Context(), Field{ID: m.ws.StrToUint(f)})
 		if err != nil {
 			continue
 		}
-		fields = append(fields, field)
+		if len(field) > 0 {
+			fields = append(fields, field[0])
+		}
 	}
 	sort.Slice(fields, func(i, j int) bool {
 		return fields[i].ID < fields[j].ID
@@ -405,26 +418,6 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 	positions, err := gorm.G[FieldPosition](m.db.DB).Find(r.Context())
 	if err != nil {
 		slog.Error("Error loading positions", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-		return
-	}
-
-	c := schedgen.Config{
-		Fields:    len(r.Form["fields"]),
-		Positions: len(positions),
-		Teams:     len(r.Form["selected_teams"]),
-		Rounds:    int(m.ws.StrToUint(r.FormValue("rounds"))),
-	}
-
-	s, err := schedgen.GenerateSchedule(r.FormValue("schedule_type"), c)
-	if err != nil {
-		slog.Error("Error generating schedule", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-		return
-	}
-	s.Score()
-	if err := s.Validate(); err != nil {
-		slog.Error("Error generating schedule", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
@@ -441,6 +434,31 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 	sort.Slice(teams, func(i, j int) bool {
 		return teams[i].ID < teams[j].ID
 	})
+
+	c := schedgen.Config{
+		Fields:    len(fields),
+		Positions: len(positions),
+		Teams:     len(teams),
+		Rounds:    int(m.ws.StrToUint(r.FormValue("rounds"))),
+	}
+
+	var s *schedgen.Schedule
+	if phase.DivisionAware {
+		s, err = generateDivisionSchedule(r, m.db.DB, c, fields, teams, positions)
+	} else {
+		s, err = schedgen.GenerateSchedule(r.FormValue("schedule_type"), c)
+	}
+	if err != nil {
+		slog.Error("Error generating schedule", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	s.Score()
+	if err := s.Validate(); err != nil {
+		slog.Error("Error generating schedule", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
 
 	if _, err := gorm.G[MatchPlacement](m.db.DB).Where(&MatchPlacement{PhaseID: CandidatePhase}).Delete(r.Context()); err != nil {
 		slog.Error("Error clearing candidate match", "error", err)
@@ -482,6 +500,51 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/schedule_preview.p2", ctx)
+}
+
+func generateDivisionSchedule(r *http.Request, db *gorm.DB, c schedgen.Config, fields []Field, teams []team.Team, positions []FieldPosition) (*schedgen.Schedule, error) {
+	_ = db
+	_ = positions
+
+	// Build divisionFields map: divisionID -> []0-based field indices
+	divisionFields := make(map[uint][]int)
+	for i, f := range fields {
+		for _, div := range f.Divisions {
+			divisionFields[div.ID] = append(divisionFields[div.ID], i)
+		}
+	}
+
+	// Build divisionTeams map: divisionID -> []0-based team indices
+	divisionTeams := make(map[uint][]int)
+	for i, t := range teams {
+		if t.DivisionID > 0 {
+			divisionTeams[t.DivisionID] = append(divisionTeams[t.DivisionID], i)
+		}
+	}
+
+	// Build DivisionConfig slice for all divisions that have teams.
+	// Fields may be empty (auto-assigned later) or explicitly pinned.
+	divConfigs := make([]schedgen.DivisionConfig, 0, len(divisionTeams))
+	for divID, teamIndices := range divisionTeams {
+		divConfigs = append(divConfigs, schedgen.DivisionConfig{
+			ID:          int(divID),
+			Fields:      divisionFields[divID],
+			Rounds:      0, // Use global rounds
+			TeamIndices: teamIndices,
+		})
+	}
+
+	// Sort for deterministic output
+	sort.Slice(divConfigs, func(i, j int) bool {
+		return divConfigs[i].ID < divConfigs[j].ID
+	})
+
+	// Fallback to flat scheduling if no division configs
+	if len(divConfigs) == 0 {
+		return schedgen.GenerateSchedule(r.FormValue("schedule_type"), c)
+	}
+
+	return schedgen.GenerateDivisionSchedule(r.FormValue("schedule_type"), c, divConfigs)
 }
 
 func (m *Module) uiViewPhaseScheduleAccept(w http.ResponseWriter, r *http.Request) {

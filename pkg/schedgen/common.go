@@ -91,6 +91,14 @@ type Config struct {
 	Rounds    int
 }
 
+// DivisionConfig defines a division for division-aware scheduling.
+type DivisionConfig struct {
+	ID          int   // Division identifier
+	Fields      []int // Pinned field indices (empty = auto-assign)
+	Rounds      int   // Optional per-division round count (0 = use global Rounds)
+	TeamIndices []int // Team indices belonging to this division
+}
+
 // Schedule binds all the base types used by different schedules.
 type Schedule struct {
 	Config Config
@@ -110,6 +118,11 @@ type Schedule struct {
 	// RoundsDynamic is true when the scheduler ignores Config.Rounds
 	// and computes rounds dynamically (e.g. BIBD).
 	RoundsDynamic bool
+
+	// Interleaved is true when this schedule was produced by
+	// GenerateDivisionSchedule interleave step. Validation of
+	// per-team round counts happens pre-interleave per division.
+	Interleaved bool
 }
 
 // Location represents a Field and Position on that field as a unique
@@ -150,6 +163,7 @@ func (r Round) PositionsPlayedByTeam() map[int]Location {
 // Match contains a single match.
 type Match struct {
 	Placements map[Location]int
+	DivisionID int // Division ID (0 if flat scheduling)
 }
 
 func (m Match) Team(field, position int) int {

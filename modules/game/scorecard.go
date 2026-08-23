@@ -41,7 +41,7 @@ func (m *Module) uiViewScorecardList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fields, err := gorm.G[Field](m.db.DB).Find(r.Context())
+	fields, err := m.ListFields(r.Context(), Field{})
 	if err != nil {
 		slog.Error("Error retreiving scorecard", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})

@@ -10,6 +10,7 @@ import (
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/db"
@@ -172,8 +173,9 @@ type FieldPosition struct {
 
 // Field represents a single field that is available for scheduling.
 type Field struct {
-	ID   uint
-	Name string
+	ID        uint
+	Name      string
+	Divisions []team.Division `gorm:"many2many:field_divisions;"`
 }
 
 // Game defines the components related to a playable game.
@@ -403,6 +405,11 @@ func (m *Module) Migrate() error {
 		ScorecardElement{},
 		ScorecardValue{},
 	)
+}
+
+func (m *Module) ListFields(ctx context.Context, filter Field) ([]Field, error) {
+	out, err := gorm.G[Field](m.db.DB).Preload("Divisions", nil).Where(filter).Find(ctx)
+	return out, err
 }
 
 func (m *Module) TemplateLoader() pongo2.TemplateLoader {

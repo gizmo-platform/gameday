@@ -16,12 +16,20 @@
       <tr>
         <th>ID</th>
         <th>Name</th>
+        <th>Divisions</th>
         <th>Actions</th>
       </tr>
       {% for field in fields %}
       <tr>
         <td>{{ field.ID }}</td>
         <td>{{ field.Name }}</td>
+        <td>
+          {% for d in field.Divisions %}
+          {{ d.Name }}{% if not forloop.last %}, {% endif %}
+          {% empty %}
+          —
+          {% endfor %}
+        </td>
         <td class="flex-container flex-row">
           <a class="flex-item button" href="fields/{{ field.ID }}/edit">Edit</a>
         </td>
