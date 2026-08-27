@@ -76,18 +76,22 @@ func TestGenerateDivisionSchedule_ExplicitFieldPinning(t *testing.T) {
 		t.Errorf("expected 8 teams, got %d", sched.Config.Teams)
 	}
 
-	// Verify division 0 matches only use fields 0-1
-	// and division 1 matches only use fields 2-3
+	// Verify division 0 teams only use fields 0-1
+	// and division 1 teams only use fields 2-3.
+	// After compaction, a single Match may contain teams from both
+	// divisions, so we check per-team field usage.
 	for _, round := range sched.Rounds {
 		for _, m := range round.Matches {
-			for loc := range m.Placements {
-				if m.DivisionID == 0 {
+			for loc, team := range m.Placements {
+				if team < 4 {
+					// Division 0 team
 					if loc.Field < 0 || loc.Field > 1 {
-						t.Errorf("division 0 match uses field %d, expected 0-1", loc.Field)
+						t.Errorf("division 0 team %d uses field %d, expected 0-1", team, loc.Field)
 					}
-				} else if m.DivisionID == 1 {
+				} else {
+					// Division 1 team
 					if loc.Field < 2 || loc.Field > 3 {
-						t.Errorf("division 1 match uses field %d, expected 2-3", loc.Field)
+						t.Errorf("division 1 team %d uses field %d, expected 2-3", team, loc.Field)
 					}
 				}
 			}
@@ -137,14 +141,16 @@ func TestGenerateDivisionSchedule_TeamRemapping(t *testing.T) {
 	}
 
 	// Division 0 should not reference teams 4-7, and vice versa.
+	// After compaction, matches may contain teams from both divisions,
+	// but each team should only appear on its division's fields.
 	for _, round := range sched.Rounds {
 		for _, m := range round.Matches {
-			for _, team := range m.Placements {
-				if m.DivisionID == 0 && team >= 4 {
-					t.Errorf("division 0 references team %d (expected 0-3)", team)
+			for loc, team := range m.Placements {
+				if team < 4 && loc.Field != 0 {
+					t.Errorf("division 0 team %d on field %d (expected field 0)", team, loc.Field)
 				}
-				if m.DivisionID == 1 && team < 4 {
-					t.Errorf("division 1 references team %d (expected 4-7)", team)
+				if team >= 4 && loc.Field != 1 {
+					t.Errorf("division 1 team %d on field %d (expected field 1)", team, loc.Field)
 				}
 			}
 		}
@@ -175,28 +181,31 @@ func TestGenerateDivisionSchedule_AutoAssignFields(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify each division got at least one field.
-	divFields := make(map[int][]int)
+	// Verify each division's teams use at least one field.
+	// After compaction, matches may span divisions, so track by team.
+	divTeamFields := make(map[int]map[int]bool) // team -> set of fields
 	for _, round := range sched.Rounds {
 		for _, m := range round.Matches {
-			for loc := range m.Placements {
-				found := false
-				for _, f := range divFields[m.DivisionID] {
-					if f == loc.Field {
-						found = true
-						break
-					}
+			for loc, team := range m.Placements {
+				if divTeamFields[team] == nil {
+					divTeamFields[team] = make(map[int]bool)
 				}
-				if !found {
-					divFields[m.DivisionID] = append(divFields[m.DivisionID], loc.Field)
-				}
+				divTeamFields[team][loc.Field] = true
 			}
 		}
 	}
 
-	for divID := range len(divisions) {
-		if len(divFields[divID]) == 0 {
-			t.Errorf("division %d has no fields assigned", divID)
+	// Check that teams from both divisions have field assignments.
+	div0Teams := []int{0, 1, 2, 3}
+	div1Teams := []int{4, 5, 6, 7}
+	for _, team := range div0Teams {
+		if len(divTeamFields[team]) == 0 {
+			t.Errorf("division 0 team %d has no fields assigned", team)
+		}
+	}
+	for _, team := range div1Teams {
+		if len(divTeamFields[team]) == 0 {
+			t.Errorf("division 1 team %d has no fields assigned", team)
 		}
 	}
 }
@@ -298,25 +307,35 @@ func TestGenerateDivisionSchedule_DivisionIDs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	div0Count := 0
-	div1Count := 0
+	// After compaction, matches from divisions on non-overlapping fields
+	// share the same Match slot. Verify teams from both divisions appear.
+	seenTeams := make(map[int]bool)
 	for _, round := range sched.Rounds {
 		for _, m := range round.Matches {
-			if m.DivisionID == 10 {
-				div0Count++
-			} else if m.DivisionID == 20 {
-				div1Count++
-			} else {
-				t.Errorf("unexpected DivisionID %d", m.DivisionID)
+			for _, team := range m.Placements {
+				seenTeams[team] = true
 			}
 		}
 	}
 
-	if div0Count == 0 {
-		t.Error("expected at least one match for division 10")
+	div10Count := 0
+	for _, team := range []int{0, 1, 2, 3} {
+		if seenTeams[team] {
+			div10Count++
+		}
 	}
-	if div1Count == 0 {
-		t.Error("expected at least one match for division 20")
+	div20Count := 0
+	for _, team := range []int{4, 5, 6, 7} {
+		if seenTeams[team] {
+			div20Count++
+		}
+	}
+
+	if div10Count == 0 {
+		t.Error("expected at least one team from division 10 in schedule")
+	}
+	if div20Count == 0 {
+		t.Error("expected at least one team from division 20 in schedule")
 	}
 }
 
@@ -572,24 +591,25 @@ func TestInterleave_IdleFieldsAfterShortDivision(t *testing.T) {
 		t.Errorf("expected 3 rounds, got %d", len(sched.Rounds))
 	}
 
-	// Round 0: both divisions have matches.
-	div0Matches := countDivisionMatches(sched.Rounds[0], 0)
-	div1Matches := countDivisionMatches(sched.Rounds[0], 1)
-	if div0Matches == 0 {
-		t.Error("round 0: expected division 0 matches")
+	// Round 0: both divisions have matches, compacted into fewer slots
+	// since they use non-overlapping fields.
+	div0Teams := teamsInRound(sched.Rounds[0], []int{0, 1, 2, 3})
+	div1Teams := teamsInRound(sched.Rounds[0], []int{4, 5, 6, 7})
+	if div0Teams == 0 {
+		t.Error("round 0: expected division 0 teams")
 	}
-	if div1Matches == 0 {
-		t.Error("round 0: expected division 1 matches")
+	if div1Teams == 0 {
+		t.Error("round 0: expected division 1 teams")
 	}
 
 	// Round 1: only division 1 has matches.
-	div0Matches = countDivisionMatches(sched.Rounds[1], 0)
-	div1Matches = countDivisionMatches(sched.Rounds[1], 1)
-	if div0Matches != 0 {
-		t.Errorf("round 1: expected no division 0 matches, got %d", div0Matches)
+	div0TeamsR1 := teamsInRound(sched.Rounds[1], []int{0, 1, 2, 3})
+	div1TeamsR1 := teamsInRound(sched.Rounds[1], []int{4, 5, 6, 7})
+	if div0TeamsR1 != 0 {
+		t.Errorf("round 1: expected no division 0 teams, got %d", div0TeamsR1)
 	}
-	if div1Matches == 0 {
-		t.Error("round 1: expected division 1 matches")
+	if div1TeamsR1 == 0 {
+		t.Error("round 1: expected division 1 teams")
 	}
 }
 
@@ -628,6 +648,23 @@ func countDivisionMatches(round Round, divID int) int {
 	count := 0
 	for _, m := range round.Matches {
 		if m.DivisionID == divID {
+			count++
+		}
+	}
+	return count
+}
+
+// teamsInRound counts how many of the given teams appear in a round.
+func teamsInRound(round Round, teams []int) int {
+	teamSet := make(map[int]bool)
+	for _, m := range round.Matches {
+		for _, team := range m.Placements {
+			teamSet[team] = true
+		}
+	}
+	count := 0
+	for _, t := range teams {
+		if teamSet[t] {
 			count++
 		}
 	}
@@ -767,4 +804,154 @@ func ExampleGenerateDivisionSchedule() {
 	fmt.Printf("rounds: %d, fields: %d, teams: %d\n",
 		len(sched.Rounds), sched.Config.Fields, sched.Config.Teams)
 	// Output: rounds: 2, fields: 4, teams: 8
+}
+
+func TestInterleave_CompactNonConflictingFields(t *testing.T) {
+	// Two divisions on non-overlapping fields should be compacted into
+	// a single Match per round (the core compaction scenario).
+	divisions := []DivisionConfig{
+		{
+			ID:          0,
+			Fields:      []int{0},
+			TeamIndices: []int{0, 1, 2, 3},
+		},
+		{
+			ID:          1,
+			Fields:      []int{1},
+			TeamIndices: []int{4, 5, 6, 7},
+		},
+	}
+
+	sched, err := GenerateDivisionSchedule("RandomSeeding", Config{
+		Fields:    2,
+		Positions: 4,
+		Teams:     8,
+		Rounds:    1,
+	}, divisions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Both divisions on non-overlapping fields → should be 1 compacted match.
+	if len(sched.Rounds) != 1 {
+		t.Fatalf("expected 1 round, got %d", len(sched.Rounds))
+	}
+	if len(sched.Rounds[0].Matches) != 1 {
+		t.Errorf("expected 1 compacted match, got %d", len(sched.Rounds[0].Matches))
+	}
+
+	// Verify all 8 teams appear in that single match.
+	teams := sched.Rounds[0].Matches[0].Placements
+	if len(teams) != 8 {
+		t.Errorf("expected 8 team placements in compacted match, got %d", len(teams))
+	}
+}
+
+func TestInterleave_NoCompactPreventsMerging(t *testing.T) {
+	// Two divisions on non-overlapping fields with NoCompact should
+	// keep their Matches separate (2 Matches, not 1).
+	divisions := []DivisionConfig{
+		{
+			ID:          0,
+			Fields:      []int{0},
+			TeamIndices: []int{0, 1, 2, 3},
+			NoCompact:   true,
+		},
+		{
+			ID:          1,
+			Fields:      []int{1},
+			TeamIndices: []int{4, 5, 6, 7},
+		},
+	}
+
+	sched, err := GenerateDivisionSchedule("RandomSeeding", Config{
+		Fields:    2,
+		Positions: 4,
+		Teams:     8,
+		Rounds:    1,
+	}, divisions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// NoCompact on division 0 → should keep 2 separate matches.
+	if len(sched.Rounds) != 1 {
+		t.Fatalf("expected 1 round, got %d", len(sched.Rounds))
+	}
+	if len(sched.Rounds[0].Matches) != 2 {
+		t.Errorf("expected 2 separate matches (NoCompact), got %d", len(sched.Rounds[0].Matches))
+	}
+
+	// Verify both divisions are still present.
+	seenTeams := make(map[int]bool)
+	for _, m := range sched.Rounds[0].Matches {
+		for _, team := range m.Placements {
+			seenTeams[team] = true
+		}
+	}
+	for i := 0; i < 8; i++ {
+		if !seenTeams[i] {
+			t.Errorf("team %d missing from schedule", i)
+		}
+	}
+}
+
+func TestInterleave_NoCompactBothDivisions(t *testing.T) {
+	// When both divisions have NoCompact, they should also stay separate.
+	divisions := []DivisionConfig{
+		{
+			ID:          0,
+			Fields:      []int{0},
+			TeamIndices: []int{0, 1, 2, 3},
+			NoCompact:   true,
+		},
+		{
+			ID:          1,
+			Fields:      []int{1},
+			TeamIndices: []int{4, 5, 6, 7},
+			NoCompact:   true,
+		},
+	}
+
+	sched, err := GenerateDivisionSchedule("RandomSeeding", Config{
+		Fields:    2,
+		Positions: 4,
+		Teams:     8,
+		Rounds:    1,
+	}, divisions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(sched.Rounds[0].Matches) != 2 {
+		t.Errorf("expected 2 separate matches (both NoCompact), got %d", len(sched.Rounds[0].Matches))
+	}
+}
+
+func TestInterleave_NoCompactSameDivisionAllowsMerge(t *testing.T) {
+	// A single NoCompact division with multiple matches per round should
+	// still merge its own matches together (NoCompact only blocks cross-division merges).
+	divisions := []DivisionConfig{
+		{
+			ID:          0,
+			Fields:      []int{0, 1},
+			TeamIndices: []int{0, 1, 2, 3, 4, 5, 6, 7},
+			NoCompact:   true,
+		},
+	}
+
+	sched, err := GenerateDivisionSchedule("RandomSeeding", Config{
+		Fields:    2,
+		Positions: 4,
+		Teams:     8,
+		Rounds:    1,
+	}, divisions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With 2 fields and 4 positions per field, all 8 teams can fit in 1 match.
+	if len(sched.Rounds[0].Matches) != 1 {
+		t.Errorf("expected 1 match (single division, NoCompact still merges own matches), got %d", len(sched.Rounds[0].Matches))
+	}
 }

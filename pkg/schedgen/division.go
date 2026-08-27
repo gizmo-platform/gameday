@@ -139,7 +139,8 @@ func assignFieldsToDivisions(divisions []DivisionConfig, totalFields int, positi
 
 // interleave merges division schedules round-by-round. Local field indices
 // are remapped to global pinned field indices, and each match is tagged
-// with its DivisionID.
+// with its DivisionID. Matches are greedily compacted when they use
+// non-overlapping fields, unless NoCompact is set.
 func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *Schedule {
 	// Find max rounds across all divisions.
 	maxRounds := 0
@@ -167,9 +168,16 @@ func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *
 		Interleaved:   true,
 	}
 
+	// Build a lookup for NoCompact flags.
+	noCompact := make(map[int]bool)
+	for _, r := range results {
+		if r.config.NoCompact {
+			noCompact[r.config.ID] = true
+		}
+	}
+
 	for round := 0; round < maxRounds; round++ {
 		teamAppearances := make(map[int]int)
-		matchIdx := 0
 
 		// Collect remapped matches per division for this round.
 		type divMatches struct {
@@ -209,39 +217,77 @@ func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *
 			roundDivs = append(roundDivs, divMs)
 		}
 
-		// Interleave matches round-robin across divisions so consecutive
-		// matches come from different divisions (A,B,A,B) rather than all
-		// from one division in a row (A,A,A,A,B,B,B,B). This gives teams
-		// more downtime between their matches.
-		var matches []Match
-
-		maxDivMatches := 0
+		// Flatten all matches into a single list for compaction.
+		var allMatches []Match
 		for _, div := range roundDivs {
-			if len(div.matches) > maxDivMatches {
-				maxDivMatches = len(div.matches)
-			}
+			allMatches = append(allMatches, div.matches...)
 		}
 
-		for j := 0; j < maxDivMatches; j++ {
-			for _, div := range roundDivs {
-				if j >= len(div.matches) {
+		// Greedy bin-packing: try to compact matches that don't conflict
+		// on fields, respecting NoCompact constraints.
+		var compacted []Match
+		// slotFields tracks which fields are used in each compacted match.
+		slotFields := make([]map[int]bool, 0)
+		// slotDiv tracks the division of the first match placed in each slot
+		// (used for NoCompact checks).
+		slotDiv := make([]int, 0)
+
+		for _, m := range allMatches {
+			// Collect fields used by this match.
+			fields := make(map[int]bool)
+			for loc := range m.Placements {
+				fields[loc.Field] = true
+			}
+
+			placed := false
+			mNoCompact := noCompact[m.DivisionID]
+
+			for si := range compacted {
+				sNoCompact := noCompact[slotDiv[si]]
+
+				// If either side is NoCompact, they must be from the
+				// same division to merge.
+				if (mNoCompact || sNoCompact) && m.DivisionID != slotDiv[si] {
 					continue
 				}
 
-				remapped := div.matches[j]
-
-				// Track team appearances in the interleaved round.
-				for _, team := range remapped.Placements {
-					teamAppearances[team] = matchIdx
+				// Check for field conflicts.
+				conflict := false
+				for f := range fields {
+					if slotFields[si][f] {
+						conflict = true
+						break
+					}
+				}
+				if conflict {
+					continue
 				}
 
-				matches = append(matches, remapped)
-				matchIdx++
+				// Merge: add placements to existing match.
+				for loc, team := range m.Placements {
+					compacted[si].Placements[loc] = team
+					slotFields[si][loc.Field] = true
+				}
+				placed = true
+				break
+			}
+
+			if !placed {
+				slotFields = append(slotFields, fields)
+				slotDiv = append(slotDiv, m.DivisionID)
+				compacted = append(compacted, m)
+			}
+		}
+
+		// Track team appearances in the interleaved round.
+		for mi, m := range compacted {
+			for _, team := range m.Placements {
+				teamAppearances[team] = mi
 			}
 		}
 
 		interleaved.Rounds[round] = Round{
-			Matches:         matches,
+			Matches:         compacted,
 			TeamAppearances: teamAppearances,
 		}
 	}

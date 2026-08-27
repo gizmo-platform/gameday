@@ -97,6 +97,7 @@ type DivisionConfig struct {
 	Fields      []int // Pinned field indices (empty = auto-assign)
 	Rounds      int   // Optional per-division round count (0 = use global Rounds)
 	TeamIndices []int // Team indices belonging to this division
+	NoCompact   bool  // When true, matches won't be compacted with other divisions
 }
 
 // Schedule binds all the base types used by different schedules.

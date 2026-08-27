@@ -44,9 +44,10 @@ type Module struct {
 }
 
 type Division struct {
-	ID     uint
-	Name   string `gorm:"uniqueIndex"`
-	Static bool
+	ID        uint
+	Name      string `gorm:"uniqueIndex"`
+	Static    bool
+	NoCompact bool // When true, this division's matches will not be compacted with others
 }
 
 type Team struct {

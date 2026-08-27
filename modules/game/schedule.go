@@ -522,6 +522,14 @@ func generateDivisionSchedule(r *http.Request, db *gorm.DB, c schedgen.Config, f
 		}
 	}
 
+	// Build divisionNoCompact map: divisionID -> NoCompact flag
+	divisionNoCompact := make(map[uint]bool)
+	for _, t := range teams {
+		if t.DivisionID > 0 {
+			divisionNoCompact[t.DivisionID] = t.Division.NoCompact
+		}
+	}
+
 	// Build DivisionConfig slice for all divisions that have teams.
 	// Fields may be empty (auto-assigned later) or explicitly pinned.
 	divConfigs := make([]schedgen.DivisionConfig, 0, len(divisionTeams))
@@ -531,6 +539,7 @@ func generateDivisionSchedule(r *http.Request, db *gorm.DB, c schedgen.Config, f
 			Fields:      divisionFields[divID],
 			Rounds:      0, // Use global rounds
 			TeamIndices: teamIndices,
+			NoCompact:   divisionNoCompact[divID],
 		})
 	}
 
