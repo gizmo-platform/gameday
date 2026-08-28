@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
+	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
@@ -33,6 +34,7 @@ const (
 //go:embed ui/*
 var efs embed.FS
 
+// Module struct.
 type Module struct {
 	r  chi.Router
 	db *db.DB
@@ -60,16 +62,11 @@ type Team struct {
 	Region     string
 }
 
-// Option passes in multiple components to the module.
-type Option func(m *Module)
-
-func New(opts ...Option) *Module {
-	m := Module{
-		r: chi.NewRouter(),
-	}
-
-	for _, o := range opts {
-		o(&m)
+func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
+	m := &Module{
+		r:  chi.NewRouter(),
+		db: db,
+		ws: ws,
 	}
 
 	if err := m.ws.InstallPermission(context.Background(), ModuleName, PermissionAdmin); err != nil {
@@ -98,7 +95,7 @@ func New(opts ...Option) *Module {
 
 	pongo2.RegisterFilter("teamList", filterTeamList)
 
-	return &m
+	return m
 }
 
 func (m *Module) Router() chi.Router {

@@ -13,12 +13,13 @@ import (
 	"github.com/spf13/cobra"
 	_ "github.com/the-maldridge/authware/backend/htpasswd"
 
+	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 
-	"github.com/gizmo-platform/gameday/modules"
-	"github.com/gizmo-platform/gameday/modules/game"
-	"github.com/gizmo-platform/gameday/modules/team"
+	_ "github.com/gizmo-platform/gameday/modules/best"
+	_ "github.com/gizmo-platform/gameday/modules/game"
+	_ "github.com/gizmo-platform/gameday/modules/team"
 )
 
 var (
@@ -54,19 +55,16 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 		os.Exit(2)
 	}
 
-	modMap := make(map[string]modules.Web)
-	t := team.New(team.WithDatabase(d), team.WithWebserver(w))
-	modMap["team"] = t
-	modMap["game"] = game.New(game.WithDatabase(d), game.WithWebserver(w), game.WithTeamModule(t))
+	_, modDeps := modules.ResolveModules("onsite", d, w)
 
-	for mod, handle := range modMap {
-		slog.Info("Mounting module", "module", mod)
-		w.Mount(path.Join("/ui/mod", mod), handle.Router())
-		w.AddNavElement(handle.NavList(path.Join("/ui/mod", mod))...)
+	for name, handle := range modDeps {
+		slog.Info("Mounting module", "module", name)
+		w.Mount(path.Join("/ui/mod", name), handle.Router())
+		w.AddNavElement(handle.NavList(path.Join("/ui/mod", name))...)
 		w.AddTemplateLoader(handle.TemplateLoader())
 
 		if err := handle.Migrate(); err != nil {
-			slog.Error("Error migrating", "module", mod, "error", err)
+			slog.Error("Error migrating", "module", name, "error", err)
 			quit <- syscall.SIGINT
 		}
 	}

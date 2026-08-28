@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
+	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
@@ -196,6 +197,7 @@ type GamePhase struct {
 	ScheduleType       string
 	ScoreSummation     string
 	HideScores         bool
+	TieBreaker         string
 }
 
 // GamePhaseAdvancementFilter captures the expressions that are used
@@ -320,16 +322,15 @@ type Module struct {
 	basePath string
 }
 
-// Option allows for dynamic option passing to the module.
-type Option func(*Module)
-
-func New(opts ...Option) *Module {
+func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 	m := Module{
-		r: chi.NewRouter(),
+		r:  chi.NewRouter(),
+		db: db,
+		ws: ws,
 	}
 
-	for _, o := range opts {
-		o(&m)
+	if tm, ok := deps["team"].(TeamModule); ok {
+		m.tm = tm
 	}
 
 	if m.ws != nil {

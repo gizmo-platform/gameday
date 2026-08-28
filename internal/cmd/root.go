@@ -41,7 +41,7 @@ func Entrypoint() {
 	slog.SetDefault(logger)
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
+		fmt.Fprint(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
