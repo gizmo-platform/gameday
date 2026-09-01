@@ -1,0 +1,19 @@
+{% extends "../base.p2" %}
+
+{% block title %}Internal Error{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <h1>Internal Error</h1>
+  <br />
+  <hr />
+  <p>An unexpected error occurred while processing your request.</p>
+  <div class="alert-warn">
+    <code>{{ error }}</code>
+  </div>
+  <br />
+  <div class="flex-container flex-center">
+    <a class="flex-item button" href="/">Back to Home</a>
+  </div>
+</div>
+{% endblock %}
