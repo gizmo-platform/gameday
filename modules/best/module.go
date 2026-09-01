@@ -45,6 +45,16 @@ func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 			}
 		}
 	}
+
+	pAdmin := web.Permission{Module: ModuleName, Grant: PermissionAdmin}
+	m.r.Route("/", func(r chi.Router) {
+		r.Use(m.ws.RequirePermission(pAdmin))
+
+		r.Route("/scores", func(r chi.Router) {
+			r.Get("/", m.uiViewScores)
+		})
+	})
+
 	return m
 }
 
@@ -53,7 +63,9 @@ func (m *Module) Router() chi.Router {
 }
 
 func (m *Module) Migrate() error {
-	return m.db.AutoMigrate()
+	return m.db.AutoMigrate(
+		ExternalScores{},
+	)
 }
 
 func (m *Module) TemplateLoader() pongo2.TemplateLoader {
@@ -67,9 +79,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 	return []web.NavElement{{
 		Text: "BEST",
 		Children: []web.NavChild{{
-			Text:       "Setup",
-			Target:     path.Join(prefix, "/setup"),
-			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+			Text:        "Scores",
+			Target:      path.Join(prefix, "/scores"),
+			Permission:  web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}},
 	}}
 }
