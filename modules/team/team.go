@@ -176,6 +176,9 @@ func (m *Module) Migrate() error {
 }
 
 func (m *Module) TemplateLoader() pongo2.TemplateLoader {
+	if m.ws != nil && m.ws.TemplateDebug() {
+		return web.DebugTemplateLoader("modules/team/ui/p2", efs)
+	}
 	sub, _ := fs.Sub(efs, "ui/p2")
 	return pongo2.NewFSLoader(sub)
 }

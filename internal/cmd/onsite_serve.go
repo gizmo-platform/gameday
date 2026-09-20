@@ -33,15 +33,26 @@ var (
 	onsiteServeCmdLongDocs = `serve
 
 Serve starts a webserver that will provide all of the on-site services that are handled by gameday.`
+
+	templateDebug bool
 )
 
 func init() {
 	onsiteCmd.AddCommand(onsiteServeCmd)
+	onsiteServeCmd.Flags().BoolVar(
+		&templateDebug, "debug", false,
+		"enable template debug mode (read templates from the source tree, re-ingest on every render)",
+	)
 }
 
 func onsiteServeCmdRun(c *cobra.Command, args []string) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	port := "8080"
+	if p := os.Getenv("GAMEDAY_PORT"); p != "" {
+		port = p
+	}
 
 	d, err := db.New()
 	if err != nil {
@@ -49,7 +60,7 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 		os.Exit(2)
 	}
 
-	w, err := web.NewServer(web.WithDB(d))
+	w, err := web.NewServer(web.WithDB(d), web.WithTemplateDebug(templateDebug))
 	if err != nil {
 		slog.Error("Error initializing webserver", "error", err)
 		os.Exit(2)
@@ -70,13 +81,13 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 	}
 
 	go func() {
-		if err := w.Serve(":8080"); err != nil && err != http.ErrServerClosed {
+		if err := w.Serve(":" + port); err != nil && err != http.ErrServerClosed {
 			slog.Error("Error binding webserver", "error", err)
 			quit <- syscall.SIGINT
 		}
 	}()
 
-	slog.Info("Startup Complete!")
+	slog.Info("Startup Complete!", "port", port)
 
 	<-quit
 	slog.Info("Shutting Down...")

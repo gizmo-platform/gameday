@@ -36,21 +36,21 @@ type Server struct {
 
 	tpl *pongo2.TemplateSet
 
+	debugTemplates bool
+
 	nav []NavElement
+}
+
+// TemplateDebug reports whether template debug mode is enabled.
+func (s *Server) TemplateDebug() bool {
+	return s.debugTemplates
 }
 
 // NewServer returns a running field controller.
 func NewServer(opts ...Option) (*Server, error) {
-	sub, _ := fs.Sub(uifs, "ui/p2")
-	ldr := pongo2.NewFSLoader(sub)
-
 	x := new(Server)
 	x.r = chi.NewRouter()
 	x.n = &http.Server{}
-	x.tpl = pongo2.NewSet("html", ldr)
-
-	pongo2.RegisterFilter("hasPermission", x.filterHasPermission)
-	pongo2.RegisterFilter("hasPermissionExact", x.filterHasPermissionExact)
 
 	for _, o := range opts {
 		if err := o(x); err != nil {
@@ -58,6 +58,23 @@ func NewServer(opts ...Option) (*Server, error) {
 			return nil, err
 		}
 	}
+
+	var ldr pongo2.TemplateLoader
+	if x.debugTemplates {
+		// Templates are read from the on-disk source tree (relative
+		// to the process working directory) with a fallback to the
+		// embedded templates, so live edits are picked up on every
+		// render.
+		ldr = DebugTemplateLoader("pkg/web/ui/p2", uifs)
+	} else {
+		sub, _ := fs.Sub(uifs, "ui/p2")
+		ldr = pongo2.NewFSLoader(sub)
+	}
+	x.tpl = pongo2.NewSet("html", ldr)
+	x.tpl.Debug = x.debugTemplates
+
+	pongo2.RegisterFilter("hasPermission", x.filterHasPermission)
+	pongo2.RegisterFilter("hasPermissionExact", x.filterHasPermissionExact)
 
 	if err := x.d.AutoMigrate(Permission{}, Profile{}, User{}); err != nil {
 		slog.Error("Error migrating web core table", "error", err)

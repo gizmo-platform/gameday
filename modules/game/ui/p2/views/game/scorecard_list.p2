@@ -1,108 +1,115 @@
 {% extends "../../base.p2" %}
 
+{% block head %}
+<link href="/static/css/scorecard.css" rel="stylesheet">
+{% endblock %}
+
 {% block title %}Scorecards{% endblock %}
 
 {% block content %}
-<div class="foreground box">
+<div class="box">
   <div>
     <form>
-      <fieldset>
-        <legend>Filter Scorecards</legend>
-        <div class="flex-container flex-row flex-center">
-          <div class="flex-item">
-            <fieldset class="flex-container flex-column">
-            <legend>Phase</legend>
-            {% for phase in available_phases %}
-            <div>
-              <label>
-                <input type="checkbox"
-                       name="phase_id"
-                       value="{{ phase.ID }}"
-                       {% if phase.ID in filter.Phases %}checked{% endif %}
-                       >
-                {{ phase.Name|capfirst }}
+      <div class="scorecard-element">
+        <fieldset>
+          <legend>Filter Scorecards</legend>
+          <div class="is-flex is-justify-content-center">
+            <div class="scorecard-element">
+              <fieldset>
+                <legend>Phase</legend>
+                {% for phase in available_phases %}
+                <div>
+                  <label class="checkbox">
+                    <input type="checkbox"
+                           name="phase_id"
+                           value="{{ phase.ID }}"
+                           {% if phase.ID in filter.Phases %}checked{% endif %}
+                           >
+                    {{ phase.Name|capfirst }}
+                  </label>
+                </div>
+                {% endfor %}
+              </fieldset>
+            </div>
+
+            <div class="scorecard-element">
+              <fieldset>
+                <legend>Field</legend>
+                {% for field in available_fields %}
+                <div>
+                  <label class="checkbox">
+                    <input type="checkbox"
+                           name="field_id"
+                           value="{{ field.ID }}"
+                           {% if field.ID in filter.Fields %}checked{% endif %}
+                           >
+                    {{ field.Name|capfirst }}
+                  </label>
+                </div>
+                {% endfor %}
+              </fieldset>
+            </div>
+
+            <div class="scorecard-element">
+              <fieldset>
+                <legend>Position</legend>
+                {% for position in available_positions %}
+                <div>
+                  <label class="checkbox">
+                    <input type="checkbox"
+                           name="position_id"
+                           value="{{ position.ID }}"
+                           {% if position.ID in filter.Positions %}checked{% endif %}
+                           >
+                    {{ position.Name|capfirst }}
+                  </label>
+                </div>
+                {% endfor %}
+              </fieldset>
+            </div>
+
+            <div class="scorecard-element">
+              <fieldset>
+                <legend>Match State</legend>
+                {% for state in available_states %}
+                <div>
+                  <label class="checkbox">
+                    <input type="checkbox"
+                           name="state"
+                           value="{{ state|integer }}"
+                           {% if state in filter.States %}checked{% endif %}
+                           >
+                    {{ state.String()|capfirst }}
+                  </label>
+                </div>
+                {% endfor %}
+              </fieldset>
+            </div>
+          </div>
+          <div class="is-flex is-justify-content-center">
+            <div class="radios">
+              <label class="radio">
+                <input type="radio" name="filter_action" value="save" checked />
+                Save Filters
+              </label>
+              <label class="radio">
+                <input type="radio" name="filter_action" value="clear" />
+                Clear Filters
               </label>
             </div>
-            {% endfor %}
-            </fieldset>
           </div>
-
-          <div class="flex-item">
-            <fieldset class="flex-container flex-column">
-            <legend>Field</legend>
-            {% for field in available_fields %}
+          <div class="is-flex is-justify-content-center">
             <div>
-              <label>
-                <input type="checkbox"
-                       name="field_id"
-                       value="{{ field.ID }}"
-                       {% if field.ID in filter.Fields %}checked{% endif %}
-                       >
-                {{ field.Name|capfirst }}
-              </label>
+              <button class="button is-primary" type="submit">Apply Filters</button>
             </div>
-            {% endfor %}
-            </fieldset>
           </div>
-
-          <div class="flex-item">
-            <fieldset class="flex-container flex-column">
-            <legend>Position</legend>
-            {% for position in available_positions %}
-            <div>
-              <label>
-                <input type="checkbox"
-                       name="position_id"
-                       value="{{ position.ID }}"
-                       {% if position.ID in filter.Positions %}checked{% endif %}
-                       >
-                {{ position.Name|capfirst }}
-              </label>
-            </div>
-            {% endfor %}
-            </fieldset>
-          </div>
-
-          <div class="flex-item">
-            <fieldset class="flex-container flex-column">
-              <legend>Match State</legend>
-              {% for state in available_states %}
-              <div>
-                <label>
-                  <input type="checkbox"
-                         name="state"
-                         value="{{ state|integer }}"
-                         {% if state in filter.States %}checked{% endif %}
-                         >
-                  {{ state.String()|capfirst }}
-                </label>
-              </div>
-              {% endfor %}
-            </fieldset>
-          </div>
-        </div>
-        <div class="flex-container flex-row flex-center">
-          <div class="flex-item flex-container flex-column">
-            <label>
-              <input type="radio" name="filter_action" value="save" checked />
-              Save Filters
-            </label>
-            <label>
-              <input type="radio" name="filter_action" value="clear" />
-              Clear Filters
-            </label>
-          </div>
-
-          <div class="flex-item">
-            <input type="submit" value="Apply Filters" />
-          </div>
-        </div>
-      </fieldset>
+        </fieldset>
+      </div>
     </form>
   </div>
 
-  <div class="flex-container flex-row flex-center">
-    <table>
+  <div class="is-flex is-justify-content-center">
+    <table class="table">
       <thead>
         <tr>
           <th>Phase</th>
@@ -116,15 +123,15 @@
       </thead>
       <tbody>
         {% for placement in placements %}
-        <tr style="background-color: #{% if forloop.Counter0%2 == 0 %}{{ placement.Position.Color1 }}{% else %}{{ placement.Position.Color2 }}{% endif %};">
+        <tr>
           <td>{{ placement.Phase.Name|capfirst }}</td>
           <td>{{ placement.Match }}</td>
           <td>{{ placement.Field.Name }}</td>
-          <td>{{ placement.Position.Name|capfirst }}</td>
+          <td style="background-color: #{% if forloop.Counter0%2 == 0 %}{{ placement.Position.Color1 }}{% else %}{{ placement.Position.Color2 }}{% endif %};">{{ placement.Position.Name|capfirst }}</td>
           <td>{{ placement.Team.Name }}</td>
           <td>{{ placement.State.String()|capfirst }}</td>
           <td>
-            <a class="button" href="scorecard/{{ placement.Phase.ID }}/{{ placement.Match }}/{{ placement.Field.ID }}/{{ placement.Position.ID }}">View</a>
+            <a class="button is-primary" href="scorecard/{{ placement.Phase.ID }}/{{ placement.Match }}/{{ placement.Field.ID }}/{{ placement.Position.ID }}">View</a>
           </td>
         </tr>
         {% empty%}

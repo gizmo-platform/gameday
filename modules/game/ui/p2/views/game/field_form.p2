@@ -3,37 +3,35 @@
 {% block title %}Field Form{% endblock %}
 
 {% block content %}
-<div class="foreground box">
-  <form method="post">
-    <table>
-      <tr>
-        <th>Field</th>
-        <th>Value</th>
-      </tr>
-      <tr>
-        <td><label for="field_name">Name</label></td>
-        <td><input type="text" name="field_name" value="{{ field.Name }}" /></td>
-      </tr>
-      <tr>
-        <td><label>Divisions</label></td>
-        <td>
+  <div class="box is-flex is-justify-content-center">
+    <form method="post">
+      <div class="field">
+        <label class="label" for="field_name">Name</label>
+        <div class="control">
+          <input class="input" type="text" name="field_name" value="{{ field.Name }}" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="label">Divisions</label>
+        <div class="checkboxes">
           {% for division in divisions %}
-          <label>
-            <input type="checkbox" name="division_{{ division.ID }}"
-              {% for d in field.Divisions %}
-                {% if d.ID == division.ID %} checked{% endif %}
-              {% endfor %}>
-            {{ division.Name }}
-          </label>
-          {% empty %}
-          <em>No divisions available</em>
+            <label class="checkbox">
+              <input class="checkbox" type="checkbox" name="division_{{ division.ID }}"
+                     {% for d in field.Divisions %}
+                       {% if d.ID == division.ID %} checked{% endif %}
+                     {% endfor %}>
+                     {{ division.Name }}
+            </label>
           {% endfor %}
-        </td>
-      </tr>
-      <tr>
-        <td colspan="2"><input type="submit" /></td>
-      </tr>
-    </table>
-  </form>
-</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="control">
+          <button type="submit" class="button is-primary is-fullwidth">Submit</button>
+        </div>
+      </div>
+    </form>
+  </div>
 {% endblock %}

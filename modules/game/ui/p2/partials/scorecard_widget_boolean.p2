@@ -1,12 +1,16 @@
-<div class="flex-container flex-row flex-justify">
-  <label for="{{ field_id }}">
-    {{ state.Name }}{% if state.Desc %} (<em>{{ state.Desc }}</em>){% endif %}
-  </label>
-  <input type="checkbox"
-         id="{{ field_id }}"
-         name="{{ field_id }}"
-         value="1"
-         {% if ScorecardData|key:field_id > 0 %}checked{% endif %}
-         {% if edit_disable %}disabled{% endif %}
-         />
+<div class="is-flex is-justify-content-space-between">
+  <div>
+    <label for="{{ field_id }}">
+      {{ state.Name }}{% if state.Desc %} (<em>{{ state.Desc }}</em>){% endif %}
+    </label>
+  </div>
+  <div>
+    <input type="checkbox"
+           id="{{ field_id }}"
+           name="{{ field_id }}"
+           value="1"
+           {% if ScorecardData|key:field_id > 0 %}checked{% endif %}
+    {% if edit_disable %}disabled{% endif %}
+    />
+  </div>
 </div>

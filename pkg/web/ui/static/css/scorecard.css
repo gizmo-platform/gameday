@@ -11,6 +11,29 @@
     margin-bottom: 0.5em;
 }
 
+/* Re-apply default styles to the fieldset */
+.scorecard-element fieldset {
+  display: block;
+  margin-inline-start: 2px;
+  margin-inline-end: 2px;
+  padding-block-start: 0.35em;
+  padding-inline-end: 0.75em;
+  padding-block-end: 0.625em;
+  padding-inline-start: 0.75em;
+  border: 2px groove; /* Browser-native 3D border */
+  min-inline-size: min-content;
+}
+
+/* Re-apply default styles to the legend */
+.scorecard-element fieldset legend {
+  display: block;
+  padding-inline-start: 2px;
+  padding-inline-end: 2px;
+  border: none;
+  width: auto;
+  margin-bottom: 0; /* Overrides Bulma's default margin for headings/labels */
+}
+
 .scorecard-line {
     margin-top: 0.125em;
     margin-bottom: 0.125em;
@@ -23,35 +46,8 @@
 }
 
 .count-btn {
-    box-sizing: border-box;
     display: none;
-    width: 1.5em;
-    height: 1.5em;
-    font-size: 1.2em;
-    font-weight: bold;
-    border: 1px solid #ccc;
-    background: #f5f5f5;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: manipulation;
 }
-
-.count-btn:hover {
-    background: #e0e0e0;
-}
-
-.count-btn:active {
-    background: #d0d0d0;
-}
-
-.count-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
 
 .count-control input[type="number"] {
     border-radius: 0;

@@ -182,9 +182,11 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter completed matches from the schedule display unless ?all is set
+	// Filter completed matches from the schedule display unless ?all
+	// is set. Only the active phase is filtered; frozen phases always
+	// render their full schedule.
 	showAll := strings.ToLower(r.URL.Query().Get("all")) != ""
-	if !showAll {
+	if !showAll && phase.Active {
 		filtered := []scheduleRow{}
 		for _, row := range schedule {
 			if !row.Completed {

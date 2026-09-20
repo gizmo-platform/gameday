@@ -3,18 +3,25 @@
 {% block title %}Team Import{% endblock %}
 
 {% block content %}
-<div class="foreground box">
-  <p>Import teams from a bulk CSV using the form below.  The import file must have headers, and the headers must include 'Team Name', 'Team Number', and 'Hub Name'.  Alternate headers of 'Name', 'Number', and 'Hub' may be used instead.</p>
-  <br />
-  <hr />
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <p>Import teams from a bulk CSV using the form below.  The import file must have headers, and the headers must include 'Team Name', 'Team Number', and 'Hub Name'.  Alternate headers of 'Name', 'Number', and 'Hub' may be used instead.</p>
+      <br />
+      <hr />
 
-  <form method="POST" enctype="multipart/form-data">
-    <fieldset>
-      <legend>Load Teams</legend>
-      <label for="teams_file">Teams CSV</label>
-      <input type="file" id="teams_file" name="teams_file" />
-      <input type="submit" value="Load Teams" />
-    </fieldset>
-  </form>
-</div>
+      <form method="POST" enctype="multipart/form-data">
+        <div class="field">
+          <label class="label" for="teams_file">Teams CSV</label>
+          <div class="control">
+            <input class="input" type="file" id="teams_file" name="teams_file" />
+          </div>
+        </div>
+        <div class="field">
+          <div class="control">
+            <button type="submit" class="button is-primary is-fullwidth">Load Teams</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 {% endblock %}

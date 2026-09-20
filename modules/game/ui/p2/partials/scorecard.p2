@@ -1,29 +1,32 @@
-<div class="flex-container flex-row flex-center noprint">
+<div class="is-flex is-justify-content-center noprint">
   <span id="scorecard_total">0</span>
 </div>
 <br />
 
-<div id="scorecard_header" class="flex-container flex-row flex-justify" style="background-color: #{{ MatchInfo.Position.Color2 }}">
-  <span class="flex-item">Phase: {{ MatchInfo.Phase.Name|capfirst }}</span>
-  <span class="flex-item">Match: {{ MatchInfo.Match }}</span>
-  <span class="flex-item">Field: {{ MatchInfo.Field.Name }}</span>
-  <span class="flex-item">Position: {{ MatchInfo.Position.Name|capfirst }}</span>
-  <span class="flex-item">Team: {{ MatchInfo.Team.Name }}</span>
+<div id="scorecard_header" class="box is-flex is-justify-content-space-between" style="background-color: #{{ MatchInfo.Position.Color2 }}; color: black;">
+  <span></span>
+  <span>Phase: {{ MatchInfo.Phase.Name|capfirst }}</span>
+  <span>Match: {{ MatchInfo.Match }}</span>
+  <span>Field: {{ MatchInfo.Field.Name }}</span>
+  <span>Position: {{ MatchInfo.Position.Name|capfirst }}</span>
+  <span>Team: {{ MatchInfo.Team.Name }}</span>
+  <span></span>
 </div>
 
 <div>
   <form id="scorecard" method="POST">
     {% for element in Elements %}
-    <fieldset class="scorecard-element">
-      <legend>
-        {{ element.Name }}
-        {% if element.Desc %}
-        (<em>{{ element.Desc }}</em>)
-        {% endif %}
-      </legend>
-      <div class="flex-container flex-column">
+    <div class="scorecard-element">
+      <fieldset>
+        <legend>
+          {{ element.Name }}
+          {% if element.Desc %}
+          (<em>{{ element.Desc }}</em>)
+          {% endif %}
+        </legend>
+        <div>
           {% for state in element.States %}
-          <div class="scorecard-line">
+          <div>
             {% with field_id = element.EID|add:"_"|add:state.SID %}
             {% with fragment = "scorecard_widget_"|add:element.Type|add:".p2" %}
             {% include fragment %}
@@ -31,77 +34,76 @@
             {% endwith %}
           </div>
           {% endfor %}
-      </div>
-    </fieldset>
+        </div>
+      </fieldset>
+    </div>
     {% endfor %}
     {% if not edit_disable %}
-    <div class="center noprint">
-      <input type="reset" id="reset_button" />
-      <input type="submit" />
+    <div class="is-flex is-justify-content-center">
+      <div class="buttons noprint">
+        <button class="button is-primary is-fullwidth" type="submit">Submit</button>
+      </div>
     </div>
     {% endif %}
   </form>
 </div>
 
 <script>
- scoreContainer = document.getElementById('scorecard_total');
- scorecardForm = document.getElementById('scorecard');
- document.getElementById('reset_button').addEventListener('click', (event) => {
-     setTimeout(computeScore, 100);
- });
+  scoreContainer = document.getElementById('scorecard_total');
+  scorecardForm = document.getElementById('scorecard');
 
- function attachChangeHandlers() {
-     Array.from(scorecardForm.elements).forEach((element) => {
-         element.addEventListener('change', computeScore);
-     });
+  function attachChangeHandlers() {
+  Array.from(scorecardForm.elements).forEach((element) => {
+        element.addEventListener('change', computeScore);
+        });
 
-     scorecardForm.addEventListener('click', (event) => {
-         const btn = event.target.closest('.count-btn');
-         if (!btn) return;
-         const targetId = btn.dataset.target;
-         const input = document.getElementById(targetId);
-         if (!input || input.disabled) return;
-         const min = input.min !== '' ? parseInt(input.min) : -Infinity;
-         const max = input.max !== '' ? parseInt(input.max) : Infinity;
-         let val = parseInt(input.value) || 0;
-         if (btn.classList.contains('count-btn-plus')) {
-             val = Math.min(val + 1, max);
-         } else {
-             val = Math.max(val - 1, min);
-         }
-         input.value = val;
-         computeScore();
-         event.preventDefault();
-     });
- }
+        scorecardForm.addEventListener('click', (event) => {
+        const btn = event.target.closest('.count-btn');
+        if (!btn) return;
+        const targetId = btn.dataset.target;
+        const input = document.getElementById(targetId);
+        if (!input || input.disabled) return;
+        const min = input.min !== '' ? parseInt(input.min) : -Infinity;
+        const max = input.max !== '' ? parseInt(input.max) : Infinity;
+        let val = parseInt(input.value) || 0;
+        if (btn.classList.contains('count-btn-plus')) {
+        val = Math.min(val + 1, max);
+        } else {
+        val = Math.max(val - 1, min);
+        }
+        input.value = val;
+        computeScore();
+        event.preventDefault();
+        });
+        }
 
- function computeScore() {
-     var totalScore = 0;
+        function computeScore() {
+        var totalScore = 0;
 
-     {%- for element in Elements %}
-     {%- for state in element.States %}
-     {%- with field_id = element.EID|add:"_"|add:state.SID %}
-     {%- if element.Type == "count" %}
-     totalScore += scorecardForm.elements.namedItem('{{ field_id }}').value * {{ state.Each }};
-     {%- elif element.Type == "boolean" %}
-     if (scorecardForm.elements.namedItem('{{ field_id }}').checked) {
-         totalScore += {{ state.Each }};
-     }
-     {%- elif element.Type == "radio" %}
-     scorecardForm.elements.namedItem('{{ field_id }}').forEach((node) => {
-         if (node.checked) {
-             totalScore += +(node.dataset.points);
-         }
-     });
-     {%- endif %}
-     {%- endwith %}
-     {%- endfor %}
-     {%- endfor %}
+        {%- for element in Elements %}
+        {%- for state in element.States %}
+        {%- with field_id = element.EID|add:"_"|add:state.SID %}
+        {%- if element.Type == "count" %}
+        totalScore += scorecardForm.elements.namedItem('{{ field_id }}').value * {{ state.Each }};
+        {%- elif element.Type == "boolean" %}
+        if (scorecardForm.elements.namedItem('{{ field_id }}').checked) {
+        totalScore += {{ state.Each }};
+        }
+        {%- elif element.Type == "radio" %}
+        scorecardForm.elements.namedItem('{{ field_id }}').forEach((node) => {
+        if (node.checked) {
+        totalScore += +(node.dataset.points);
+        }
+        });
+        {%- endif %}
+        {%- endwith %}
+        {%- endfor %}
+        {%- endfor %}
 
-     scoreContainer.innerText = totalScore;
- }
+        scoreContainer.innerText = totalScore;
+        }
 
- attachChangeHandlers();
- scorecardForm.reset();
- computeScore();
+        attachChangeHandlers();
+        scorecardForm.reset();
+        computeScore();
 </script>

@@ -3,49 +3,47 @@
 {% block title %}Phase Schedule{% endblock %}
 
 {% block content %}
-<div class="foreground box flex-container flex-row flex-center">
-  <div class="flex-item">
-    <h2>Phase Schedule - {{ phase.Name | capfirst }}</h2>
+  <div class="box is-flex is-justify-content-center">
     <div>
-      <table>
+      <div class="content"><h2>Phase Schedule - {{ phase.Name | capfirst }}</h2></div>
+      <table class="table">
         <thead>
           <tr>
             <td colspan="2"></td>
             {% for field in fields %}
-            <th colspan="{{ positions | length }}">{{ field.Name }}</th>
+              <th colspan="{{ positions | length }}">{{ field.Name }}</th>
             {% endfor %}
           </tr>
           <tr>
             <th>R</th>
             <th>M</th>
             {% for field in fields %}
-            {% for position in positions %}
-            <th>{{ position.Name | capfirst }}</th>
-            {% endfor %}
+              {% for position in positions %}
+                <th>{{ position.Name | capfirst }}</th>
+              {% endfor %}
             {% endfor %}
           </tr>
         </thead>
         <tbody>
           {% for row in schedule %}
-          <tr>
-            <td>{{ row.Round }}</td>
-            <td>{{ row.Match }}</td>
-            {% for field in fields %}
-            {% for position in positions %}
-            {% if row.Placements[field.ID + "-" + position.ID] %}
-            {% with team=row.Placements[field.ID + "-" + position.ID] %}
-            <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ team.Name }}</td>
-            {% endwith %}
-            {% else %}
-            <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
-            {% endif %}
-            {% endfor %}
-            {% endfor %}
-          </tr>
+            <tr>
+              <td>{{ row.Round }}</td>
+              <td>{{ row.Match }}</td>
+              {% for field in fields %}
+                {% for position in positions %}
+                  {% if row.Placements[field.ID + "-" + position.ID] %}
+                    {% with team=row.Placements[field.ID + "-" + position.ID] %}
+                      <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ team.Name }}</td>
+                    {% endwith %}
+                  {% else %}
+                    <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
+                  {% endif %}
+                {% endfor %}
+              {% endfor %}
+            </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
-</div>
 {% endblock %}

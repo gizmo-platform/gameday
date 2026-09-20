@@ -3,7 +3,7 @@
 {% block title %}Admin{% endblock %}
 
 {% block content %}
-<div class="foreground box">
+<div class="box">
   <p>Admin Landing</p>
 </div>
 {% endblock %}

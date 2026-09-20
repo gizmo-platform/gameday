@@ -3,14 +3,14 @@
 {% block title %}Users{% endblock %}
 
 {% block content %}
-<div class="foreground box">
-  <div class="flex-container flex-row flex-center">
-    <a class="button" href="./create">Create User</a>
+<div class="box">
+  <div class="is-flex is-justify-content-center">
+    <a class="button is-primary" href="./create">Create User</a>
   </div>
   <hr />
-  <div class="flex-container flex-row flex-center">
-    <div class="flex-item">
-      <table>
+  <div class="is-flex is-justify-content-center">
+    <div>
+      <table class="table">
         <thead>
           <tr>
             <th>ID</th>
@@ -24,9 +24,9 @@
             <td>{{ user.ID }}</td>
             <td>{{ user.Login }}</td>
             <td class="flex-container flex-row">
-              <a class="flex-item button" href="/admin/user/{{ user.ID }}/reset-password">Reset Password</a>
-              <a class="flex-item button" href="/admin/profile/{{ user.Profile.ID }}/permissions">Permissions</a>
-              <a class="flex-item button" href="/admin/user/{{ user.ID }}/delete">Delete User</a>
+              <a class="button" href="/admin/user/{{ user.ID }}/reset-password">Reset Password</a>
+              <a class="button" href="/admin/profile/{{ user.Profile.ID }}/permissions">Permissions</a>
+              <a class="button is-danger" href="/admin/user/{{ user.ID }}/delete">Delete User</a>
             </td>
           </tr>
           {% endfor %}

@@ -3,50 +3,53 @@
 {% block title %}Team Edit{% endblock %}
 
 {% block content %}
-<div class="foreground box flex-container flex-center">
-  <form method="POST">
-    <table class="flex-item">
-      <tr>
-        <th>Field</th>
-        <th>Value</th>
-      </tr>
+  <div class="box is-flex is-justify-content-center">
+    <form method="POST">
+      <div class="field">
+        <label class="label" for="team_number">Team Number</label>
+        <div class="control">
+          <input class="input" type="number" name="team_number" value="{{ team.Number }}" />
+        </div>
+      </div>
 
-      <tr>
-        <td><label for="team_number">Team Number</label></td>
-        <td><input type="number" name="team_number" value="{{ team.Number }}" /></td>
-      </tr>
+      <div class="field">
+        <label class="label" for="team_name">Team Name</label>
+        <div class="control">
+          <input class="input" type="text" name="team_name" value="{{ team.Name }}" />
+        </div>
+      </div>
 
-      <tr>
-        <td><label for="team_name">Team Name</label></td>
-        <td><input type="text" name="team_name" value="{{ team.Name }}" /></td>
-      </tr>
+      <div class="field">
+        <label class="label" for="team_division">Team Division</label>
+        <div class="control is-expanded">
+          <div class="select is-fullwidth">
+            <select name="team_division">
+              {% for division in divisions %}
+                <option value="{{ division.ID }}" {% if division.ID == team.DivisionID %}selected{% endif %}>{{ division.Name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
 
-      <tr>
-        <td><label for="team_division">Team Division</label></td>
-        <td>
-          <select name="team_division">
-            {% for division in divisions %}
-            <option value="{{ division.ID }}" {% if division.ID == team.DivisionID %}selected{% endif %}>{{ division.Name }}</option>
-            {% endfor %}
-          </select>
-        </td>
-      </tr>
-
-      <tr>
-        <td><label for="team_region">Team Region</label></td>
-        <td>
-          <select name="team_region">
-            {% for region in regions %}
-            <option value="{{ region }}" {% if region == team.Region %}selected{% endif %}>{{ region }}</option>
-            {% endfor %}
-          </select>
-        </td>
-      </tr>
-
-      <tr>
-        <td colspan="2"><center><input type="submit" value="Save" /></center></td>
-      </tr>
-    </table>
-  </form>
-</div>
+      <div class="field">
+        <label class="label" for="team_region">Team Region</label>
+        <div class="control is-expanded">
+          <div class="select is-fullwidth">
+            <select name="team_region">
+              {% for region in regions %}
+                <option value="{{ region }}" {% if region == team.Region %}selected{% endif %}>{{ region }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div class="field">
+        <div class="control">
+          <button type="submit" class="button is-primary is-fullwidth">Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
 {% endblock %}

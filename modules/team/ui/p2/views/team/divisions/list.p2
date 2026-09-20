@@ -3,40 +3,41 @@
 {% block title %}Divisions{% endblock %}
 
 {% block content %}
-<div class="foreground box">
-  <p>Below is a list of all divisions.</p>
-  <br />
-  <hr />
-  {% if profile | hasPermission:"TEAM:ADMIN" %}
-  <div class="flex-container flex-center">
-    <a class="flex-item button" href="{{ pageBase }}/add">Add Division</a>
-  </div>
-  <hr />
-  {% endif %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+    <p>Below is a list of all divisions.</p>
+    <br />
+    <hr />
+    {% if profile | hasPermission:"TEAM:ADMIN" %}
+      <div class="is-flex is-justify-content-center">
+        <a class="button is-primary" href="{{ pageBase }}/add">Add Division</a>
+      </div>
+      <hr />
+    {% endif %}
 
-  <div class="flex-container flex-center">
-    <table class="flex-item flex-max">
-      <tr>
-        <th>ID</th>
-        <th>Name</th>
-        {% if profile | hasPermission:"TEAM:ADMIN" %}
-        <th>Actions</th>
-        {% endif %}
-      </tr>
-      {% for division in divisions %}
-      <tr>
-        <td>{{ division.ID }}</td>
-        <td>{{ division.Name }}{% if division.Static %} <span class="badge">Static</span>{% endif %}</td>
-        {% if profile | hasPermission:"TEAM:ADMIN" %}
-        <td class="flex-container">
-          {% if not division.Static %}
-          <a class="flex-item button" href="{{ pageBase }}/{{ division.ID }}/delete">Delete</a>
+      <table class="table">
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          {% if profile | hasPermission:"TEAM:ADMIN" %}
+            <th>Actions</th>
           {% endif %}
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </table>
+        </tr>
+        {% for division in divisions %}
+          <tr>
+            <td>{{ division.ID }}</td>
+            <td>{{ division.Name }}{% if division.Static %} <span class="tag">Static</span>{% endif %}</td>
+            {% if profile | hasPermission:"TEAM:ADMIN" %}
+              <td>
+                {% if not division.Static %}
+                  <a class="button" href="{{ pageBase }}/{{ division.ID }}/delete">Delete</a>
+                {% endif %}
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+    </div>
   </div>
-</div>
 {% endblock %}

@@ -3,23 +3,20 @@
 {% block title %}Division Edit{% endblock %}
 
 {% block content %}
-<div class="foreground box flex-container flex-center">
-  <form method="POST">
-    <table class="flex-item">
-      <tr>
-        <th>Field</th>
-        <th>Value</th>
-      </tr>
+  <div class="box">
+    <form method="POST">
+      <div class="field">
+        <label for="division_name">Division Name</label>
+        <div class="control">
+          <input class="input" type="text" name="division_name" value="{{ division.Name }}" />
+        </div>
+      </div>
 
-      <tr>
-        <td><label for="division_name">Division Name</label></td>
-        <td><input type="text" name="division_name" value="{{ division.Name }}" /></td>
-      </tr>
-
-      <tr>
-        <td colspan="2"><center><input type="submit" value="Save" /></center></td>
-      </tr>
-    </table>
-  </form>
-</div>
+      <div class="field">
+        <div class="control">
+          <button type="submit" class="button is-primary is-fullwidth">Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
 {% endblock %}

@@ -1,4 +1,4 @@
-<div class="flex-container flex-row flex-justify">
+<div class="is-flex is-justify-content-space-between">
   {% for value in state.Values %}
   <div>
     <label for="{{ field_id }}_{{ value.VID }}">

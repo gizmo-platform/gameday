@@ -3,76 +3,94 @@
 {% block title %}Game Configuration{% endblock %}
 
 {% block content %}
-<div class="foreground box">
-{% if config.Field.Positions|length == 0 %}
-<p>No configuration has been found.  Perhaps you should load one?</p>
-{% else %}
-<h2>Field Configuration</h2>
-<p>Gameday has been configured with {{ config.Field.Positions|length }} field positions:</p>
-<table>
-  <tr>
-    <th>ID</th>
-    <th>Name</th>
-    <th>Color 1</th>
-    <th>Color 2</th>
-  </tr>
-  {% for position in config.Field.Positions %}
-  <tr>
-    <td>{{ position.ID }}</td>
-    <td>{{ position.Name|capfirst }}</td>
-    <td><span style="background-color: #{{ position.Color1 }}">{{ position.Color1 }}</span></td>
-    <td><span style="background-color: #{{ position.Color2 }}">{{ position.Color2 }}</span></td>
-  </tr>
-  {% endfor %}
-</table>
-
-<h2>Phase Configuration</h2>
-<table>
-  <tr>
-    <th>ID</th>
-    <th>Name</th>
-    <th>Division Aware</th>
-    <th>Schedule Type</th>
-    <th>Score Summation</th>
-  </tr>
-  {% for phase in config.Game.Phases %}
-  <tr>
-    <td>{{ phase.ID }}</td>
-    <td>{{ phase.Name }}</td>
-    <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
-    <td>{{ phase.ScheduleType }}</td>
-    <td>{{ phase.ScoreSummation }}</td>
-  </tr>
-  {% endfor %}
-</table>
-
-<h2>Element Configuration</h2>
-<ol>
-  {% for element in config.Game.Elements %}
-  <li>
-    Name: {{ element.Name }}
-    <br />
-    {% if element.Desc %}
-    Description: {{ element.Desc }}
-    <br />
-    {% endif %}
-    Type: {{ element.Type }}
-    <br />
-    States:
-    <ul>
-    {% for state in element.States %}
-    <li>
-      Name: {{ state.Name }}
-      <br />
-      {% if state.Des %}
-      Description: {{ state.Desc }}
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-title">Field Configuration</div>
+    </div>
+    <div class="card-content">
+      {% if config.Field.Positions|length == 0 %}
+        <p>No configuration has been found.  Perhaps you should load one?</p>
+      {% else %}
+        <p>Gameday has been configured with {{ config.Field.Positions|length }} field positions:</p>
+        <table class="table">
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Color 1</th>
+            <th>Color 2</th>
+          </tr>
+          {% for position in config.Field.Positions %}
+            <tr>
+              <td>{{ position.ID }}</td>
+              <td>{{ position.Name|capfirst }}</td>
+              <td><span style="background-color: #{{ position.Color1 }}">{{ position.Color1 }}</span></td>
+              <td><span style="background-color: #{{ position.Color2 }}">{{ position.Color2 }}</span></td>
+            </tr>
+          {% endfor %}
+        </table>
       {% endif %}
-    </li>
-    {% endfor %}
-    </ul>
-  </li>
-  {% endfor %}
-</ol>
-{% endif %}
-</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-title">Phase Configuration</div>
+    </div>
+    <div class="card-content">
+      <table class="table">
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Division Aware</th>
+          <th>Schedule Type</th>
+          <th>Score Summation</th>
+        </tr>
+        {% for phase in config.Game.Phases %}
+          <tr>
+            <td>{{ phase.ID }}</td>
+            <td>{{ phase.Name }}</td>
+            <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
+            <td>{{ phase.ScheduleType }}</td>
+            <td>{{ phase.ScoreSummation }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-title">Element Configuration</div>
+    </div>
+    <div class="card-content">
+      <div class="content">
+      <ol>
+        {% for element in config.Game.Elements %}
+          <li>
+            Name: {{ element.Name }}
+            {% if element.Desc %}
+              <br />
+              Description: {{ element.Desc }}
+            {% endif %}
+            <br />
+            Type: {{ element.Type }}
+            <br />
+            States:
+            <ul>
+              {% for state in element.States %}
+                <li>
+                  Name: {{ state.Name }}
+                  {% if state.Des %}
+                    Description: {{ state.Desc }}
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </li>
+          <br />
+        {% endfor %}
+      </ol>
+      </div>
+    </div>
+  </div>
 {% endblock %}

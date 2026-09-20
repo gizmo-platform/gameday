@@ -1,26 +1,28 @@
-<div id="nav" class="foreground flex-container flex-row noprint">
-  <div class="flex-item">
-    <span id="logomark">Gameday</span>
+<div class="navbar noprint" role="navigation">
+  <div class="navbar-brand">
+    <div class="navbar-item">
+      <span id="logomark">Gameday</span>
+    </div>
   </div>
-  <div class="flex-item flex-max">
-    <nav>
-      {% for element in navElements %}
-      <div class="nav-container">
-        <div class="nav-header">{{ element.Text }}</div>
-        <div class="nav-dropdown">
-          {% for child in element.Children %}
-          <a class="nav-item" href="{{ child.Target }}">{{ child.Text }}</a>
-          {% endfor %}
-        </div>
+  <div class="navbar-start">
+    {% for element in navElements %}
+    <div class="navbar-item has-dropdown is-hoverable">
+      <div class="navbar-item">{{ element.Text }}</div>
+      <div class="navbar-dropdown">
+        {% for child in element.Children %}
+        <a class="navbar-item" href="{{ child.Target }}">{{ child.Text }}</a>
+        {% endfor %}
       </div>
-      {% endfor %}
-    </nav>
+    </div>
+    {% endfor %}
   </div>
-  <div class="flex-item">
-    {% if user.Identity %}
-    <a href="/logout" style="text-decoration: none; color: black;">Logout ({{ user.Identity }})</a>
-    {% else %}
-    <a href="/login">Login</a>
-    {% endif %}
+  <div class="navbar-end buttons">
+    <div class="navbar-item">
+      {% if user.Identity %}
+      <a href="/logout" class="button">Logout ({{ user.Identity }})</a>
+      {% else %}
+      <a href="/login" class="button">Login</a>
+      {% endif %}
+    </div>
   </div>
 </div>

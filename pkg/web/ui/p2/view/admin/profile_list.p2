@@ -3,19 +3,17 @@
 {% block title %}Profiles{% endblock %}
 
 {% block content %}
-<div class="foreground box">
-  <div class="flex-container flex-row flex-center">
-    <div class="flex-item">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Identity</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for profile in profiles %}
+  <div class="box is-flex is-justify-content-center">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Identity</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for profile in profiles %}
           <tr>
             <td>{{ profile.ID }}</td>
             <td>{{ profile.Username }}</td>
@@ -23,10 +21,8 @@
               <a class="flex-item button" href="/admin/profile/{{ profile.ID }}/permissions">Permissions</a>
             </td>
           </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-</div>
 {% endblock %}

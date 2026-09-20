@@ -4,31 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Login | Gizmo Gameday{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css">
     <link href="/static/css/theme.css" rel="stylesheet">
     {% block head %}
     {% endblock %}
   </head>
-  <body class="background">
-    <div class="grid-center">
-      <div class="foreground box">
-        <form method="POST">
-          <table>
-            <tr>
-              <td><label for="username">Username:</label></td>
-              <td><input type="text" name="username" /></td>
-            </tr>
+  <body>
+    <section class="hero is-fullheight">
+      <div class="hero-body">
+        <div class="container">
+          <div class="columns is-centered is-vcentered">
+            <div class="column is-5">
+              <div class="box has-text-centered">
+                <form method="POST">
+                  <div class="field">
+                    <label class="label" for="username">Username:</label>
+                    <div class="control is-large">
+                      <input class="input is-large" type="text" name="username" />
+                    </div>
+                  </div>
 
-            <tr>
-              <td><label for="password">Password:</label></td>
-              <td><input type="password" name="password" /></td>
-            </tr>
+                  <div class="field">
+                    <label class="label" for="password">Password:</label>
+                    <div class="control is-large">
+                      <input class="input is-large" type="password" name="password" />
+                    </div>
+                  </div>
 
-            <tr>
-              <td colspan="2" class="center"><input type="submit" value="Authenticate" /></td>
-            </tr>
-          </table>
-        </form>
-      </div>
-    </div>
+                  <div class="field">
+                    <div class="control">
+                      <button class="button is-primary is-fullwidth" type="submit">Authenticate</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+    </section>
   </body>
 </html>
