@@ -426,6 +426,7 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 
 	return []web.NavElement{{
 		Text: "Game",
+		Weight: 79,
 		Children: []web.NavChild{{
 			Text:   "Configuration",
 			Target: prefix,
