@@ -1,0 +1,60 @@
+{% extends "../../base.p2" %}
+
+{% block title %}BEST Bulk Import{% endblock %}
+
+{% block head %}
+    <link href="/static/css/scores.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <p>Import BEST scores in bulk from a CSV file.  The file must have a header row: the first column must be named <code>Team</code>, followed by one column per score type.</p>
+      <br />
+      <ul>
+        <li><code>Team</code> may contain either the team number or the team name.</li>
+        <li>Score columns are matched by their score type name{% for st in score_types %}{{ st.Name }}{% if not forloop.last %}, {% endif %}{% endfor %}.  Any score type not present as a column is left untouched.</li>
+        <li>Each value must be a number between 0 and the type's maximum{% for st in score_types %} ({{ st.Name }}: 0&ndash;{{ st.Max }}){% endfor %}.</li>
+        <li>Importing updates (or creates) the scores it contains.  Scores and teams not in the file are left untouched.</li>
+        <li>Rows with an unknown team or an invalid value are skipped and reported below; valid cells in the same file are still imported.</li>
+      </ul>
+      <br />
+      <hr />
+
+      <p>Example file:</p>
+      <pre><code>{{ example_header }}
+{{ example_row }}</code></pre>
+
+      {% if row_errors %}
+      <div class="notification is-danger">
+        <p class="is-size-6 has-text-weight-bold">Some rows could not be imported:</p>
+        <ul>
+          {% for e in row_errors %}
+          <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if imported %}
+      <div class="notification is-success">
+        <p>Imported {{ imported }} score{% if imported != "1" %}s{% endif %}.</p>
+      </div>
+      {% endif %}
+
+      <form method="POST" enctype="multipart/form-data">
+        <div class="field">
+          <label class="label" for="scores_file">Scores CSV</label>
+          <div class="control">
+            <input class="input" type="file" id="scores_file" name="scores_file" />
+          </div>
+        </div>
+        <div class="field">
+          <div class="control">
+            <button type="submit" class="button is-primary is-fullwidth">Load Scores</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

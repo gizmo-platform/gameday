@@ -8,12 +8,10 @@ import (
 	"net/http"
 	"path"
 	"strconv"
-	"time"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/gizmo-platform/gameday/modules/team"
 )
@@ -148,16 +146,7 @@ func (m *Module) uiViewScoreSet(w http.ResponseWriter, r *http.Request) {
 			m.internalError(w, r, fmt.Errorf("score %s for team %d must be between 0 and %g", st.Name, teamID, st.Max))
 			return
 		}
-		teamScore := TeamScoreValue{
-			TeamID:      teamID,
-			ScoreTypeID: st.ID,
-			Value:       float32(f),
-			SetAt:       time.Now(),
-		}
-		if err := gorm.G[TeamScoreValue](m.db.DB, clause.OnConflict{
-			Columns:   []clause.Column{{Name: "team_id"}, {Name: "score_type_id"}},
-			UpdateAll: true,
-		}).Create(ctx, &teamScore); err != nil {
+		if err := upsertTeamScore(ctx, m, teamID, st.ID, float32(f)); err != nil {
 			m.internalError(w, r, err)
 			return
 		}

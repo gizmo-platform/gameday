@@ -1,8 +1,11 @@
 package best
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -344,5 +347,221 @@ func TestDebugGenerateScores(t *testing.T) {
 	}
 	if got := countValues(t, d); got != int64(len(types)) {
 		t.Fatalf("after re-generation expected %d rows, got %d", len(types), got)
+	}
+}
+
+func postImport(t *testing.T, m *Module, csv string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, err := mw.CreateFormFile("scores_file", "scores.csv")
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := part.Write([]byte(csv)); err != nil {
+		t.Fatalf("write part: %v", err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "http://test.ui/ui/mod/best/scores/import", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	w := httptest.NewRecorder()
+	m.uiViewImportScoresSubmit(w, req)
+	return w
+}
+
+func valueForType(t *testing.T, d *db.DB, teamID, typeID uint) (float32, bool) {
+	t.Helper()
+
+	v, err := gorm.G[TeamScoreValue](d.DB).
+		Where(&TeamScoreValue{TeamID: teamID, ScoreTypeID: typeID}).
+		First(context.Background())
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false
+	}
+	if err != nil {
+		t.Fatalf("lookup value: %v", err)
+	}
+	return v.Value, true
+}
+
+func TestImportScoresRender(t *testing.T) {
+	m, _ := newTestModule(t)
+
+	req := httptest.NewRequest("GET", "http://test.ui/ui/mod/best/scores/import", nil)
+	w := httptest.NewRecorder()
+	m.uiViewImportScores(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	for _, want := range []string{
+		"<code>Team</code>",
+		"name=\"scores_file\"",
+		"enctype=\"multipart/form-data\"",
+		"Team,Notebook,Marketing,Poster,Video",
+		"42,75.00,62.50,25.00,25.00",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rendered import page missing %q", want)
+		}
+	}
+}
+
+func TestImportScores(t *testing.T) {
+	m, d := newTestModule(t)
+
+	tm := teamByNumber(t, d)
+	second := team.Team{Name: "Second Team", Number: 7, Region: "NW"}
+	if err := d.Create(&second).Error; err != nil {
+		t.Fatalf("create second team: %v", err)
+	}
+
+	nb := scoreTypeForKey(t, d, "notebook")
+	mkt := scoreTypeForKey(t, d, "marketing")
+	poster := scoreTypeForKey(t, d, "poster")
+
+	// Pre-existing score that the import must not touch
+	if err := d.Create(&TeamScoreValue{TeamID: tm.ID, ScoreTypeID: poster.ID, Value: 99}).Error; err != nil {
+		t.Fatalf("seed value: %v", err)
+	}
+
+	csv := "Team,Notebook,Marketing\n7,100,\nTest Team,200,50\n"
+	w := postImport(t, m, csv)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
+	}
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, "?imported=3") {
+		t.Errorf("redirect Location missing ?imported=3: %q", loc)
+	}
+
+	// 7/Notebook = 100
+	if v, ok := valueForType(t, d, second.ID, nb.ID); !ok || v != 100 {
+		t.Errorf("expected 100 for team 7 notebook, got %v (present=%v)", v, ok)
+	}
+	// 7/Marketing empty cell must be left unset
+	if _, ok := valueForType(t, d, second.ID, mkt.ID); ok {
+		t.Errorf("expected no marketing value for team 7, but one exists")
+	}
+	// 42/Notebook = 200, 42/Marketing = 50
+	if v, ok := valueForType(t, d, tm.ID, nb.ID); !ok || v != 200 {
+		t.Errorf("expected 200 for test team notebook, got %v (present=%v)", v, ok)
+	}
+	if v, ok := valueForType(t, d, tm.ID, mkt.ID); !ok || v != 50 {
+		t.Errorf("expected 50 for test team marketing, got %v (present=%v)", v, ok)
+	}
+	// Team 42 Poster column absent: pre-existing value must be untouched
+	if v, ok := valueForType(t, d, tm.ID, poster.ID); !ok || v != 99 {
+		t.Errorf("expected pre-existing 99 for test team poster to be untouched, got %v (present=%v)", v, ok)
+	}
+}
+
+func TestImportScoresOverwrite(t *testing.T) {
+	m, d := newTestModule(t)
+
+	tm := teamByNumber(t, d)
+	nb := scoreTypeForKey(t, d, "notebook")
+	if err := d.Create(&TeamScoreValue{TeamID: tm.ID, ScoreTypeID: nb.ID, Value: 10}).Error; err != nil {
+		t.Fatalf("seed value: %v", err)
+	}
+
+	w := postImport(t, m, "Team,Notebook\n42,250\n")
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := countValues(t, d); got != 1 {
+		t.Fatalf("expected still 1 value row after overwrite, got %d", got)
+	}
+	if v, ok := valueForType(t, d, tm.ID, nb.ID); !ok || v != 250 {
+		t.Errorf("expected 250 after overwrite, got %v (present=%v)", v, ok)
+	}
+}
+
+func TestImportScoresNameMatch(t *testing.T) {
+	m, d := newTestModule(t)
+
+	tm := teamByNumber(t, d)
+	mkt := scoreTypeForKey(t, d, "marketing")
+
+	w := postImport(t, m, "Team,Marketing\nTest Team,123\n")
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
+	}
+	if v, ok := valueForType(t, d, tm.ID, mkt.ID); !ok || v != 123 {
+		t.Errorf("expected 123 by name match, got %v (present=%v)", v, ok)
+	}
+}
+
+func TestImportScoresInvalidRows(t *testing.T) {
+	m, d := newTestModule(t)
+
+	tm := teamByNumber(t, d)
+	nb := scoreTypeForKey(t, d, "notebook")
+	mkt := scoreTypeForKey(t, d, "marketing")
+
+	csv := "Team,Notebook,Marketing\n42,99999,40\nTest Team,300,1000\n"
+	w := postImport(t, m, csv)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 error report, got %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	for _, want := range []string{
+		"99999",
+		"out of range",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("error report missing %q", want)
+		}
+	}
+
+	// Row 2 (42): notebook rejected, marketing applied
+	if v, ok := valueForType(t, d, tm.ID, mkt.ID); !ok || v != 40 {
+		t.Errorf("expected 40 marketing from row 2, got %v (present=%v)", v, ok)
+	}
+	// Row 3 (Test Team): notebook 300 (at max) applied, marketing 1000 rejected.
+	// Notebook being 300 (not 99999) confirms the row-2 out-of-range value was
+	// skipped, and the row count confirms the row-3 marketing was skipped too.
+	if v, ok := valueForType(t, d, tm.ID, nb.ID); !ok || v != 300 {
+		t.Errorf("expected 300 notebook from row 3, got %v (present=%v)", v, ok)
+	}
+	if got := countValues(t, d); got != 2 {
+		t.Fatalf("expected 2 value rows, got %d", got)
+	}
+}
+
+func TestImportScoresUnknownTeam(t *testing.T) {
+	m, d := newTestModule(t)
+
+	w := postImport(t, m, "Team,Notebook\n999,10\n")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 error report, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "unknown team") {
+		t.Errorf("error report missing unknown team message: %s", w.Body.String())
+	}
+	if got := countValues(t, d); got != 0 {
+		t.Fatalf("expected no rows for unknown team, got %d", got)
+	}
+}
+
+func TestImportScoresMissingTeamColumn(t *testing.T) {
+	m, d := newTestModule(t)
+
+	w := postImport(t, m, "Notebook,Marketing\n42,10,20\n")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 error page, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Internal Error") {
+		t.Errorf("expected internal error page, got: %s", w.Body.String())
+	}
+	if got := countValues(t, d); got != 0 {
+		t.Fatalf("expected no rows persisted, got %d", got)
 	}
 }

@@ -55,6 +55,8 @@ func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 		r.Route("/scores", func(r chi.Router) {
 			r.Get("/", m.ws.GuardRoute(pAdmin, m.uiViewScores))
 			r.Post("/{id}/{field}", m.ws.GuardRoute(pAdmin, m.uiViewScoreSet))
+			r.Get("/import", m.ws.GuardRoute(pAdmin, m.uiViewImportScores))
+			r.Post("/import", m.ws.GuardRoute(pAdmin, m.uiViewImportScoresSubmit))
 		})
 	})
 
@@ -115,6 +117,10 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		Children: []web.NavChild{{
 			Text:       "Scores",
 			Target:     path.Join(prefix, "/scores"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+		}, {
+			Text:       "Bulk Import",
+			Target:     path.Join(prefix, "/scores/import"),
 			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}},
 	}}
