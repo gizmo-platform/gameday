@@ -1,24 +1,27 @@
 package best
 
-import (
-	"github.com/gizmo-platform/gameday/modules/team"
-)
+import "time"
 
-const (
-	MaxScoreNotebook  = 300
-	MaxScoreMarketing = 250
-	MaxScorePoster    = 100
-	MaxScoreVideo     = 100
-)
+type ScoreType struct {
+	ID    uint
+	Key   string `gorm:"uniqueIndex"`
+	Name  string
+	Max   float32
+	Order int
+}
 
-type ExternalScores struct {
-	ID uint
+func (ScoreType) TableName() string {
+	return "best_score_types"
+}
 
-	Team   team.Team
-	TeamID uint
+type TeamScoreValue struct {
+	ID          uint
+	TeamID      uint `gorm:"uniqueIndex:idx_best_team_score,composite"`
+	ScoreTypeID uint `gorm:"uniqueIndex:idx_best_team_score,composite"`
+	Value       float32
+	SetAt       time.Time
+}
 
-	Notebook  float32
-	Marketing float32
-	Poster    float32
-	Video     float32
+func (TeamScoreValue) TableName() string {
+	return "best_score_values"
 }

@@ -2,10 +2,14 @@
 
 {% block title %}BEST Scores{% endblock %}
 
+{% block head %}
+    <link href="/static/css/scores.css" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
   <div class="box is-flex is-justify-content-center">
     <div>
-      <p>Below is a list of the external scores for all teams.</p>
+      <p>Click a score to edit it in place; press Enter to save. Leave the field empty to clear it.</p>
       <br />
       <hr />
 
@@ -15,36 +19,42 @@
           <th>Name</th>
           <th>Division</th>
           <th>Region</th>
-          <th class="has-text-right">Notebook</th>
-          <th class="has-text-right">Marketing</th>
-          <th class="has-text-right">Poster</th>
-          <th class="has-text-right">Video</th>
+          {% for c in score_types %}
+          <th class="has-text-right" title="Max {{ c.Max }}">{{ c.Name }}</th>
+          {% endfor %}
+          <th class="has-text-right">Total</th>
         </tr>
-        {% for score in scores %}
+        {% for row in scores %}
           <tr>
-            <td>{{ score.Team.Number }}</td>
-            <td>{{ score.Team.Name }}</td>
-            <td>{{ score.Team.Division.Name }}</td>
-            <td>{{ score.Team.Region }}</td>
-            {% if score.Score %}
-              <td class="has-text-right">{{ score.Score.Notebook|floatformat:2 }}</td>
-            <td class="has-text-right">{{ score.Score.Marketing|floatformat:2 }}</td>
-            <td class="has-text-right">{{ score.Score.Poster|floatformat:2 }}</td>
-            <td class="has-text-right">{{ score.Score.Video|floatformat:2 }}</td>
-          {% else %}
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-          {% endif %}
+            <td>{{ row.Team.Number }}</td>
+            <td>{{ row.Team.Name }}</td>
+            <td>{{ row.Team.Division.Name }}</td>
+            <td>{{ row.Team.Region }}</td>
+            {% for c in row.Cells %}
+            <td class="has-text-right{% if c.Saved %} score-saved{% endif %}">
+              <form method="post" action="{{ c.Action }}" class="score-form">
+                <input
+                  class="input is-small score-input"
+                  type="number"
+                  name="value"
+                  step="0.01"
+                  min="0"
+                  max="{{ c.Max }}"
+                  {% if c.Value %}value="{{ c.ValueFormatted }}"{% endif %}
+                  placeholder="—"
+                  onfocus="this.select()"
+                >
+              </form>
+            </td>
+            {% endfor %}
+            <td class="has-text-right">{% if row.Total %}{{ row.Total|floatformat:2 }}{% else %}—{% endif %}</td>
           </tr>
           {% empty %}
           <tr>
-            <td colspan="8">No scores recorded.</td>
+            <td colspan="9">No teams found.</td>
           </tr>
         {% endfor %}
       </table>
     </div>
   </div>
-</div>
 {% endblock %}

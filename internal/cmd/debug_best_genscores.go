@@ -41,6 +41,11 @@ func debugBestGenscoresCmdRun(c *cobra.Command, args []string) {
 	// initialized.
 	b := best.New(d, nil, nil)
 
+	if err := b.Migrate(); err != nil {
+		slog.Error("Error migrating best module", "error", err)
+		os.Exit(2)
+	}
+
 	if err := b.DebugGenerateScores(); err != nil {
 		slog.Error("Error generating best scores", "error", err)
 		os.Exit(2)

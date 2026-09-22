@@ -23,30 +23,33 @@ func (m *Module) DebugGenerateScores() error {
 		return nil
 	}
 
-	valuators := map[string]func() float32{
-		"Notebook":  func() float32 { return float32(rand.Intn(MaxScoreNotebook + 1)) },
-		"Marketing": func() float32 { return float32(rand.Intn(MaxScoreMarketing + 1)) },
-		"Poster":    func() float32 { return float32(rand.Intn(MaxScorePoster + 1)) },
-		"Video":     func() float32 { return float32(rand.Intn(MaxScoreVideo + 1)) },
+	types, err := gorm.G[ScoreType](m.db.DB).Order("`order` ASC").Find(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(types) == 0 {
+		slog.Warn("No score types found, nothing to do")
+		return nil
 	}
 
 	return m.db.Transaction(func(tx *gorm.DB) error {
-		if _, err := gorm.G[ExternalScores](tx).
+		if _, err := gorm.G[TeamScoreValue](tx).
 			Where("1 = 1").
 			Delete(ctx); err != nil {
 			return err
 		}
 
 		for _, team := range teams {
-			scores := ExternalScores{
-				TeamID:    team.ID,
-				Notebook:  valuators["Notebook"](),
-				Marketing: valuators["Marketing"](),
-				Poster:    valuators["Poster"](),
-				Video:     valuators["Video"](),
-			}
-			if err := gorm.G[ExternalScores](tx).Create(ctx, &scores); err != nil {
-				return err
+			for _, st := range types {
+				value := TeamScoreValue{
+					TeamID:      team.ID,
+					ScoreTypeID: st.ID,
+					Value:       rand.Float32() * st.Max,
+				}
+				if err := gorm.G[TeamScoreValue](tx).Create(ctx, &value); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
