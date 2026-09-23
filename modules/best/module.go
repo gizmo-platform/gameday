@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/modules"
+	"github.com/gizmo-platform/gameday/modules/game"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
@@ -47,6 +48,9 @@ func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 			}
 		}
 	}
+
+	nb := &NotebookAdvancement{db: db}
+	game.RegisterAdvancementFilter(nb.Name(), nb)
 
 	pAdmin := web.Permission{Module: ModuleName, Grant: PermissionAdmin}
 	m.r.Route("/", func(r chi.Router) {
