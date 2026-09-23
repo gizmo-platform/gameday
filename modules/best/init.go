@@ -16,4 +16,11 @@ func init() {
 			return New(db, server, deps)
 		},
 	})
+
+	// Register the tie-breaker exactly once, dispatching through the
+	// package-level indirection that New() updates with the current
+	// database handle.
+	modules.RegisterTieBreaker(TieBreakerBESTUnified, func(nums []int, mc int) []int {
+		return unifiedTieBreaker(nums, mc)
+	})
 }

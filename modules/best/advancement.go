@@ -20,7 +20,7 @@ const AdvancementFilterBESTNotebook = "BESTNotebook"
 // tieBreakKeys lists the score type keys used to break notebook score
 // ties, in priority order.  The team number is the last-resort tie
 // breaker.
-var tieBreakKeys = []string{"poster", "marketing", "video"}
+var tieBreakKeys = []string{"marketing", "poster", "video"}
 
 // notebookRow is a single team's notebook score, ranked against the
 // other scoped teams.
@@ -34,7 +34,7 @@ type notebookRow struct {
 
 // NotebookAdvancement is an advancement filter owned by the BEST
 // module that ranks teams by their notebook score.  Tied notebook
-// scores are broken by the poster, marketing, and video scores in
+// scores are broken by the marketing, poster, and video scores in
 // that order, with the team number as a last resort.  Teams without a
 // recorded notebook score are rejected.
 type NotebookAdvancement struct {
@@ -45,64 +45,20 @@ func (n *NotebookAdvancement) Name() string { return AdvancementFilterBESTNotebo
 
 // notebookRankings queries the notebook score values for the given
 // team set and returns them sorted by score descending, with ties
-// broken by the poster, marketing, and video scores (in that order,
+// broken by the marketing, poster, and video scores (in that order,
 // higher first), then by team number.  Teams tied on all tie breaker
 // values share a rank.
 func (n *NotebookAdvancement) notebookRankings(ctx context.Context, scope map[uint]team.Team) ([]notebookRow, error) {
-	keys := append([]string{"notebook"}, tieBreakKeys...)
-	types, err := n.scoreTypes(ctx, keys)
+	buffer, err := scoreBuffer(ctx, n.db, scope)
 	if err != nil {
 		return nil, err
-	}
-
-	nbIdx := 0
-	for i, key := range keys {
-		if key == "notebook" {
-			nbIdx = i
-			break
-		}
-	}
-
-	typeIDs := make([]uint, 0, len(types))
-	for _, st := range types {
-		typeIDs = append(typeIDs, st.ID)
-	}
-	values, err := gorm.G[TeamScoreValue](n.db.DB).
-		Where("score_type_id IN ?", typeIDs).
-		Find(ctx)
-	if err != nil {
-		slog.Error("Error selecting notebook score values", "error", err)
-		return nil, err
-	}
-
-	typeIdx := make(map[uint]int, len(types))
-	for i, st := range types {
-		typeIdx[st.ID] = i
-	}
-
-	// Buffer every value keyed by team and score type index so the
-	// notebook row does not need to arrive before the tie breaker
-	// values.
-	buffer := make(map[uint]map[int]float32)
-	for _, value := range values {
-		if _, ok := scope[value.TeamID]; !ok {
-			continue
-		}
-		idx, ok := typeIdx[value.ScoreTypeID]
-		if !ok {
-			continue
-		}
-		if buffer[value.TeamID] == nil {
-			buffer[value.TeamID] = map[int]float32{}
-		}
-		buffer[value.TeamID][idx] = value.Value
 	}
 
 	out := []notebookRow{}
 	for teamID, byType := range buffer {
 		// A team is ranked on its notebook score only.  Teams with
 		// tie breaker values but no notebook score are left out.
-		nb, ok := byType[nbIdx]
+		nb, ok := byType[0]
 		if !ok {
 			continue
 		}
@@ -113,7 +69,7 @@ func (n *NotebookAdvancement) notebookRankings(ctx context.Context, scope map[ui
 			Tie:    make([]float32, len(tieBreakKeys)),
 		}
 		for i := range tieBreakKeys {
-			row.Tie[i] = byType[nbIdx+1+i]
+			row.Tie[i] = byType[1+i]
 		}
 		out = append(out, row)
 	}
@@ -133,13 +89,72 @@ func (n *NotebookAdvancement) notebookRankings(ctx context.Context, scope map[ui
 	return out, nil
 }
 
+// scoreBuffer loads the notebook and tie breaker score values for
+// every team in scope.  The result is keyed by team ID and each
+// team's inner map holds the value for each score type in canonical
+// order: index 0 is the notebook score and the remaining indices
+// follow tieBreakKeys.  Every team appears at most once regardless
+// of the order of the underlying value rows.
+func scoreBuffer(ctx context.Context, d *db.DB, scope map[uint]team.Team) (map[uint]map[int]float32, error) {
+	buffer := make(map[uint]map[int]float32, len(scope))
+	if len(scope) == 0 {
+		return buffer, nil
+	}
+
+	keys := append([]string{"notebook"}, tieBreakKeys...)
+	types, err := scoreTypes(ctx, d, keys)
+	if err != nil {
+		return nil, err
+	}
+
+	typeIDs := make([]uint, 0, len(types))
+	teamIDs := make([]uint, 0, len(scope))
+	for _, st := range types {
+		typeIDs = append(typeIDs, st.ID)
+	}
+	for teamID := range scope {
+		teamIDs = append(teamIDs, teamID)
+	}
+	values, err := gorm.G[TeamScoreValue](d.DB).
+		Where("score_type_id IN ? AND team_id IN ?", typeIDs, teamIDs).
+		Find(ctx)
+	if err != nil {
+		slog.Error("Error selecting BEST score values", "error", err)
+		return nil, err
+	}
+
+	typeIdx := make(map[uint]int, len(types))
+	for i, st := range types {
+		typeIdx[st.ID] = i
+	}
+
+	// Buffer every value keyed by team and score type index so the
+	// notebook row does not need to arrive before the tie breaker
+	// values.
+	for _, value := range values {
+		if _, ok := scope[value.TeamID]; !ok {
+			continue
+		}
+		idx, ok := typeIdx[value.ScoreTypeID]
+		if !ok {
+			continue
+		}
+		if buffer[value.TeamID] == nil {
+			buffer[value.TeamID] = map[int]float32{}
+		}
+		buffer[value.TeamID][idx] = value.Value
+	}
+
+	return buffer, nil
+}
+
 // scoreTypes looks up the score types for the given keys, preserving
 // order.  Missing types are treated as an error because the ranking
 // cannot evaluate without them.
-func (n *NotebookAdvancement) scoreTypes(ctx context.Context, keys []string) ([]ScoreType, error) {
+func scoreTypes(ctx context.Context, d *db.DB, keys []string) ([]ScoreType, error) {
 	types := make([]ScoreType, 0, len(keys))
 	for _, key := range keys {
-		st, err := gorm.G[ScoreType](n.db.DB).Where(&ScoreType{Key: key}).First(ctx)
+		st, err := gorm.G[ScoreType](d.DB).Where(&ScoreType{Key: key}).First(ctx)
 		if err != nil {
 			slog.Error("Error looking up score type", "key", key, "error", err)
 			return nil, err

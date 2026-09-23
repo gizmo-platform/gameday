@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/modules/game"
 	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/db"
@@ -168,23 +169,23 @@ func TestNotebookAdvancementBadExpression(t *testing.T) {
 }
 
 // TestNotebookAdvancementTieBreakers checks the full tie breaking chain:
-// poster, then marketing, then video, then team number.  All teams tie
+// marketing, then poster, then video, then team number.  All teams tie
 // on the notebook score.
 func TestNotebookAdvancementTieBreakers(t *testing.T) {
 	_, d := newTestModule(t)
 	roster := seedBestScores(t, d, map[int]map[string]float32{
-		// Rank 1: highest poster score breaks the notebook tie.
+		// Rank 5: lowest marketing score ranks last.
 		100: {"notebook": 200, "poster": 50, "marketing": 0, "video": 0},
-		// Rank 2: poster tied with 200, higher marketing wins.
+		// Rank 3: tied with 400 on marketing and poster, lower video
+		// ranks after.
 		200: {"notebook": 200, "poster": 50, "marketing": 80, "video": 0},
-		// Rank 3: poster tied with 200, marketing tied with 200,
-		// higher video wins.
-		300: {"notebook": 200, "poster": 50, "marketing": 80, "video": 20},
-		// Rank 4: poster tied with 200, marketing lower than 200,
-		// so it ranks below 200 despite a higher video score.
-		400: {"notebook": 200, "poster": 50, "marketing": 40, "video": 100},
-		// Rank 5: all tie breakers tied with 500, higher number
-		// loses the last-resort tie break.
+		// Rank 1: highest poster among the marketing-80 team.
+		300: {"notebook": 200, "poster": 90, "marketing": 80, "video": 0},
+		// Rank 2: tied with 200 on marketing and poster, higher video
+		// wins.
+		400: {"notebook": 200, "poster": 50, "marketing": 80, "video": 20},
+		// Rank 4: all tie breakers tied with 600, lower number wins
+		// the last-resort tie break.
 		500: {"notebook": 200, "poster": 10, "marketing": 10, "video": 10},
 		600: {"notebook": 200, "poster": 10, "marketing": 10, "video": 10},
 	})
@@ -203,29 +204,29 @@ func TestNotebookAdvancementTieBreakers(t *testing.T) {
 	for _, team := range sctx.Candidates {
 		byNumber[team.Number] = team
 	}
-	if len(byNumber) != 4 {
-		t.Fatalf("expected 4 advancing teams, got %d: %v", len(byNumber), byNumber)
+	if len(byNumber) != 5 {
+		t.Fatalf("expected 5 advancing teams, got %d: %v", len(byNumber), byNumber)
 	}
-	for _, number := range []int{100, 200, 300, 400} {
+	for _, number := range []int{300, 200, 400, 500, 600} {
 		if _, ok := byNumber[number]; !ok {
 			t.Errorf("expected team %d in candidates", number)
 		}
 	}
-	for _, number := range []int{500, 600} {
+	for _, number := range []int{100} {
 		if _, ok := byNumber[number]; ok {
 			t.Errorf("expected team %d to be rejected", number)
 		}
 	}
 
 	// Ranks must follow the full tie breaking chain.  All teams tie on
-	// notebook 200, so the poster, marketing, and video scores (then
+	// notebook 200, so the marketing, poster, and video scores (then
 	// team number) decide the order:
-	//   300 (50,80,20)  rank 1
-	//   200 (50,80,0)   rank 2
-	//   400 (50,40,100) rank 3
-	//   100 (50,0,0)    rank 4
-	//   500 (10,10,10)  rank 5 (tied with 600)
-	//   600 (10,10,10)  rank 5
+	//   300 (80,90,0)    rank 1
+	//   400 (80,50,20)   rank 2
+	//   200 (80,50,0)    rank 3
+	//   500 (10,10,10)   rank 4 (tied with 600)
+	//   600 (10,10,10)   rank 4
+	//   100 (0,50,0)     rank 5
 	ranks := make(map[int]int)
 	for _, det := range sctx.Determinations {
 		if !strings.Contains(det.Reason, "Notebook rank") {
@@ -243,9 +244,65 @@ func TestNotebookAdvancementTieBreakers(t *testing.T) {
 		}
 		ranks[det.Team.Number] = rank
 	}
-	for number, want := range map[int]int{300: 1, 200: 2, 400: 3, 100: 4, 500: 5, 600: 5} {
+	for number, want := range map[int]int{300: 1, 400: 2, 200: 3, 500: 4, 600: 4, 100: 5} {
 		if got := ranks[number]; got != want {
 			t.Errorf("expected team %d at rank %d, got %d", number, want, got)
+		}
+	}
+}
+
+// TestNotebookTieBreaker checks the registered tie-breaker orders tied
+// teams by notebook score first, then marketing, then poster, then
+// video (each higher first), then team number.
+func TestNotebookTieBreaker(t *testing.T) {
+	_, d := newTestModule(t)
+	seedBestScores(t, d, map[int]map[string]float32{
+		// Position 1: strictly highest notebook beats every other
+		// criterion.
+		100: {"notebook": 300, "poster": 50, "marketing": 0, "video": 0},
+		// Position 6: notebook tied with 400, lowest marketing
+		// score ranks last.
+		200: {"notebook": 250, "poster": 80, "marketing": 0, "video": 0},
+		// Position 3: notebook and marketing tied with 400, lower
+		// video ranks after.
+		300: {"notebook": 250, "poster": 80, "marketing": 40, "video": 0},
+		// Position 2: notebook and marketing tied with 300, higher
+		// video wins.
+		400: {"notebook": 250, "poster": 80, "marketing": 40, "video": 20},
+		// Position 4: all tie breakers equal with 600, lower team
+		// number wins the last-resort tie break.
+		500: {"notebook": 250, "poster": 10, "marketing": 10, "video": 10},
+		600: {"notebook": 250, "poster": 10, "marketing": 10, "video": 10},
+	})
+
+	tb, ok := modules.GetTieBreaker(TieBreakerBESTUnified)
+	if !ok {
+		t.Fatalf("tie-breaker %q not registered", TieBreakerBESTUnified)
+	}
+
+	in := []int{400, 600, 100, 300, 500, 200}
+	got := tb(in, 0)
+
+	want := []int{100, 400, 300, 500, 600, 200}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d ordered teams, got %d: %v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("position %d: expected team %d, got %d (full order %v)", i, want[i], got[i], got)
+		}
+	}
+
+	seen := make(map[int]int)
+	for _, number := range got {
+		seen[number]++
+	}
+	if len(seen) != len(in) {
+		t.Errorf("expected %d distinct teams in output, got %d: %v", len(in), len(seen), got)
+	}
+	for _, count := range seen {
+		if count != 1 {
+			t.Errorf("team appears %d times in output", count)
 		}
 	}
 }
