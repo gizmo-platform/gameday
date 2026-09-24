@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 
@@ -117,6 +118,85 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 	}
 
 	return out, nil
+}
+
+// runAdvancementFilters applies every advancement filter configured on
+// a phase for a single division.  For a filter with SelectFrom of 0
+// the scoreboard is left empty so the filter selects from the full
+// roster (the start-of-schedule case); otherwise the scoreboard for
+// the referenced phase is loaded.  The remaining candidates and the
+// accumulated determinations are returned.
+func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, division string, teams []team.Team) (map[uint]struct{}, []AdvancementDeterminationResult, error) {
+	advancing := make(map[uint]struct{})
+	determinations := []AdvancementDeterminationResult{}
+	for _, filter := range phase.AdvancementFilters {
+		sctx := AdvancementFilterContext{
+			Roster:     make(map[uint]team.Team),
+			Candidates: make(map[uint]team.Team),
+		}
+		for _, team := range teams {
+			sctx.Roster[team.ID] = team
+		}
+
+		if filter.SelectFrom == 0 {
+			// Roster-sourced selection: no source phase, so the
+			// scoreboard is intentionally empty and filters scope
+			// from the full roster.
+			sctx.Scoreboard = nil
+		} else {
+			rowData, err := m.scoreboardRankings(ctx, filter.SelectFrom, division)
+			if err != nil {
+				slog.Error("Error retrieving filter scoreboard", "filter", filter)
+				return nil, nil, err
+			}
+			sctx.Scoreboard = rowData
+		}
+
+		f, exists := filters[filter.Filter]
+		if !exists {
+			slog.Error("Tried to load unregistered filter", "filter", filter)
+			return nil, nil, fmt.Errorf("advancement filter %q is not registered", filter.Filter)
+		}
+		if err := f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr); err != nil {
+			slog.Error("Error applying advancement filter", "filter", filter, "error", err)
+			return nil, nil, err
+		}
+
+		for _, t := range sctx.Candidates {
+			advancing[t.ID] = struct{}{}
+		}
+		determinations = append(determinations, sctx.Determinations...)
+	}
+	return advancing, determinations, nil
+}
+
+// phaseSchedulable reports whether the filters configured on a phase
+// can be satisfied right now.  A filter is satisfied when its source
+// phase is complete and frozen; a roster-sourced filter (SelectFrom
+// of 0) is always satisfied.  A phase with no filters is schedulable.
+func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool) (bool, error) {
+	filters, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).
+		Where(&GamePhaseAdvancementFilter{GamePhaseID: phase.ID}).
+		Find(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, filter := range filters {
+		if filter.SelectFrom == 0 {
+			continue
+		}
+		slog.Debug("Evaluating filter satisfaction",
+			"phase", phase.Name,
+			"rule", filter.Rule,
+			"source_id", filter.SelectFrom,
+			"source_complete", phaseComplete[filter.SelectFrom],
+			"source_frozen", phases[filter.SelectFrom-1].Frozen,
+		)
+		if !phaseComplete[filter.SelectFrom] || !phases[filter.SelectFrom-1].Frozen {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func resolveTies(ctx context.Context, dbd *db.DB, rows *[]scoreboardRow, phase *GamePhase) {

@@ -40,7 +40,9 @@ type AdvancementFilter interface {
 // to a filter that is changed during the course of running
 // advancement.  This structure supplies the roster, the scoreboard,
 // and any filter configuration.  The candidates map is blank until a
-// filter adds a team to the list.
+// filter adds a team to the list.  Scoreboard is empty for
+// roster-sourced filters (SelectFrom of 0), which must scope their
+// selection from Roster.
 type AdvancementFilterContext struct {
 	Roster     map[uint]team.Team
 	Candidates map[uint]team.Team

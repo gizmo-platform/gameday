@@ -58,27 +58,12 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 	// the database by a more skilled programmer.
 	canSchedule := make(map[uint]bool)
 	for _, phase := range phases {
-		can := true
-
-		filters, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).
-			Where(&GamePhaseAdvancementFilter{GamePhaseID: phase.ID}).
-			Find(r.Context())
+		can, err := m.phaseSchedulable(r.Context(), phase, phases, phaseComplete)
 		if err != nil {
 			slog.Debug("Could not load advancement filters for phase", "phase", phase.ID, "error", err)
 			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 			return
 		}
-		for _, filter := range filters {
-			slog.Debug("Evaluating filter satisfaction",
-				"phase", phase.Name,
-				"rule", filter.Rule,
-				"source_id", filter.SelectFrom,
-				"source_complete", phaseComplete[filter.SelectFrom],
-				"source_frozen", phases[filter.SelectFrom-1].Frozen,
-			)
-			can = can && phaseComplete[filter.SelectFrom] && phases[filter.SelectFrom-1].Frozen
-		}
-
 		canSchedule[phase.ID] = can
 	}
 
@@ -349,38 +334,16 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 
 		determinations := []AdvancementDeterminationResult{}
 		for _, division := range divisionNames {
-			sctx := AdvancementFilterContext{
-				Roster:     make(map[uint]team.Team),
-				Candidates: make(map[uint]team.Team),
+			adv, dets, err := m.runAdvancementFilters(r.Context(), phase, division, teams)
+			if err != nil {
+				slog.Error("Error running advancement filters", "phase", phase.ID, "division", division, "error", err)
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+				return
 			}
-			for _, team := range teams {
-				sctx.Roster[team.ID] = team
+			for id := range adv {
+				advancingTeams[id] = struct{}{}
 			}
-
-			for _, filter := range phase.AdvancementFilters {
-				rowData, err := m.scoreboardRankings(r.Context(), filter.SelectFrom, division)
-				if err != nil {
-					slog.Error("Error retrieving filter scoreboard", "filter", filter)
-					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-					return
-				}
-				sctx.Scoreboard = rowData
-
-				f, exists := filters[filter.Filter]
-				if !exists {
-					slog.Error("Tried to load unregistered filter", "filter", filter)
-					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-					return
-				}
-				f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr)
-			}
-
-			// After all filters have been applied, the remaining
-			// candidates advance.
-			for _, t := range sctx.Candidates {
-				advancingTeams[t.ID] = struct{}{}
-			}
-			determinations = append(determinations, sctx.Determinations...)
+			determinations = append(determinations, dets...)
 		}
 		ctx["advancingTeams"] = advancingTeams
 		ctx["advancementReasons"] = determinations

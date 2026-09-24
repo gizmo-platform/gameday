@@ -14,7 +14,9 @@ func init() {
 
 // ScoreboardAdvancement is the simplest filter, it is used to
 // manipulate the top N positions of the scoreboard, either including
-// them or excluding them.
+// them or excluding them.  It operates only on the scoreboard: on an
+// empty scoreboard (for example a roster-sourced filter with
+// SelectFrom of 0) it produces zero candidates.
 type ScoreboardAdvancement struct{}
 
 func (s *ScoreboardAdvancement) Name() string { return "ScoreboardRanking" }
@@ -34,6 +36,9 @@ func (s *ScoreboardAdvancement) Apply(sctx *AdvancementFilterContext, rule strin
 	slog.Debug("Obtained slicing constraint", "constraint", out)
 
 	for i := range out.(int) {
+		if i >= len(sctx.Scoreboard) {
+			break
+		}
 		switch mode {
 		case GamePhaseAdvancementFilterModeInclude:
 			sctx.Candidates[sctx.Scoreboard[i].Team.ID] = sctx.Scoreboard[i].Team

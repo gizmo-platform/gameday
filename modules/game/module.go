@@ -209,8 +209,11 @@ type GamePhaseAdvancementFilter struct {
 	Filter      string
 	Rule        string
 	Mode        GamePhaseAdvancementFilterMode
-	SelectFrom  uint
-	SliceExpr   string
+	// SelectFrom is the ID of the phase whose scoreboard feeds this
+	// filter.  A value of 0 means select from the full roster with no
+	// source phase, which is used for the start of the schedule.
+	SelectFrom uint
+	SliceExpr  string
 }
 
 // GameElement represents a single game element that may be
