@@ -1,36 +1,49 @@
 ---
-field:
-  positions:
-    - name: red
-      id: 1
-      color1: ec5e5e
-      color2: f4a2a2
-    - name: blue
-      id: 2
-      color1: 5b7ab6
-      color2: 9fb1d4
-    - name: green
-      id: 3
-      color1: 8de98d
-      color2: bef3be
-    - name: yellow
-      id: 4
-      color1: f5f551
-      color2: fcfcd3
+Field:
+  Positions:
+    - Name: red
+      ID: 1
+      Color1: ec5e5e
+      Color2: f4a2a2
+    - Name: blue
+      ID: 2
+      Color1: 5b7ab6
+      Color2: 9fb1d4
+    - Name: green
+      ID: 3
+      Color1: 8de98d
+      Color2: bef3be
+    - Name: yellow
+      ID: 4
+      Color1: f5f551
+      Color2: fcfcd3
 
-game:
-  phases:
-    - name: seeding
-      id: 1
-      scoresummation: AverageWithMulligan
-      scheduletype: RandomSeeding
-    - name: semifinal
-      id: 2
-      scoresummation: Total
-      divisionaware: true
-      scheduletype: Semifinal
-    - name: finals
-      scoresummation: Total
-      id: 3
-      divisionaware: true
-      scheduletype: Final
+Game:
+  Phases:
+    - Name: seeding
+      ID: 1
+      ScoreSummation: AverageWithMulligan
+      ScheduleType: RandomSeeding
+    - Name: semifinal
+      ID: 2
+      ScoreSummation: Total
+      DivisionAware: true
+      ScheduleType: BESTSemifinal
+      AdvancementFilters:
+        - Rule: PickTop8
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 1
+          SliceExpr: 8
+    - Name: finals
+      ID: 3
+      ScoreSummation: Total
+      DivisionAware: true
+      ScheduleType: BESTFinals
+      TieBreaker: BESTUnifiedTieBreaker
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 2
+          SliceExpr: 4

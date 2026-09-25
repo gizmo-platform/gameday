@@ -1,60 +1,60 @@
 ---
-field:
-  positions:
-    - name: red
-      id: 1
-      color1: ec5e5e
-      color2: f4a2a2
-    - name: blue
-      id: 2
-      color1: 5b7ab6
-      color2: 9fb1d4
-    - name: green
-      id: 3
-      color1: 8de98d
-      color2: bef3be
-    - name: yellow
-      id: 4
-      color1: f5f551
-      color2: fcfcd3
+Field:
+  Positions:
+    - Name: red
+      ID: 1
+      Color1: ec5e5e
+      Color2: f4a2a2
+    - Name: blue
+      ID: 2
+      Color1: 5b7ab6
+      Color2: 9fb1d4
+    - Name: green
+      ID: 3
+      Color1: 8de98d
+      Color2: bef3be
+    - Name: yellow
+      ID: 4
+      Color1: f5f551
+      Color2: fcfcd3
 
-game:
-  phases:
-    - name: seeding
-      id: 1
-      scoresummation: AverageWithMulligan
-      scheduletype: RandomSeeding
-      advancementfilters:
-        - rule: PickAll
-          filter: Roster
-          mode: include
-          selectfrom: 0
-    - name: deathmatch
-      id: 2
-      scoresummation: Total
-      scheduletype: RandomSeeding
-      advancementfilters:
-        - rule: PickTop4
-          filter: ScoreboardRanking
-          mode: include
-          selectfrom: 1
-          sliceexpr: 4
-  elements:
-    - id: 1
-      eid: widgets
-      name: Widgets Fabricated
-      desc: Scores as count completed.
-      type: count
-      states:
-        - id: 1
-          sid: fabricated
-          name: Fabricated
-          desc: Fabrication Completed.
-          each: 10
-          max: 10
-        - id: 2
-          sid: delivered
-          name: Delivered
-          desc: Delivered to the Dock
-          each: 20
-          max: 10
+Game:
+  Phases:
+    - Name: seeding
+      ID: 1
+      ScoreSummation: AverageWithMulligan
+      ScheduleType: RandomSeeding
+      AdvancementFilters:
+        - Rule: PickAll
+          Filter: Roster
+          Mode: include
+          SelectFrom: 0
+    - Name: deathmatch
+      ID: 2
+      ScoreSummation: Total
+      ScheduleType: RandomSeeding
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 1
+          SliceExpr: 4
+  Elements:
+    - ID: 1
+      EID: widgets
+      Name: Widgets Fabricated
+      Desc: Scores as count completed.
+      Type: count
+      States:
+        - ID: 1
+          SID: fabricated
+          Name: Fabricated
+          Desc: Fabrication Completed.
+          Each: 10
+          Max: 10
+        - ID: 2
+          SID: delivered
+          Name: Delivered
+          Desc: Delivered to the Dock
+          Each: 20
+          Max: 10

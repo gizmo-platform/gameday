@@ -1,27 +1,28 @@
 ---
-field:
-  positions:
-    - name: red
-      id: 1
-      color1: ec5e5e
-      color2: f4a2a2
-    - name: blue
-      id: 2
-      color1: 5b7ab6
-      color2: 9fb1d4
+Field:
+  Positions:
+    - Name: red
+      ID: 1
+      Color1: ec5e5e
+      Color2: f4a2a2
+    - Name: blue
+      ID: 2
+      Color1: 5b7ab6
+      Color2: 9fb1d4
 
-game:
-  phases:
-    - name: seeding
-      id: 1
-      scoresummation: AverageWithMulligan
-      scheduletype: RandomSeeding
-    - name: deathmatch
-      id: 2
-      scoresummation: Total
-      scheduletype: FinalBracket
-      advancementfilters:
-        - rule: PickTop4
-          mode: include
-          selectfrom: 1
-          sliceexpr: 4
+Game:
+  Phases:
+    - Name: seeding
+      ID: 1
+      ScoreSummation: AverageWithMulligan
+      ScheduleType: RandomSeeding
+    - Name: deathmatch
+      ID: 2
+      ScoreSummation: Total
+      ScheduleType: RandomSeeding
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 1
+          SliceExpr: 4

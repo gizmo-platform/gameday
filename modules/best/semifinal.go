@@ -7,8 +7,8 @@ import (
 )
 
 func init() {
-	schedgen.RegisterGenerator("Semifinal", NewBESTSemifinal)
-	schedgen.RegisterGeneratorConfig("Semifinal", BESTSemifinalConfig{})
+schedgen.RegisterGenerator("BESTSemifinal", NewBESTSemifinal)
+	schedgen.RegisterGeneratorConfig("BESTSemifinal", BESTSemifinalConfig{})
 }
 
 // Table 1.4.6.3.a — 8-team semifinal field position assignments.
@@ -120,7 +120,7 @@ func (s *BESTSemifinalSchedule) Generate() (*schedgen.Schedule, error) {
 	case 16:
 		table = semiFinal16[:]
 	default:
-		return nil, fmt.Errorf("Semifinal: unsupported team count %d (must be 8 or 16)", s.Config.Teams)
+		return nil, fmt.Errorf("BESTSemifinal: unsupported team count %d (must be 8 or 16)", s.Config.Teams)
 	}
 
 	fields := s.Config.Fields
@@ -128,7 +128,7 @@ func (s *BESTSemifinalSchedule) Generate() (*schedgen.Schedule, error) {
 		fields = 1
 	}
 	if len(table)%fields != 0 {
-		return nil, fmt.Errorf("Semifinal: %d-team rotation has %d matches, not divisible by %d fields (valid field counts: %v)",
+		return nil, fmt.Errorf("BESTSemifinal: %d-team rotation has %d matches, not divisible by %d fields (valid field counts: %v)",
 			s.Config.Teams, len(table), fields, validFieldCounts(table))
 	}
 
@@ -138,7 +138,7 @@ func (s *BESTSemifinalSchedule) Generate() (*schedgen.Schedule, error) {
 		for j := 0; j < fields; j++ {
 			for _, seed := range table[slot+j] {
 				if prev, dup := seen[seed]; dup {
-					return nil, fmt.Errorf("Semifinal: %d-team rotation is not valid on %d fields (matches %d and %d share seed %d)",
+					return nil, fmt.Errorf("BESTSemifinal: %d-team rotation is not valid on %d fields (matches %d and %d share seed %d)",
 						s.Config.Teams, fields, slot+prev+1, slot+j+1, seed)
 				}
 				seen[seed] = j

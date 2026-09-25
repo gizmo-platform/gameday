@@ -1,170 +1,106 @@
 ---
-field:
-  positions:
-    - name: red
-      id: 1
-      color1: ec5e5e
-      color2: f4a2a2
-    - name: blue
-      id: 2
-      color1: 5b7ab6
-      color2: 9fb1d4
-    - name: green
-      id: 3
-      color1: 8de98d
-      color2: bef3be
-    - name: yellow
-      id: 4
-      color1: f5f551
-      color2: fcfcd3
+Field:
+  Positions:
+    - Name: red
+      ID: 1
+      Color1: ec5e5e
+      Color2: f4a2a2
+    - Name: blue
+      ID: 2
+      Color1: 5b7ab6
+      Color2: 9fb1d4
+    - Name: green
+      ID: 3
+      Color1: 8de98d
+      Color2: bef3be
+    - Name: yellow
+      ID: 4
+      Color1: f5f551
+      Color2: fcfcd3
 
-game:
-  phases:
-    - name: seeding
-      id: 1
-      scoresummation: AverageWithMulligan
-      scheduletype: RandomSeeding
-    - name: semifinal
-      id: 2
-      scoresummation: Total
-      divisionaware: true
-      scheduletype: Semifinal
-    - name: finals
-      scoresummation: Total
-      id: 3
-      divisionaware: true
-      scheduletype: Final
+Game:
+  Phases:
+    - Name: seeding
+      ID: 1
+      ScoreSummation: AverageWithMulligan
+      ScheduleType: RandomSeeding
+    - Name: semifinal
+      ID: 2
+      ScoreSummation: Total
+      DivisionAware: true
+      ScheduleType: BESTSemifinal
+      AdvancementFilters:
+        - Rule: PickTop8
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 1
+          SliceExpr: 8
+    - Name: finals
+      ID: 3
+      ScoreSummation: Total
+      DivisionAware: true
+      ScheduleType: BESTFinals
+      TieBreaker: BESTUnifiedTieBreaker
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 2
+          SliceExpr: 4
 
-  elements:
-    - id: 1
-      eid: factoids
-      name: Net True Factoids
-      desc: Scores as net-true.
-      type: count
-      states:
-        - id: 1
-          sid: collected
-          name: Collected
-          desc: Resting on the robot.
-          each: 10
-        - id: 2
-          sid: sorted
-          name: Sorted
-          desc: Inside the True sorting tray.
-          each: 5
-        - id: 3
-          sid: installed
-          name: Installed
-          desc: Inside a Neural Net Node.
-          each: 15
-    - id: 2
-      eid: loc_factoids
-      name: LOC Factoids
-      type: boolean
-      states:
-        - id: 4
-          sid: white
-          name: White LOC Factoid
-          desc: Any legal scoring position.
-          each: 100
-        - id: 5
-          sid: gold
-          name: Golden LOC Factoid
-          desc: Any legal scoring position.
-          each: 100
-    - id: 3
-      eid: net_connections
-      name: Network Connections
-      type: count
-      states:
-        - id: 6
-          sid: 2_node
-          name: 2-Node Connections
-          each: 20
-          max: 4
-        - id: 7
-          sid: 3_node
-          name: 3-Node Connections
-          each: 60
-          max: 2
-    - id: 4
-      eid: net_bonus
-      name: Network Connection Bonus
-      type: count
-      states:
-        - id: 8
-          sid: 2_node
-          name: 2-Node Live Net Connection Bonus
-          each: 30
-          max: 4
-        - id: 9
-          sid: 3_node
-          name: 3-Node Live Net Connection Bonus
-          each: 90
-          max: 2
-    - id: 5
-      eid: tweeter_tower
-      name: Tweeter Tower Activation
-      type: count
-      states:
-        - id: 10
-          sid: activated
-          name: Activated
-          each: 7
-          max: 4
-    - id: 6
-      eid: wsd_gate_latch
-      name: WSD Gate Latch
-      type: radio
-      states:
-        - id: 11
-          sid: released
-          name: Latches Released
-          values:
-            - id: 1
-              vid: none
-              name: None Released
-              points: 0
-              default: true
-            - id: 2
-              vid: one_released
-              name: 1 Released
-              points: 100
-            - id: 3
-              vid: two_released
-              name: 2 Released
-              points: 130
-            - id: 4
-              vid: three_released
-              name: 3 Released
-              points: 140
-            - id: 5
-              vid: four_released
-              name: 4 Released
-              points: 145
-    - id: 7
-      eid: network_configuration
-      name: Network Configuration
-      type: radio
-      states:
-        - id: 12
-          sid: selected
-          name: Selected
-          values:
-            - id: 6
-              vid: none
-              name: None Selected
-              points: 0
-              default: true
-            - id: 7
-              vid: config_a
-              name: Configuration A
-              points: 100
-            - id: 8
-              vid: config_b
-              name: Configuration B
-              points: 125
-            - id: 9
-              vid: config_c
-              name: Configuration C
-              points: 150
+  Elements:
+    - ID: 1
+      EID: factoids
+      Name: Net True Factoids
+      Desc: Scores as count completed.
+      Type: count
+      States:
+        - ID: 1
+          SID: collected
+          Name: Collected
+          Desc: Resting on the robot.
+          Each: 10
+        - ID: 2
+          SID: sorted
+          Name: Sorted
+          Desc: Inside the True sorting tray.
+          Each: 5
+    - ID: 2
+      EID: loc_factoids
+      Name: LOC Factoids
+      Desc: All-or-nothing flags.
+      Type: boolean
+      States:
+        - ID: 3
+          SID: white
+          Name: White LOC Factoid
+          Desc: Any legal scoring position.
+          Each: 100
+        - ID: 4
+          SID: gold
+          Name: Golden LOC Factoid
+          Desc: Any legal scoring position.
+          Each: 100
+    - ID: 3
+      EID: wsd_gate_latch
+      Name: WSD Gate Latch
+      Desc: Exactly one value chosen.
+      Type: radio
+      States:
+        - ID: 5
+          SID: released
+          Name: Latches Released
+          Values:
+            - ID: 1
+              VID: none
+              Name: None Released
+              Points: 0
+              Default: true
+            - ID: 2
+              VID: one_released
+              Name: 1 Released
+              Points: 100
+            - ID: 3
+              VID: two_released
+              Name: 2 Released
+              Points: 130

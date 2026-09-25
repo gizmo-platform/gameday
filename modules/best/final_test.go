@@ -170,7 +170,7 @@ func TestFinalsConfig(t *testing.T) {
 
 func TestFinalsRegistration(t *testing.T) {
 	cfg := schedgen.Config{Fields: 1, Positions: 4, Teams: 4, Rounds: 4}
-	s, err := schedgen.GenerateSchedule("Finals", cfg)
+	s, err := schedgen.GenerateSchedule("BESTFinals", cfg)
 	if err != nil {
 		t.Fatalf("GenerateSchedule returned error: %v", err)
 	}
@@ -178,11 +178,11 @@ func TestFinalsRegistration(t *testing.T) {
 		t.Fatal("GenerateSchedule returned nil schedule")
 	}
 
-	if _, err := schedgen.GenerateSchedule("Finals", schedgen.Config{Fields: 1, Positions: 4, Teams: 8, Rounds: 4}); err == nil {
+	if _, err := schedgen.GenerateSchedule("BESTFinals", schedgen.Config{Fields: 1, Positions: 4, Teams: 8, Rounds: 4}); err == nil {
 		t.Error("expected error for teams=8 via GenerateSchedule")
 	}
 
-	cfgProvider, err := schedgen.GetConfig("Finals")
+	cfgProvider, err := schedgen.GetConfig("BESTFinals")
 	if err != nil {
 		t.Fatalf("GetConfig returned error: %v", err)
 	}

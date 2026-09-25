@@ -5,6 +5,8 @@ competition.  It can maintain your team rosters, handles score sheets,
 and even handle advancement in multi-phase games.  This allows for
 seamless operation with nothing more than a browser.
 
+To author games, see [AUTHORING_GAMES.md](AUTHORING_GAMES.md).
+
 ## Contributing
 
 If you'd like to contribute to Gameday development, please open a

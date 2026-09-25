@@ -155,104 +155,104 @@ var efs embed.FS
 // Field represents a field of play, and has at least one position on
 // which a team can be placed.
 type Config struct {
-	Field ConfigField
-	Game  Game
+	Field ConfigField `yaml:"Field"`
+	Game  Game        `yaml:"Game"`
 }
 
 type ConfigField struct {
-	Positions []FieldPosition
+	Positions []FieldPosition `yaml:"Positions"`
 }
 
 // A FieldPosition has a name and a pair of colors, one of which
 // should be lighter than the other to allow banding in tables.
 type FieldPosition struct {
-	ID     uint
-	Name   string
-	Color1 string
-	Color2 string
+	ID     uint   `yaml:"ID"`
+	Name   string `yaml:"Name"`
+	Color1 string `yaml:"Color1"`
+	Color2 string `yaml:"Color2"`
 }
 
 // Field represents a single field that is available for scheduling.
 type Field struct {
-	ID        uint
-	Name      string
-	Divisions []team.Division `gorm:"many2many:field_divisions;"`
+	ID        uint            `yaml:"ID"`
+	Name      string          `yaml:"Name"`
+	Divisions []team.Division `gorm:"many2many:field_divisions;" yaml:"Divisions"`
 }
 
 // Game defines the components related to a playable game.
 type Game struct {
-	Phases   []GamePhase
-	Elements []GameElement
+	Phases   []GamePhase   `yaml:"Phases"`
+	Elements []GameElement `yaml:"Elements"`
 }
 
 // GamePhase is a single phase of play that is part of a larger
 // schedule.
 type GamePhase struct {
-	ID                 uint
-	Name               string
-	Active             bool
-	Frozen             bool
-	AdvancementFilters []GamePhaseAdvancementFilter
-	DivisionAware      bool
-	ScheduleType       string
-	ScoreSummation     string
-	HideScores         bool
-	TieBreaker         string
+	ID                 uint                       `yaml:"ID"`
+	Name               string                     `yaml:"Name"`
+	Active             bool                       `yaml:"Active"`
+	Frozen             bool                       `yaml:"Frozen"`
+	AdvancementFilters []GamePhaseAdvancementFilter `yaml:"AdvancementFilters"`
+	DivisionAware      bool                       `yaml:"DivisionAware"`
+	ScheduleType       string                     `yaml:"ScheduleType"`
+	ScoreSummation     string                     `yaml:"ScoreSummation"`
+	HideScores         bool                       `yaml:"HideScores"`
+	TieBreaker         string                     `yaml:"TieBreaker"`
 }
 
 // GamePhaseAdvancementFilter captures the expressions that are used
 // to count a number of teams to move phase to phase and the criteria
 // on which to select them.
 type GamePhaseAdvancementFilter struct {
-	ID          uint
-	GamePhaseID uint
-	Filter      string
-	Rule        string
-	Mode        GamePhaseAdvancementFilterMode
+	ID          uint                       `yaml:"ID"`
+	GamePhaseID uint                       `yaml:"GamePhaseID"`
+	Filter      string                     `yaml:"Filter"`
+	Rule        string                     `yaml:"Rule"`
+	Mode        GamePhaseAdvancementFilterMode `yaml:"Mode"`
 	// SelectFrom is the ID of the phase whose scoreboard feeds this
 	// filter.  A value of 0 means select from the full roster with no
 	// source phase, which is used for the start of the schedule.
-	SelectFrom uint
-	SliceExpr  string
+	SelectFrom uint   `yaml:"SelectFrom"`
+	SliceExpr  string `yaml:"SliceExpr"`
 }
 
 // GameElement represents a single game element that may be
 // manipulated.
 type GameElement struct {
-	ID uint
+	ID uint `yaml:"ID"`
 
-	EID    string
-	Name   string
-	Desc   string
-	Type   string
-	States []GameElementState
+	EID    string             `yaml:"EID"`
+	Name   string             `yaml:"Name"`
+	Desc   string             `yaml:"Desc"`
+	Type   string             `yaml:"Type"`
+	States []GameElementState `yaml:"States"`
 }
 
 // GameElementState represents a state that the game element may be
 // in.
 type GameElementState struct {
-	ID            uint
-	GameElementID uint
+	ID            uint   `yaml:"ID"`
+	GameElementID uint   `yaml:"GameElementID"`
 
-	SID  string
-	Name string
-	Desc string
-	Each int
-	Max  int
+	SID  string `yaml:"SID"`
+	Name string `yaml:"Name"`
+	Desc string `yaml:"Desc"`
+	Each int    `yaml:"Each"`
+	Max  int    `yaml:"Max"`
 
-	Values []GameElementStateValue
+	Values []GameElementStateValue `yaml:"Values"`
 }
 
 // GameElementStateValue is a selectable value for game element states
 // that do not use a linear scoring configuration.
 type GameElementStateValue struct {
-	ID                 uint
-	GameElementStateID uint
+	ID                 uint   `yaml:"ID"`
+	GameElementStateID uint   `yaml:"GameElementStateID"`
 
-	Name    string
-	VID     string
-	Points  int
-	Default bool
+	Name    string `yaml:"Name"`
+	VID     string `yaml:"VID"`
+	Points  int    `yaml:"Points"`
+	Default bool   `yaml:"Default"`
 }
 
 // ScorecardElement is a single line from a scorecard that uses the ID

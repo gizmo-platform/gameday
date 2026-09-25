@@ -7,8 +7,8 @@ import (
 )
 
 func init() {
-	schedgen.RegisterGenerator("Finals", NewBESTFinal)
-	schedgen.RegisterGeneratorConfig("Finals", BESTFinalsConfig{})
+	schedgen.RegisterGenerator("BESTFinals", NewBESTFinal)
+	schedgen.RegisterGeneratorConfig("BESTFinals", BESTFinalsConfig{})
 }
 
 // Table 1.4.6.4 — Field position assignments for the finals.
@@ -60,13 +60,13 @@ type BESTFinalsSchedule struct {
 // positions (Yellow, Blue, Red, Green); anything else returns an error.
 func (s *BESTFinalsSchedule) Generate() (*schedgen.Schedule, error) {
 	if s.Config.Teams != 4 {
-		return nil, fmt.Errorf("Finals: unsupported team count %d (must be 4)", s.Config.Teams)
+		return nil, fmt.Errorf("BESTFinals: unsupported team count %d (must be 4)", s.Config.Teams)
 	}
 	if s.Config.Fields != 1 {
-		return nil, fmt.Errorf("Finals: rotation is single-field (got %d fields); all four teams play every match", s.Config.Fields)
+		return nil, fmt.Errorf("BESTFinals: rotation is single-field (got %d fields); all four teams play every match", s.Config.Fields)
 	}
 	if s.Config.Positions < 4 {
-		return nil, fmt.Errorf("Finals: requires 4 positions (got %d)", s.Config.Positions)
+		return nil, fmt.Errorf("BESTFinals: requires 4 positions (got %d)", s.Config.Positions)
 	}
 
 	r := schedgen.Round{TeamAppearances: make(map[int]int)}
