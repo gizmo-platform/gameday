@@ -39,7 +39,7 @@ type BIDSchedule struct {
 
 // Generate produces a BIBD-based schedule with the minimum number
 // of matches needed so every pair of teams plays together once.
-func (b *BIDSchedule) Generate() *Schedule {
+func (b *BIDSchedule) Generate() (*Schedule, error) {
 	k := b.Config.Fields * b.Config.Positions
 	v := b.Config.Teams
 
@@ -57,7 +57,7 @@ func (b *BIDSchedule) Generate() *Schedule {
 		r := fallback.GenerateRound()
 		b.Rounds = []Round{r}
 		b.RoundsDynamic = true
-		return &b.Schedule
+		return &b.Schedule, nil
 	}
 
 	// For λ=1 BIBD:
@@ -216,7 +216,7 @@ func (b *BIDSchedule) Generate() *Schedule {
 
 	b.Rounds = []Round{rnd}
 	b.RoundsDynamic = true
-	return &b.Schedule
+	return &b.Schedule, nil
 }
 
 // allPairs returns every unordered pair {a, b} with a < b.

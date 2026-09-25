@@ -13,7 +13,7 @@ var (
 // Generator is implemented by schedule generators which produce a
 // schedule from inputs.
 type Generator interface {
-	Generate() *Schedule
+	Generate() (*Schedule, error)
 	Score() int
 	Validate() error
 }
@@ -58,7 +58,7 @@ func GenerateSchedule(g string, c Config) (*Schedule, error) {
 		return nil, &UnknownGenerator{msg: "generator does not exist (" + g + ")"}
 	}
 	gen := gf(c)
-	return gen.Generate(), nil
+	return gen.Generate()
 }
 
 // GetConfig returns the configuration implementation for a given

@@ -37,7 +37,7 @@ type RandomSchedule struct {
 
 // Generate generates a candidate schedule.  The schedule is
 // pre-scored on generation.
-func (rs *RandomSchedule) Generate() *Schedule {
+func (rs *RandomSchedule) Generate() (*Schedule, error) {
 	// Pre-generate the zeroth round since all schedules must
 	// contain at least one round.
 	rs.Rounds = []Round{rs.GenerateRound()}
@@ -115,7 +115,7 @@ func (rs *RandomSchedule) Generate() *Schedule {
 		rs.Rounds = append(rs.Rounds, bestRound)
 	}
 
-	return &rs.Schedule
+	return &rs.Schedule, nil
 }
 
 func (s *RandomSchedule) GenerateRound() Round {

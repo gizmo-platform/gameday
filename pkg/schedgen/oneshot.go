@@ -37,7 +37,7 @@ type OneShotSchedule struct {
 
 // Generate generates a candidate schedule.  The schedule is
 // pre-scored on generation.
-func (o *OneShotSchedule) Generate() *Schedule {
+func (o *OneShotSchedule) Generate() (*Schedule, error) {
 	r := Round{}
 	r.TeamAppearances = make(map[int]int)
 
@@ -88,7 +88,7 @@ func (o *OneShotSchedule) Generate() *Schedule {
 
 	o.Rounds = []Round{r}
 
-	return &o.Schedule
+	return &o.Schedule, nil
 }
 
 func (o *OneShotSchedule) MaxRounds() int { return 10 }

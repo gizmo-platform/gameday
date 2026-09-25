@@ -955,3 +955,121 @@ func TestInterleave_NoCompactSameDivisionAllowsMerge(t *testing.T) {
 		t.Errorf("expected 1 match (single division, NoCompact still merges own matches), got %d", len(sched.Rounds[0].Matches))
 	}
 }
+
+// fakeMultiFieldGen is a deterministic test generator that replicates
+// the shape the BEST semifinal produces: a single round of matches,
+// each spanning Config.Fields local fields with Config.Positions
+// positions, where each team appears in exactly Config.Rounds matches
+// and no team is double-booked within a match.
+type fakeMultiFieldGen struct{ Schedule }
+
+func newFakeMultiFieldGen(c Config) Generator {
+	return &fakeMultiFieldGen{Schedule: Schedule{Config: c, ClosestReplay: 99}}
+}
+
+func (s *fakeMultiFieldGen) Generate() (*Schedule, error) {
+	slotsPerMatch := s.Config.Fields * s.Config.Positions
+	if slotsPerMatch <= 0 || s.Config.Teams%slotsPerMatch != 0 {
+		return nil, fmt.Errorf("FakeMultiFieldSemi: unsupported config teams=%d fields=%d positions=%d",
+			s.Config.Teams, s.Config.Fields, s.Config.Positions)
+	}
+	groups := s.Config.Teams / slotsPerMatch
+	matches := groups * s.Config.Rounds
+	r := Round{TeamAppearances: make(map[int]int)}
+	for m := 0; m < matches; m++ {
+		teamBase := (m % groups) * slotsPerMatch
+		placements := make(map[Location]int)
+		for si := 0; si < slotsPerMatch; si++ {
+			team := teamBase + si
+			placements[Location{Field: si / s.Config.Positions, Position: si % s.Config.Positions}] = team
+			if _, done := r.TeamAppearances[team]; !done {
+				r.TeamAppearances[team] = m
+			}
+		}
+		r.Matches = append(r.Matches, Match{Placements: placements})
+	}
+	s.Rounds = []Round{r}
+	return &s.Schedule, nil
+}
+
+func TestInterleave_MixedWidthMultiFieldDivisions(t *testing.T) {
+	RegisterGenerator("FakeMultiFieldSemi", newFakeMultiFieldGen)
+
+	// A 16-team division pinned to 2 fields whose generator emits
+	// multi-field matches spanning both (a deterministic fake
+	// replicating the BEST 16-team semifinal shape), interleaved with
+	// an 8-team division pinned to the remaining single field. Each
+	// division produces 6 matches; the single-field division's
+	// matches should compact into the multi-field division's slots,
+	// yielding 6 concurrent slots in which all 3 fields are active.
+	divisions := []DivisionConfig{
+		{
+			ID:          1,
+			Fields:      []int{0, 1},
+			TeamIndices: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+		},
+		{
+			ID:          2,
+			Fields:      []int{2},
+			TeamIndices: []int{16, 17, 18, 19, 20, 21, 22, 23},
+		},
+	}
+
+	sched, err := GenerateDivisionSchedule("FakeMultiFieldSemi", Config{
+		Fields:    3,
+		Positions: 4,
+		Teams:     24,
+		Rounds:    3,
+	}, divisions)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(sched.Rounds) != 1 {
+		t.Fatalf("expected 1 round, got %d", len(sched.Rounds))
+	}
+
+	// 12 multi-field slots from division 1 and 6 single-field matches
+	// from division 2, all field-disjoint, must compact into 6 slots.
+	round := sched.Rounds[0]
+	if len(round.Matches) != 6 {
+		t.Fatalf("expected 6 compacted matches, got %d", len(round.Matches))
+	}
+
+	for mi, m := range round.Matches {
+		// Each slot carries placements on all 3 global fields.
+		for f := 0; f < 3; f++ {
+			for pos := 0; pos < 4; pos++ {
+				if m.Team(f, pos) == -1 {
+					t.Errorf("match %d: field %d position %d empty, want a team", mi, f, pos)
+				}
+			}
+		}
+		if got := len(m.Placements); got != 12 {
+			t.Errorf("match %d: expected 12 placements (all fields active), got %d", mi, got)
+		}
+	}
+
+	// Every team appears exactly once in the round and in exactly 3
+	// distinct matches (one per round of its rotation).
+	perTeam := make(map[int]map[int]bool)
+	for ri, rd := range sched.Rounds {
+		for mi, m := range rd.Matches {
+			for _, team := range m.Placements {
+				if perTeam[team] == nil {
+					perTeam[team] = make(map[int]bool)
+				}
+				perTeam[team][mi+ri*len(rd.Matches)] = true
+			}
+		}
+	}
+	for team := 0; team < 24; team++ {
+		if got := len(perTeam[team]); got != 3 {
+			t.Errorf("team %d appears in %d matches, want 3", team, got)
+		}
+	}
+
+	if err := sched.Validate(); err != nil {
+		t.Errorf("Validate() failed: %v", err)
+	}
+}

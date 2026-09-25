@@ -15,7 +15,10 @@ func TestBID_Smoke(t *testing.T) {
 	}
 
 	gen := NewBID(cfg)
-	sched := gen.Generate()
+	sched, err := gen.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(sched.Rounds) != 1 {
 		t.Fatalf("expected 1 round, got %d", len(sched.Rounds))
@@ -62,7 +65,10 @@ func TestBID_Larger(t *testing.T) {
 	}
 
 	gen := NewBID(cfg)
-	sched := gen.Generate()
+	sched, err := gen.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(sched.Rounds) == 0 {
 		t.Fatal("expected at least one round")
@@ -95,7 +101,10 @@ func TestBID_TeamsLessThanBlock(t *testing.T) {
 	}
 
 	gen := NewBID(cfg)
-	sched := gen.Generate()
+	sched, err := gen.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(sched.Rounds) == 0 {
 		t.Fatal("expected at least one round")
