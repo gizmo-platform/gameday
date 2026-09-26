@@ -198,6 +198,8 @@ type GamePhase struct {
 	ScoreSummation     string                     `yaml:"ScoreSummation"`
 	HideScores         bool                       `yaml:"HideScores"`
 	TieBreaker         string                     `yaml:"TieBreaker"`
+	When               string                     `yaml:"When"`
+	WhenMsg            string                     `yaml:"WhenMsg"`
 }
 
 // GamePhaseAdvancementFilter captures the expressions that are used
@@ -214,6 +216,11 @@ type GamePhaseAdvancementFilter struct {
 	// source phase, which is used for the start of the schedule.
 	SelectFrom uint   `yaml:"SelectFrom"`
 	SliceExpr  string `yaml:"SliceExpr"`
+	// When is an optional boolean expression gating whether this
+	// filter runs at all.  It is evaluated with the same context as a
+	// phase When expression; an empty value means the filter always
+	// runs, and a false value means the filter selects nothing.
+	When string `yaml:"When"`
 }
 
 // GameElement represents a single game element that may be

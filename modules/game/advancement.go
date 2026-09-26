@@ -124,11 +124,19 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 // a phase for a single division.  For a filter with SelectFrom of 0
 // the scoreboard is left empty so the filter selects from the full
 // roster (the start-of-schedule case); otherwise the scoreboard for
-// the referenced phase is loaded.  The remaining candidates and the
-// accumulated determinations are returned.
-func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, division string, teams []team.Team) (map[uint]struct{}, []AdvancementDeterminationResult, error) {
+// the referenced phase is loaded.  A filter with a When condition is
+// evaluated against the same context as a phase When expression (with
+// the filter's own scoreboard) and is skipped entirely when it
+// evaluates to false.  The remaining candidates and the accumulated
+// determinations are returned.
+func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool, division string, teams []team.Team) (map[uint]struct{}, []AdvancementDeterminationResult, error) {
 	advancing := make(map[uint]struct{})
 	determinations := []AdvancementDeterminationResult{}
+	wctx := WhenContext{
+		Phases:     phaseStates(phases, phaseComplete),
+		Roster:     makeRoster(teams),
+		Division:   division,
+	}
 	for _, filter := range phase.AdvancementFilters {
 		sctx := AdvancementFilterContext{
 			Roster:     make(map[uint]team.Team),
@@ -150,6 +158,17 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, div
 				return nil, nil, err
 			}
 			sctx.Scoreboard = rowData
+		}
+
+		wctx.Scoreboard = sctx.Scoreboard
+		satisfied, err := evalWhen(filter.When, wctx, fmt.Sprintf("When expression on filter %q", filter.Rule))
+		if err != nil {
+			slog.Error("Error evaluating filter When", "filter", filter, "error", err)
+			return nil, nil, err
+		}
+		if !satisfied {
+			slog.Debug("Skipping advancement filter (When not satisfied)", "filter", filter)
+			continue
 		}
 
 		f, exists := filters[filter.Filter]

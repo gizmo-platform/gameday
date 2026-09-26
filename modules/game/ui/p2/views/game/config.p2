@@ -44,6 +44,7 @@
           <th>Division Aware</th>
           <th>Schedule Type</th>
           <th>Score Summation</th>
+          <th>When</th>
         </tr>
         {% for phase in config.Game.Phases %}
           <tr>
@@ -52,6 +53,7 @@
             <td>{{ phase.DivisionAware | yesno | capfirst }}</td>
             <td>{{ phase.ScheduleType }}</td>
             <td>{{ phase.ScoreSummation }}</td>
+            <td>{{ phase.When }}</td>
           </tr>
         {% endfor %}
       </table>

@@ -111,6 +111,8 @@ A phase is one stage of the tournament. Fields:
 | `DivisionAware` | Optional boolean. When `true`, the phase is scheduled per division and interleaved, using the division-to-field pinning from the Fields UI (see §7, division-aware scheduling). |
 | `TieBreaker` | Optional name of a tie breaker to apply when teams are tied on the scoreboard (see §6). |
 | `HideScores` | Optional boolean. When `true`, scores for this phase are hidden from display. |
+| `When` | Optional boolean [expr-lang/expr](https://expr-lang.org/) expression gating when this phase can be scheduled. Empty (omitted) means always schedulable. While the expression is `false`, the phase's Generate Schedule button is hidden (the row stays visible) and schedule actions are rejected server-side. See "Conditional phases" below. |
+| `WhenMsg` | Optional message displayed on the phase row while `When` evaluates to **true** (e.g. "schedule the playoffs now"). Ignored when `When` is empty or false. |
 | `Active` / `Frozen` | Runtime state, set in the UI rather than authored in YAML. At most one phase is `Active`; `Frozen` locks a completed phase so it can be read by advancement filters. |
 
 ### Score summation
@@ -132,6 +134,60 @@ A phase is schedulable when **every phase its advancement filters read from is
 complete and frozen**. A filter with `SelectFrom: 0` (the full roster) imposes
 no such requirement. A phase with no advancement filters inherits the full
 roster and is always schedulable.
+
+### Conditional phases (`When`)
+
+The `When` field adds an operator-authored condition on top of the
+completeness rule above. It is an
+[expr-lang/expr](https://expr-lang.org/) expression that must evaluate to a
+boolean. An empty or omitted `When` is always satisfied.
+
+```yaml
+    - Name: finals
+      ID: 3
+      ScoreSummation: Total
+      ScheduleType: OneShot
+      When: Phases[1].Frozen
+      WhenMsg: schedule the finals now
+```
+
+The expression is evaluated against a context with four top-level variables:
+
+| Variable | Value |
+|----------|-------|
+| `Phases` | The phase list in authored order, **zero-indexed** (`Phases[0]` is the first phase). Each entry exposes `ID`, `Name`, `Active`, `Frozen`, and `Complete` (true when the phase has at least one placement and every placement is in a terminal state: `Complete`, `NoShow`, or `Disqualified`). |
+| `Roster` | The full team roster, a map keyed by team ID. Note the expr interpreter cannot index a map with an integer literal (`Roster[1]` fails) or pass a map to `count()`; use `len(Roster)` for the roster size instead. |
+| `Scoreboard` | The ranked scoreboard rows, in rank order. Sourced from the phase named by this phase's **first advancement filter's `SelectFrom`**; if there is no filter (or it reads the full roster, `SelectFrom: 0`), the **active phase's** scoreboard is used, and if no phase is active the list is empty. Each row exposes `Team` (a team record with `Name`, `Number`, ...), `TeamID`, `Rank`, `Average`, `Mulligan`, `Total`, `Score`, `Max`, `Min`, and `Count`. |
+| `Division` | The name of the division being evaluated; the empty string for the whole field. |
+
+Behavior:
+
+- While `When` is `false`, the phase's **Generate Schedule** button is hidden
+  on the phase list (the phase row itself stays visible) and the
+  select/preview/accept schedule actions are rejected server-side, so the
+  condition cannot be bypassed by posting directly.
+- `WhenMsg`, when present, is shown as help text on the phase row **while the
+  condition is true** — use it as a "do this now" prompt.
+- A **division-aware** phase is evaluated once per configured division name,
+  and is only schedulable when the condition holds for **every** division.
+  For example, `When: Division == "Open"` on a division-aware phase can never
+  hold once more than one division exists, because the condition must pass for
+  all of them.
+- The expression must compile and evaluate to a boolean; a syntax error, a
+  runtime error, or a non-boolean result is treated as an error and reported
+  in the server logs (the phase is not schedulable).
+
+Examples:
+
+```yaml
+When: Phases[0].Frozen                       # once the first phase is frozen
+When: Phases[0].Complete and Phases[1].Complete
+When: len(Roster) == 12                      # only when exactly 12 teams are in
+When: Scoreboard[0].Rank == 1                # the leaderboard has settled
+When: Scoreboard[0].Team.Name == "Team 3"
+When: Division == ""                         # the whole-field evaluation only
+When: true                                   # always (equivalent to omitting)
+```
 
 ---
 
@@ -284,6 +340,7 @@ Game:
 | `Mode` | `include` or `exclude`. `include` keeps the rows the filter selects; `exclude` drops them. |
 | `SelectFrom` | The `ID` of the source phase whose scoreboard feeds this filter. `0` means the full team roster (no source phase). |
 | `SliceExpr` | An expression, evaluated to an **integer**, that sets the cutoff. Must evaluate to an int or the filter fails. |
+| `When` | Optional boolean [expr-lang/expr](https://expr-lang.org/) expression gating whether this filter runs at all. Empty (omitted) means always applied. See "Conditional filters" below. |
 | `Rule` | A **human-readable label only** (e.g. `PickAll`, `PickTop4`). It is echoed into per-team advancement determinations for humans but has **no effect on the logic**. Do not encode behavior in it. |
 
 ### The three valid filters
@@ -335,6 +392,57 @@ with no notebook score is rejected in `include` mode.
 > all rows whose *rank* is ≤ N. They coincide only when there are no ties.
 
 `BESTNotebook` is only available when the **BEST module** is loaded (see §8).
+
+### Conditional filters (`When`)
+
+The `When` field adds an operator-authored condition to a single filter, on
+top of the phase-level condition from §3. It is an
+[expr-lang/expr](https://expr-lang.org/) expression that must evaluate to a
+boolean. An empty or omitted `When` is always satisfied. There is no `WhenMsg`
+on filters; filters either run or they do not.
+
+```yaml
+    - Name: finals
+      ID: 3
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 2
+          SliceExpr: 4
+          When: Phases[1].Frozen
+```
+
+The expression is evaluated against the **same context** as a phase's `When`
+(see §3): `Phases`, `Roster`, `Scoreboard`, and `Division`, with the same
+expr limitations. One difference: a filter's `Scoreboard` is the scoreboard of
+**its own `SelectFrom`** phase (not the phase's first filter), so
+`Scoreboard[0].Rank` refers to the top row of the source this filter reads.
+A `SelectFrom` of `0` sees an empty scoreboard.
+
+Behavior:
+
+- While `When` is `false`, the filter is skipped: it selects **no teams**,
+  contributes nothing to the advancing pool (neither adds nor removes), and
+  produces no advancement determinations. The other filters on the phase run
+  normally, so a phase whose filters are all skipped still resolves to
+  whatever its non-conditional filters produced.
+- The expression must compile and evaluate to a boolean; a syntax error, a
+  runtime error, or a non-boolean result is treated as an error and reported
+  in the server logs, and the team-selection action fails.
+- A filter's `When` does **not** affect whether the phase is schedulable; that
+  is governed only by the phase's own `When`.
+
+Examples:
+
+```yaml
+When: Phases[1].Frozen                       # only once the source phase is frozen
+When: Phases[0].Complete                     # once the source phase is complete
+When: len(Roster) == 12                      # only when exactly 12 teams are in
+When: Scoreboard[0].Rank == 1                # the source scoreboard has settled
+When: Division == "Open"                     # this division's evaluation only
+When: true                                   # always (equivalent to omitting)
+```
 
 ---
 
@@ -510,7 +618,8 @@ Game:
           SelectFrom: 0            # 0 = full roster, no source phase
 
     # Phase 2: semifinals. Top teams from seeding advance. Division-aware, so
-    # it uses the division-to-field pinning from the Fields UI.
+    # it uses the division-to-field pinning from the Fields UI. The filter's
+    # When keeps it from picking anyone until seeding is frozen.
     - Name: semifinal
       ID: 2
       ScoreSummation: Total
@@ -522,15 +631,20 @@ Game:
           Mode: include
           SelectFrom: 1            # read the seeding scoreboard (ID 1)
           SliceExpr: 8             # top 8 rows (index-based)
+          When: Phases[0].Frozen
 
     # Phase 3: finals. Top 4 from the semifinals. Exactly 4 teams, 1 field,
     # >= 4 positions. Ties broken by the BEST unified tie breaker.
+    # The When condition keeps Generate Schedule hidden until the semifinal
+    # phase is frozen; WhenMsg prompts the operator while it holds.
     - Name: finals
       ID: 3
       ScoreSummation: Total
       DivisionAware: true
       ScheduleType: BESTFinals     # the only valid finals name
       TieBreaker: BESTUnifiedTieBreaker
+      When: Phases[1].Frozen
+      WhenMsg: schedule the finals now
       AdvancementFilters:
         - Rule: PickTop4           # label only
           Filter: ScoreboardRanking

@@ -26,31 +26,18 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scheduleAvailable := make(map[uint]bool)
-	phaseComplete := make(map[uint]bool)
 	for _, phase := range phases {
 		tmp, err := gorm.G[MatchPlacement](m.db.DB).
 			Where("phase_id = ?", phase.ID).
 			Find(r.Context())
 		scheduleAvailable[phase.ID] = (len(tmp) > 0) && (err == nil)
+	}
 
-		completed, err1 := gorm.G[MatchPlacement](m.db.DB).
-			Where(&MatchPlacement{PhaseID: phase.ID}).
-			Where("state in (?)", []MatchState{
-				MatchStateComplete,
-				MatchStateNoShow,
-				MatchStateDisqualified,
-			}).
-			Count(r.Context(), "*")
-		count, err2 := gorm.G[MatchPlacement](m.db.DB).
-			Where(&MatchPlacement{PhaseID: phase.ID}).
-			Where("state not in (?)", []MatchState{
-				MatchStateComplete,
-				MatchStateNoShow,
-				MatchStateDisqualified,
-			}).
-			Count(r.Context(), "*")
-		phaseComplete[phase.ID] = (count == 0) && (completed > 0) && (err1 == nil) && (err2 == nil)
-		slog.Debug("Phase completion state", "phase_id", phase.ID, "playable", count, "completed", completed)
+	phaseComplete, err := m.phaseCompletionStates(r.Context(), phases)
+	if err != nil {
+		slog.Error("Error determining phase completion", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
 	}
 
 	// This has to be a second pass to ensure that all the phasing
@@ -67,11 +54,27 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 		canSchedule[phase.ID] = can
 	}
 
+	teams, err := m.tm.ListTeams(r.Context(), team.Team{})
+	if err != nil {
+		slog.Error("Error loading team roster", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	whenActive, whenMsg, err := m.whenStates(r.Context(), phases, phaseComplete, teams)
+	if err != nil {
+		slog.Error("Error evaluating phase When conditions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
 	ctx := pongo2.Context{
 		"phases":      phases,
 		"completed":   phaseComplete,
 		"schedule":    scheduleAvailable,
 		"canSchedule": canSchedule,
+		"whenActive":  whenActive,
+		"whenMsg":     whenMsg,
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/phases.p2", ctx)
@@ -287,6 +290,9 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
+	if m.whenGate(w, r, phase, teams) {
+		return
+	}
 
 	fields, err := m.ListFields(r.Context(), Field{})
 	if err != nil {
@@ -333,8 +339,24 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		}
 
 		determinations := []AdvancementDeterminationResult{}
+
+		// Phases and completion states feed the When context for
+		// filter-level When expressions.
+		phases, err := gorm.G[GamePhase](m.db.DB).Find(r.Context())
+		if err != nil {
+			slog.Error("Error loading phases for filter When", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
+		phaseComplete, err := m.phaseCompletionStates(r.Context(), phases)
+		if err != nil {
+			slog.Error("Error determining phase completion for filter When", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
+
 		for _, division := range divisionNames {
-			adv, dets, err := m.runAdvancementFilters(r.Context(), phase, division, teams)
+			adv, dets, err := m.runAdvancementFilters(r.Context(), phase, phases, phaseComplete, division, teams)
 			if err != nil {
 				slog.Error("Error running advancement filters", "phase", phase.ID, "division", division, "error", err)
 				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
@@ -363,6 +385,16 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		slog.Error("Error loading phase", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	gateTeams, err := m.tm.ListTeams(r.Context(), team.Team{})
+	if err != nil {
+		slog.Error("Error loading teams for When gate", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	if m.whenGate(w, r, phase, gateTeams) {
 		return
 	}
 
@@ -523,6 +555,22 @@ func generateDivisionSchedule(r *http.Request, db *gorm.DB, c schedgen.Config, f
 
 func (m *Module) uiViewPhaseScheduleAccept(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	phase, err := gorm.G[GamePhase](m.db.DB).Where(&GamePhase{ID: gPhase}).First(r.Context())
+	if err != nil {
+		slog.Error("Error loading phase", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	teams, err := m.tm.ListTeams(r.Context(), team.Team{})
+	if err != nil {
+		slog.Error("Error loading teams for When gate", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	if m.whenGate(w, r, phase, teams) {
+		return
+	}
 
 	m.db.Transaction(func(tx *gorm.DB) error {
 		_, err := gorm.G[MatchPlacement](tx).

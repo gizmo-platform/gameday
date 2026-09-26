@@ -46,10 +46,13 @@
                       <button type="submit" class="button">Freeze</button>
                     </form>
                   {% endif %}
-                {% elif canSchedule[phase.ID] and (profile | hasPermission:"GAME:SCHEDULE") %}
+                {% elif canSchedule[phase.ID] and whenActive[phase.ID] and (profile | hasPermission:"GAME:SCHEDULE") %}
                   <a class="button" href="schedule/phases/{{ phase.ID }}/select-teams?st={{ phase.ScheduleType }}">Generate Schedule</a>
                 {% endif %}
               </div>
+              {% if whenActive[phase.ID] and whenMsg[phase.ID] %}
+                <p class="help">{{ whenMsg[phase.ID] }}</p>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
