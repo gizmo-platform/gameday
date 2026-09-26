@@ -124,11 +124,19 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 // a phase for a single division.  For a filter with SelectFrom of 0
 // the scoreboard is left empty so the filter selects from the full
 // roster (the start-of-schedule case); otherwise the scoreboard for
-// the referenced phase is loaded.  The remaining candidates and the
-// accumulated determinations are returned.
-func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, division string, teams []team.Team) (map[uint]struct{}, []AdvancementDeterminationResult, error) {
+// the referenced phase is loaded.  A filter with a When condition is
+// evaluated against the same context as a phase When expression (with
+// the filter's own scoreboard) and is skipped entirely when it
+// evaluates to false.  The remaining candidates and the accumulated
+// determinations are returned.
+func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool, division string, teams []team.Team) (map[uint]struct{}, []AdvancementDeterminationResult, error) {
 	advancing := make(map[uint]struct{})
 	determinations := []AdvancementDeterminationResult{}
+	wctx := WhenContext{
+		Phases:     phaseStates(phases, phaseComplete),
+		Roster:     makeRoster(teams),
+		Division:   division,
+	}
 	for _, filter := range phase.AdvancementFilters {
 		sctx := AdvancementFilterContext{
 			Roster:     make(map[uint]team.Team),
@@ -152,6 +160,17 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, div
 			sctx.Scoreboard = rowData
 		}
 
+		wctx.Scoreboard = sctx.Scoreboard
+		satisfied, err := evalWhen(filter.When, wctx, fmt.Sprintf("When expression on filter %q", filter.Rule))
+		if err != nil {
+			slog.Error("Error evaluating filter When", "filter", filter, "error", err)
+			return nil, nil, err
+		}
+		if !satisfied {
+			slog.Debug("Skipping advancement filter (When not satisfied)", "filter", filter)
+			continue
+		}
+
 		f, exists := filters[filter.Filter]
 		if !exists {
 			slog.Error("Tried to load unregistered filter", "filter", filter)
@@ -170,11 +189,37 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, div
 	return advancing, determinations, nil
 }
 
+// filterWhenSatisfied evaluates a single filter's When expression for
+// one division, using the filter's own scoreboard as the Scoreboard
+// context (mirroring runAdvancementFilters).  An empty When expression
+// is always satisfied, i.e. the filter always runs.
+func (m *Module) filterWhenSatisfied(ctx context.Context, phases []GamePhase, phaseComplete map[uint]bool, teams []team.Team, filter GamePhaseAdvancementFilter, division string) (bool, error) {
+	scoreboard := []scoreboardRow{}
+	if filter.SelectFrom != 0 {
+		var err error
+		scoreboard, err = m.scoreboardRankings(ctx, filter.SelectFrom, division)
+		if err != nil {
+			return false, err
+		}
+	}
+	wctx := WhenContext{
+		Phases:     phaseStates(phases, phaseComplete),
+		Roster:     makeRoster(teams),
+		Scoreboard: scoreboard,
+		Division:   division,
+	}
+	return evalWhen(filter.When, wctx, fmt.Sprintf("When expression on filter %q", filter.Rule))
+}
+
 // phaseSchedulable reports whether the filters configured on a phase
 // can be satisfied right now.  A filter is satisfied when its source
 // phase is complete and frozen; a roster-sourced filter (SelectFrom
-// of 0) is always satisfied.  A phase with no filters is schedulable.
-func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool) (bool, error) {
+// of 0) is always satisfied.  A filter whose When condition evaluates
+// to false is skipped entirely, so it can never block the phase from
+// being scheduled; for a division-aware phase the filter only blocks
+// when its When condition is true for at least one configured
+// division.  A phase with no filters is schedulable.
+func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool, teams []team.Team) (bool, error) {
 	filters, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).
 		Where(&GamePhaseAdvancementFilter{GamePhaseID: phase.ID}).
 		Find(ctx)
@@ -185,6 +230,41 @@ func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases [
 		if filter.SelectFrom == 0 {
 			continue
 		}
+
+		// Determine whether this filter's source phase is required
+		// at all right now.  A filter gated by a When condition that
+		// is false is skipped by runAdvancementFilters, so it must
+		// not keep the phase from being scheduled.
+		required := true
+		if filter.When != "" {
+			divisions := []string{""}
+			if phase.DivisionAware {
+				divisions, err = m.whenDivisions(ctx, phase)
+				if err != nil {
+					return false, err
+				}
+			}
+			required = false
+			for _, division := range divisions {
+				runs, err := m.filterWhenSatisfied(ctx, phases, phaseComplete, teams, filter, division)
+				if err != nil {
+					return false, err
+				}
+				if runs {
+					required = true
+					break
+				}
+			}
+			if !required {
+				slog.Debug("Filter not required (When not satisfied), not blocking schedulability",
+					"phase", phase.Name,
+					"rule", filter.Rule,
+					"source_id", filter.SelectFrom,
+				)
+				continue
+			}
+		}
+
 		slog.Debug("Evaluating filter satisfaction",
 			"phase", phase.Name,
 			"rule", filter.Rule,

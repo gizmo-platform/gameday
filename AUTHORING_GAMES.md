@@ -111,6 +111,8 @@ A phase is one stage of the tournament. Fields:
 | `DivisionAware` | Optional boolean. When `true`, the phase is scheduled per division and interleaved, using the division-to-field pinning from the Fields UI (see §7, division-aware scheduling). |
 | `TieBreaker` | Optional name of a tie breaker to apply when teams are tied on the scoreboard (see §6). |
 | `HideScores` | Optional boolean. When `true`, scores for this phase are hidden from display. |
+| `Suppress` | Optional boolean [expr-lang/expr](https://expr-lang.org/) **suppression** condition for this phase. Empty (omitted) means the phase is never suppressed. While the expression is `true`, the phase is suppressed: the Generate Schedule button is hidden (the row stays visible) and schedule actions are rejected server-side. See "Conditional phases" below. |
+| `SuppressMsg` | Optional message displayed on the phase row while the phase is suppressed (e.g. "too few teams; finals suppressed"). Ignored when `Suppress` is empty or false. |
 | `Active` / `Frozen` | Runtime state, set in the UI rather than authored in YAML. At most one phase is `Active`; `Frozen` locks a completed phase so it can be read by advancement filters. |
 
 ### Score summation
@@ -130,8 +132,66 @@ consistency over more matches.
 
 A phase is schedulable when **every phase its advancement filters read from is
 complete and frozen**. A filter with `SelectFrom: 0` (the full roster) imposes
-no such requirement. A phase with no advancement filters inherits the full
-roster and is always schedulable.
+no such requirement, and neither does a filter whose `When` is `false` (see
+"Conditional filters" in §5). A phase with no advancement filters inherits the
+full roster and is always schedulable.
+
+### Conditional phases (`Suppress`)
+
+The `Suppress` field adds an operator-authored **suppression** condition on top
+of the completeness rule above. It is an
+[expr-lang/expr](https://expr-lang.org/) expression that must evaluate to a
+boolean. An empty or omitted `Suppress` never suppresses.
+
+```yaml
+    - Name: finals
+      ID: 3
+      ScoreSummation: Total
+      ScheduleType: OneShot
+      Suppress: len(Roster) < 4
+      SuppressMsg: too few teams; finals suppressed
+```
+
+The expression is evaluated against a context with four top-level variables:
+
+| Variable | Value |
+|----------|-------|
+| `Phases` | The phase list in authored order, **zero-indexed** (`Phases[0]` is the first phase). Each entry exposes `ID`, `Name`, `Active`, `Frozen`, and `Complete` (true when the phase has at least one placement and every placement is in a terminal state: `Complete`, `NoShow`, or `Disqualified`). |
+| `Roster` | The full team roster, a map keyed by team ID. Note the expr interpreter cannot index a map with an integer literal (`Roster[1]` fails) or pass a map to `count()`; use `len(Roster)` for the roster size instead. |
+| `Scoreboard` | The ranked scoreboard rows, in rank order. Sourced from the phase named by this phase's **first advancement filter's `SelectFrom`**; if there is no filter (or it reads the full roster, `SelectFrom: 0`), the **active phase's** scoreboard is used, and if no phase is active the list is empty. Each row exposes `Team` (a team record with `Name`, `Number`, ...), `TeamID`, `Rank`, `Average`, `Mulligan`, `Total`, `Score`, `Max`, `Min`, and `Count`. |
+| `Division` | The name of the division being evaluated; the empty string for the whole field. |
+
+Behavior:
+
+- While `Suppress` is `true`, the phase is **suppressed**: the **Generate
+  Schedule** button is hidden on the phase list (the phase row itself stays
+  visible) and the select/preview/accept schedule actions are rejected
+  server-side, so the suppression cannot be bypassed by posting directly.
+- `SuppressMsg`, when present, is shown as help text on the phase row **while the
+  phase is suppressed** — use it to explain why the phase is off.
+- A **division-aware** phase is evaluated once per configured division name,
+  and is suppressed when the condition holds for **any** configured division.
+  For example, `Suppress: Division != "Open"` on a division-aware phase is never
+  suppressed while "Open" is the only division, but is suppressed once any
+  other division exists, because the condition passes for at least one of
+  them.
+- The expression must compile and evaluate to a boolean; a syntax error, a
+  runtime error, or a non-boolean result is treated as an error and reported
+  in the server logs (the phase is treated as suppressed and the action
+  fails).
+
+Examples:
+
+```yaml
+Suppress: len(Roster) < 4                       # suppress: too few teams
+Suppress: len(Roster) < 8                       # suppress: too few for an 8-team phase
+Suppress: Phases[0].Frozen                      # suppress once the first phase is frozen
+Suppress: Phases[0].Complete and Phases[1].Complete
+Suppress: Scoreboard[0].Rank == 1               # suppress once the leaderboard has settled
+Suppress: Scoreboard[0].Team.Name == "Team 3"
+Suppress: Division == "Open"                    # suppress for that division's evaluation
+Suppress: true                                  # always suppressed (the phase never runs)
+```
 
 ---
 
@@ -284,6 +344,7 @@ Game:
 | `Mode` | `include` or `exclude`. `include` keeps the rows the filter selects; `exclude` drops them. |
 | `SelectFrom` | The `ID` of the source phase whose scoreboard feeds this filter. `0` means the full team roster (no source phase). |
 | `SliceExpr` | An expression, evaluated to an **integer**, that sets the cutoff. Must evaluate to an int or the filter fails. |
+| `When` | Optional boolean [expr-lang/expr](https://expr-lang.org/) expression gating whether this filter runs at all. Empty (omitted) means always applied. See "Conditional filters" below. |
 | `Rule` | A **human-readable label only** (e.g. `PickAll`, `PickTop4`). It is echoed into per-team advancement determinations for humans but has **no effect on the logic**. Do not encode behavior in it. |
 
 ### The three valid filters
@@ -335,6 +396,100 @@ with no notebook score is rejected in `include` mode.
 > all rows whose *rank* is ≤ N. They coincide only when there are no ties.
 
 `BESTNotebook` is only available when the **BEST module** is loaded (see §8).
+
+### Conditional filters (`When`)
+
+The `When` field adds an operator-authored condition to a single filter, on
+top of the phase-level condition from §3. It is an
+[expr-lang/expr](https://expr-lang.org/) expression that must evaluate to a
+boolean. An empty or omitted `When` is always satisfied. There is no `SuppressMsg`
+on filters; filters either run or they do not.
+
+```yaml
+    - Name: finals
+      ID: 3
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 2
+          SliceExpr: 4
+          When: Phases[1].Frozen
+```
+
+The expression is evaluated against the **same context** as a phase's `Suppress`
+(see §3): `Phases`, `Roster`, `Scoreboard`, and `Division`, with the same
+expr limitations. One difference: a filter's `Scoreboard` is the scoreboard of
+**its own `SelectFrom`** phase (not the phase's first filter), so
+`Scoreboard[0].Rank` refers to the top row of the source this filter reads.
+A `SelectFrom` of `0` sees an empty scoreboard.
+
+Behavior:
+
+- While `When` is `false`, the filter is skipped: it selects **no teams**,
+  contributes nothing to the advancing pool (neither adds nor removes), and
+  produces no advancement determinations. The other filters on the phase run
+  normally, so a phase whose filters are all skipped still resolves to
+  whatever its non-conditional filters produced.
+- The expression must compile and evaluate to a boolean; a syntax error, a
+  runtime error, or a non-boolean result is treated as an error and reported
+  in the server logs, and the team-selection action fails.
+- A filter's `When` **does** affect whether the phase is schedulable: only
+  filters whose `When` is `true` require their source phase to be complete and
+  frozen before the Generate Schedule button is shown (empty or omitted counts
+  as `true`; for a division-aware phase, `true` for at least one configured
+  division suffices). A filter whose `When` is `false` imposes no such
+  requirement, which is how a phase can route around a suppressed
+  intermediate phase (see below).
+
+Examples:
+
+```yaml
+When: Phases[1].Frozen                       # only once the source phase is frozen
+When: Phases[0].Complete                     # once the source phase is complete
+When: len(Roster) == 12                      # only when exactly 12 teams are in
+When: Scoreboard[0].Rank == 1                # the source scoreboard has settled
+When: Division == "Open"                     # this division's evaluation only
+When: true                                   # always (equivalent to omitting)
+```
+
+#### Routing around a suppressed phase
+
+The two `When`/`Suppress` polarities are meant to be used in concert: the
+phase-level `Suppress` suppresses a phase that cannot run, and complementary
+filter-level `When`s let a downstream phase pick up a different source in its
+place.
+Suppose seeding (ID 1) feeds the semifinals (ID 2), which feed the finals
+(ID 3), and the semifinals generator needs 8 or 16 teams:
+
+```yaml
+    - Name: semifinal
+      ID: 2
+      Suppress: len(Roster) < 8      # suppress: too few teams for semifinals
+      SuppressMsg: too few teams; semifinals suppressed
+      # ...
+    - Name: finals
+      ID: 3
+      AdvancementFilters:
+        - Rule: Top4FromSemifinals
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 2                # the normal path, from the semifinals
+          SliceExpr: 4
+          When: len(Roster) >= 8       # runs only when the semifinals run
+        - Rule: Top4FromSeeding
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 1                # the fallback, straight from seeding
+          SliceExpr: 4
+          When: len(Roster) < 8        # runs only when the semifinals are suppressed
+```
+
+The two filters are complementary: exactly one `When` is true at any time, so
+exactly one of them runs. Because the schedulability check skips filters whose
+`When` is false, the finals stay schedulable with 4 teams: the `SelectFrom: 2`
+filter is ignored instead of demanding that the semifinals phase (suppressed,
+and therefore never complete or frozen) be ready.
 
 ---
 
@@ -510,7 +665,8 @@ Game:
           SelectFrom: 0            # 0 = full roster, no source phase
 
     # Phase 2: semifinals. Top teams from seeding advance. Division-aware, so
-    # it uses the division-to-field pinning from the Fields UI.
+    # it uses the division-to-field pinning from the Fields UI. The filter's
+    # When keeps it from picking anyone until seeding is frozen.
     - Name: semifinal
       ID: 2
       ScoreSummation: Total
@@ -522,15 +678,20 @@ Game:
           Mode: include
           SelectFrom: 1            # read the seeding scoreboard (ID 1)
           SliceExpr: 8             # top 8 rows (index-based)
+          When: Phases[0].Frozen
 
     # Phase 3: finals. Top 4 from the semifinals. Exactly 4 teams, 1 field,
     # >= 4 positions. Ties broken by the BEST unified tie breaker.
+    # The Suppress condition suppresses the finals while fewer than 4 teams are
+    # in; SuppressMsg explains that on the phase row while it holds.
     - Name: finals
       ID: 3
       ScoreSummation: Total
       DivisionAware: true
       ScheduleType: BESTFinals     # the only valid finals name
       TieBreaker: BESTUnifiedTieBreaker
+      Suppress: len(Roster) < 4
+      SuppressMsg: too few teams; finals suppressed
       AdvancementFilters:
         - Rule: PickTop4           # label only
           Filter: ScoreboardRanking

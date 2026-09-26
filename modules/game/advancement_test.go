@@ -122,7 +122,7 @@ func TestRunAdvancementFiltersRosterSource(t *testing.T) {
 	}
 	phase.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
 
-	advancing, determinations, err := m.runAdvancementFilters(ctx, phase, "", teams)
+	advancing, determinations, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
 	if err != nil {
 		t.Fatalf("runAdvancementFilters: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestRunAdvancementFiltersRosterSourceNoFallback(t *testing.T) {
 	}
 	phase.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
 
-	advancing, _, err := m.runAdvancementFilters(ctx, phase, "", teams)
+	advancing, _, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
 	if err != nil {
 		t.Fatalf("runAdvancementFilters: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestRosterAdvancementInclude(t *testing.T) {
 	}
 	phase.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
 
-	advancing, determinations, err := m.runAdvancementFilters(ctx, phase, "", teams)
+	advancing, determinations, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
 	if err != nil {
 		t.Fatalf("runAdvancementFilters: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestRunAdvancementFiltersRealSource(t *testing.T) {
 	}
 	phase.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
 
-	_, _, err := m.runAdvancementFilters(ctx, phase, "", teams)
+	_, _, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
 	if err != nil {
 		t.Fatalf("runAdvancementFilters: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestRunAdvancementFiltersUnregisteredFilter(t *testing.T) {
 	}
 	phase.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
 
-	if _, _, err := m.runAdvancementFilters(ctx, phase, "", teams); err == nil {
+	if _, _, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams); err == nil {
 		t.Fatal("expected error for unregistered filter, got nil")
 	}
 }
@@ -346,6 +346,12 @@ func TestPhaseSchedulable(t *testing.T) {
 	if err := d.Create(&GamePhase{Name: "manual" /* no filters */}).Error; err != nil {
 		t.Fatalf("create phase 5: %v", err)
 	}
+	if err := d.Create(&GamePhase{Name: "routed" /* false-When filter must not block */}).Error; err != nil {
+		t.Fatalf("create phase 6: %v", err)
+	}
+	if err := d.Create(&GamePhase{Name: "routed-on" /* true-When filter must block */}).Error; err != nil {
+		t.Fatalf("create phase 7: %v", err)
+	}
 
 	if err := d.Create(&GamePhaseAdvancementFilter{GamePhaseID: 2, Filter: "ScoreboardRanking", Rule: "Pick", Mode: GamePhaseAdvancementFilterModeInclude, SelectFrom: 0, SliceExpr: "4"}).Error; err != nil {
 		t.Fatalf("create filter: %v", err)
@@ -359,6 +365,14 @@ func TestPhaseSchedulable(t *testing.T) {
 	if err := d.Create(&GamePhaseAdvancementFilter{GamePhaseID: 4, Filter: "ScoreboardRanking", Rule: "Pick", Mode: GamePhaseAdvancementFilterModeInclude, SelectFrom: 1, SliceExpr: "4"}).Error; err != nil {
 		t.Fatalf("create filter: %v", err)
 	}
+	if err := d.Create(&GamePhaseAdvancementFilter{GamePhaseID: 6, Filter: "ScoreboardRanking", Rule: "Pick", Mode: GamePhaseAdvancementFilterModeInclude, SelectFrom: 1, SliceExpr: "4", When: "false"}).Error; err != nil {
+		t.Fatalf("create filter: %v", err)
+	}
+	if err := d.Create(&GamePhaseAdvancementFilter{GamePhaseID: 7, Filter: "ScoreboardRanking", Rule: "Pick", Mode: GamePhaseAdvancementFilterModeInclude, SelectFrom: 1, SliceExpr: "4", When: "len(Roster) < 4"}).Error; err != nil {
+		t.Fatalf("create filter: %v", err)
+	}
+
+	teams := seedTeams(t, d, 3)
 
 	phases, err := findPhases(m, ctx)
 	if err != nil {
@@ -377,6 +391,10 @@ func TestPhaseSchedulable(t *testing.T) {
 		{"real-source phase waits when source incomplete", 4, map[uint]bool{}, false},
 		{"real-source phase satisfied when source complete and frozen", 4, map[uint]bool{1: true}, true},
 		{"filterless phase is schedulable", 5, map[uint]bool{}, true},
+		{"false-When filter never blocks schedulability", 6, map[uint]bool{}, true},
+		{"false-When filter stays out of the way when source is ready", 6, map[uint]bool{1: true}, true},
+		{"true-When filter blocks while its source is not ready", 7, map[uint]bool{}, false},
+		{"true-When filter satisfied once its source is ready", 7, map[uint]bool{1: true}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -387,7 +405,7 @@ func TestPhaseSchedulable(t *testing.T) {
 					break
 				}
 			}
-			got, err := m.phaseSchedulable(ctx, target, phases, tc.comp)
+			got, err := m.phaseSchedulable(ctx, target, phases, tc.comp, teams)
 			if err != nil {
 				t.Fatalf("phaseSchedulable: %v", err)
 			}
@@ -400,4 +418,169 @@ func TestPhaseSchedulable(t *testing.T) {
 
 func findPhases(m *Module, ctx context.Context) ([]GamePhase, error) {
 	return gorm.G[GamePhase](m.db.DB).Find(ctx)
+}
+
+// TestRunAdvancementFiltersWhen verifies the per-filter When
+// condition: an empty or true condition runs the filter, false skips
+// it (contributing no candidates or determinations), and the
+// expression sees the same context as a phase When expression,
+// including the filter's own SelectFrom scoreboard.  Compilation,
+// runtime, and non-boolean errors propagate.
+func TestRunAdvancementFiltersWhen(t *testing.T) {
+	m, d := newTestModule(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 3)
+
+	if err := d.Create(&GamePhase{Name: "qualifying", ScoreSummation: "AverageWithMulligan", ScheduleType: "RandomSeeding"}).Error; err != nil {
+		t.Fatalf("create qualifying: %v", err)
+	}
+	if err := d.Create(&GamePhase{Name: "finals", ScoreSummation: "Total", ScheduleType: "OneShot"}).Error; err != nil {
+		t.Fatalf("create finals: %v", err)
+	}
+	phases := whenTestPhases(t, m, ctx)
+	if len(phases) != 2 {
+		t.Fatalf("expected 2 phases, got %d", len(phases))
+	}
+	byName := map[string]GamePhase{}
+	for _, p := range phases {
+		byName[p.Name] = p
+	}
+	qualifying, finals := byName["qualifying"], byName["finals"]
+
+	// Seed qualifying as complete and with a scoreboard.
+	mp := MatchPlacement{PhaseID: qualifying.ID, TeamID: teams[0].ID, State: MatchStateComplete}
+	if err := d.Create(&mp).Error; err != nil {
+		t.Fatalf("create match placement: %v", err)
+	}
+	for i, tr := range teams {
+		ms := MatchScore{Score: 10 + i, GamePhaseID: qualifying.ID, TeamID: tr.ID}
+		if err := d.Create(&ms).Error; err != nil {
+			t.Fatalf("create match score: %v", err)
+		}
+	}
+
+	rec := &recordingFilter{name: "testFilterWhenRecorder"}
+	RegisterAdvancementFilter(rec.Name(), rec)
+	filt := GamePhaseAdvancementFilter{
+		GamePhaseID: finals.ID,
+		Filter:      rec.Name(),
+		Rule:        "PickRoster",
+		Mode:        GamePhaseAdvancementFilterModeInclude,
+		SelectFrom:  qualifying.ID,
+		SliceExpr:   "3",
+	}
+	if err := d.Create(&filt).Error; err != nil {
+		t.Fatalf("create filter: %v", err)
+	}
+	finals.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
+
+	phaseComplete, err := m.phaseCompletionStates(ctx, phases)
+	if err != nil {
+		t.Fatalf("phaseCompletionStates: %v", err)
+	}
+
+	cases := []struct {
+		name        string
+		when        string
+		division    string
+		wantErr     bool
+		wantCalls   int
+		wantAdv     int
+		wantDets    int
+	}{
+		{"empty When runs the filter", "", "", false, 1, len(teams), len(teams)},
+		{"literal true runs the filter", "true", "", false, 1, len(teams), len(teams)},
+		{"literal false skips the filter", "false", "", false, 0, 0, 0},
+		{"phase state reference satisfied (qualifying complete)", "Phases[1].Complete", "", false, 1, len(teams), len(teams)},
+		{"phase state reference unsatisfied (finals not frozen)", "Phases[0].Frozen", "", false, 0, 0, 0},
+		{"roster size satisfied", "len(Roster) == 3", "", false, 1, len(teams), len(teams)},
+		{"scoreboard from own SelectFrom", "Scoreboard[0].Rank == 1", "", false, 1, len(teams), len(teams)},
+		{"scoreboard rank mismatch skips", "Scoreboard[0].Rank == 2", "", false, 0, 0, 0},
+		{"division context mismatch skips", `Division == "Open"`, "", false, 0, 0, 0},
+		{"division context satisfied", `Division == ""`, "", false, 1, len(teams), len(teams)},
+		{"syntax error propagates", "this is not valid(((", "", true, 0, 0, 0},
+		{"non-boolean result propagates", "1", "", true, 0, 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filt.When = tc.when
+			finals.AdvancementFilters = []GamePhaseAdvancementFilter{filt}
+			rec.calls = 0
+
+			advancing, determinations, err := m.runAdvancementFilters(ctx, finals, phases, phaseComplete, tc.division, teams)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("runAdvancementFilters = no error, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("runAdvancementFilters: %v", err)
+			}
+			if rec.calls != tc.wantCalls {
+				t.Errorf("filter called %d times, want %d", rec.calls, tc.wantCalls)
+			}
+			if len(advancing) != tc.wantAdv {
+				t.Errorf("advancing = %d teams, want %d", len(advancing), tc.wantAdv)
+			}
+			if len(determinations) != tc.wantDets {
+				t.Errorf("determinations = %d, want %d", len(determinations), tc.wantDets)
+			}
+		})
+	}
+}
+
+// TestRunAdvancementFiltersWhenSkippedStillRunsOthers verifies that a
+// filter skipped by a false When condition does not stop the
+// remaining filters on the phase from applying.
+func TestRunAdvancementFiltersWhenSkippedStillRunsOthers(t *testing.T) {
+	m, d := newTestModule(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 4)
+
+	phase := GamePhase{Name: "seeding", ScoreSummation: "AverageWithMulligan", ScheduleType: "RandomSeeding"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	skipped := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "Roster",
+		Rule:        "PickAll",
+		Mode:        GamePhaseAdvancementFilterModeInclude,
+		SelectFrom:  0,
+		When:        "false",
+	}
+	if err := d.Create(&skipped).Error; err != nil {
+		t.Fatalf("create skipped filter: %v", err)
+	}
+	kept := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "Roster",
+		Rule:        "PickAll",
+		Mode:        GamePhaseAdvancementFilterModeInclude,
+		SelectFrom:  0,
+		When:        "true",
+	}
+	if err := d.Create(&kept).Error; err != nil {
+		t.Fatalf("create kept filter: %v", err)
+	}
+	phase.AdvancementFilters = []GamePhaseAdvancementFilter{skipped, kept}
+
+	advancing, determinations, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
+	if err != nil {
+		t.Fatalf("runAdvancementFilters: %v", err)
+	}
+	if len(advancing) != len(teams) {
+		t.Errorf("advancing = %d teams, want %d (kept filter ran)", len(advancing), len(teams))
+	}
+	if len(determinations) != len(teams) {
+		t.Errorf("determinations = %d, want %d (only the kept filter emits)", len(determinations), len(teams))
+	}
+	for _, det := range determinations {
+		if det.Rule != "PickAll" {
+			t.Errorf("determination rule = %q, want PickAll", det.Rule)
+		}
+	}
 }

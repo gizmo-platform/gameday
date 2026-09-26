@@ -198,6 +198,14 @@ type GamePhase struct {
 	ScoreSummation     string                     `yaml:"ScoreSummation"`
 	HideScores         bool                       `yaml:"HideScores"`
 	TieBreaker         string                     `yaml:"TieBreaker"`
+	// Suppress is an optional boolean suppression condition: when it
+	// evaluates to true the phase is suppressed (its Generate Schedule
+	// button is hidden and schedule actions are rejected server-side).
+	// An empty value means the phase is never suppressed.
+	Suppress string `yaml:"Suppress"`
+	// SuppressMsg is an optional message shown on the phase row while
+	// the phase is suppressed.
+	SuppressMsg string `yaml:"SuppressMsg"`
 }
 
 // GamePhaseAdvancementFilter captures the expressions that are used
@@ -214,6 +222,11 @@ type GamePhaseAdvancementFilter struct {
 	// source phase, which is used for the start of the schedule.
 	SelectFrom uint   `yaml:"SelectFrom"`
 	SliceExpr  string `yaml:"SliceExpr"`
+	// When is an optional boolean expression gating whether this
+	// filter runs at all.  It is evaluated with the same context as a
+	// phase Suppress expression; an empty value means the filter always
+	// runs, and a false value means the filter selects nothing.
+	When string `yaml:"When"`
 }
 
 // GameElement represents a single game element that may be
