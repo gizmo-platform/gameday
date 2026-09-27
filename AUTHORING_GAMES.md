@@ -42,6 +42,19 @@ advancement filters, elements, and scorecard definitions. From that point the
 tournament runs through the normal schedule, scorekeeping, and advancement
 workflow.
 
+Before uploading, you can check a file offline with the linter:
+
+```
+gameday debug game lint <file>
+```
+
+It parses the file the same way the upload does, compiles every `expr`
+expression (`Suppress`, `When`, `SliceExpr`), and verifies that every
+referenced advancement filter, `SelectFrom` phase, schedule type, and tie
+breaker exists. It exits non-zero and prints each problem if anything is
+wrong, which is much easier to act on than an advancement failure at
+runtime.
+
 A phase can only be scheduled once the phases its filters read from are
 **complete and frozen**. The `Roster` filter is the exception: it reads from
 the full team list, so a phase whose only filter is `Roster` is always
