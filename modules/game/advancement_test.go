@@ -180,6 +180,55 @@ func TestRunAdvancementFiltersRosterSourceNoFallback(t *testing.T) {
 	}
 }
 
+// TestScoreboardRankingsEmptyWithTieBreaker verifies that rendering a
+// scoreboard for a phase with a configured tie-breaker but no match
+// scores returns an empty result instead of panicking in resolveTies.
+func TestScoreboardRankingsEmptyWithTieBreaker(t *testing.T) {
+	m, d := newTestModule(t)
+	ctx := context.Background()
+
+	modules.RegisterTieBreaker("testEmptyTB", func(teamNumbers []int, matchCount int) []int {
+		return teamNumbers
+	})
+
+	phase := GamePhase{
+		Name:           "seeding",
+		ScoreSummation: "AverageWithMulligan",
+		ScheduleType:   "RandomSeeding",
+		TieBreaker:     "testEmptyTB",
+	}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+
+	rows, err := m.scoreboardRankings(ctx, phase.ID, "")
+	if err != nil {
+		t.Fatalf("scoreboardRankings: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("scoreboardRankings returned %d rows, want 0", len(rows))
+	}
+}
+
+// TestResolveTiesEmptyRows verifies that resolveTies returns cleanly
+// when the scoreboard has no rows.
+func TestResolveTiesEmptyRows(t *testing.T) {
+	_, d := newTestModule(t)
+	ctx := context.Background()
+
+	modules.RegisterTieBreaker("testEmptyTB2", func(teamNumbers []int, matchCount int) []int {
+		return teamNumbers
+	})
+
+	phase := &GamePhase{TieBreaker: "testEmptyTB2"}
+	rows := []scoreboardRow{}
+	resolveTies(ctx, d, &rows, phase)
+
+	if len(rows) != 0 {
+		t.Errorf("resolveTies left %d rows, want 0", len(rows))
+	}
+}
+
 // TestRosterAdvancementInclude verifies the Roster filter advances
 // every team in the roster in include mode with one determination per
 // team.

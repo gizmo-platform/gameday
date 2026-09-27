@@ -280,6 +280,9 @@ func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases [
 }
 
 func resolveTies(ctx context.Context, dbd *db.DB, rows *[]scoreboardRow, phase *GamePhase) {
+	if len(*rows) == 0 {
+		return
+	}
 	tb, ok := modules.GetTieBreaker(phase.TieBreaker)
 	if !ok {
 		slog.Warn("Tie-breaker not found", "name", phase.TieBreaker)
