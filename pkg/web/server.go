@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gizmo-platform/gameday/pkg/event"
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -34,11 +35,20 @@ type Server struct {
 	n *http.Server
 	d *gorm.DB
 
+	bus *event.Bus
+
 	tpl *pongo2.TemplateSet
 
 	debugTemplates bool
 
 	nav []NavElement
+}
+
+// Bus returns the server's event bus, or nil if none was configured
+// with the EventBus option. Modules should nil-check before
+// publishing.
+func (s *Server) Bus() *event.Bus {
+	return s.bus
 }
 
 // TemplateDebug reports whether template debug mode is enabled.
@@ -171,6 +181,11 @@ func (s *Server) Serve(bind string) error {
 // argument.
 func (s *Server) Mount(path string, router chi.Router) {
 	s.r.Mount(path, router)
+}
+
+// Handle attaches a plain http.Handler to the server at path.
+func (s *Server) Handle(path string, handler http.Handler) {
+	s.r.Handle(path, handler)
 }
 
 // Shutdown gracefully shuts down the server.

@@ -2,11 +2,22 @@ package web
 
 import (
 	"github.com/gizmo-platform/gameday/pkg/db"
+	"github.com/gizmo-platform/gameday/pkg/event"
 )
 
 func WithDB(d *db.DB) Option {
 	return func(s *Server) error {
 		s.d = d.Raw()
+		return nil
+	}
+}
+
+// EventBus attaches an event bus to the server. The bus is reachable
+// from modules and handlers via Server.Bus() and can be mounted for
+// websocket export via Bus.Handler().
+func EventBus(b *event.Bus) Option {
+	return func(s *Server) error {
+		s.bus = b
 		return nil
 	}
 }

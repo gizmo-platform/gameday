@@ -15,6 +15,7 @@ import (
 
 	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/pkg/db"
+	"github.com/gizmo-platform/gameday/pkg/event"
 	"github.com/gizmo-platform/gameday/pkg/web"
 
 	_ "github.com/gizmo-platform/gameday/modules/best"
@@ -60,7 +61,7 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 		os.Exit(2)
 	}
 
-	w, err := web.NewServer(web.WithDB(d), web.WithTemplateDebug(templateDebug))
+	w, err := web.NewServer(web.WithDB(d), web.WithTemplateDebug(templateDebug), web.EventBus(event.New()))
 	if err != nil {
 		slog.Error("Error initializing webserver", "error", err)
 		os.Exit(2)
@@ -80,6 +81,10 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 		}
 	}
 
+	// Mount the event bus websocket endpoint (open by default, like
+	// the public scoreboard data endpoint).
+	w.Handle("/ui/events", w.Bus().Handler())
+
 	go func() {
 		if err := w.Serve(":" + port); err != nil && err != http.ErrServerClosed {
 			slog.Error("Error binding webserver", "error", err)
@@ -91,6 +96,8 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 
 	<-quit
 	slog.Info("Shutting Down...")
+
+	w.Bus().Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
