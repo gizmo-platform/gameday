@@ -360,6 +360,36 @@ Game:
 | `When` | Optional boolean [expr-lang/expr](https://expr-lang.org/) expression gating whether this filter runs at all. Empty (omitted) means always applied. See "Conditional filters" below. |
 | `Rule` | A **human-readable label only** (e.g. `PickAll`, `PickTop4`). It is echoed into per-team advancement determinations for humans but has **no effect on the logic**. Do not encode behavior in it. |
 
+### How multiple filters combine
+
+When a phase has several filters, they run **in order** against one shared
+candidate pool. An `include` filter **adds** the teams it selects; an `exclude`
+filter **removes** the teams it selects. Teams an `exclude` filter removes are
+blocked for the rest of the phase, so a later `include` filter cannot
+re-advance them. This is what makes an "exclude, then include from what
+remains" chain work: for example, dropping the top seeders from the previous
+phase's scoreboard and then taking the top remaining teams by notebook
+
+```yaml
+AdvancementFilters:
+  - Rule: DropTopSeeders
+    Filter: ScoreboardRanking
+    Mode: exclude
+    SelectFrom: 1
+    SliceExpr: 7
+  - Rule: TopRemainingNotebooks
+    Filter: BESTNotebook
+    Mode: include
+    SelectFrom: 1
+    SliceExpr: 4
+```
+
+advances the top 4 notebooks **among the teams that were not in the top 7
+seeders**. The advancing set for the phase is whatever is left in the pool
+after the last filter runs, so a phase whose filters are all `include`
+advances the union of everything selected, while a lone `exclude` filter
+advances nothing.
+
 ### The three valid filters
 
 **`Roster`** — operates on the full team roster. `include` adds every team;
@@ -394,7 +424,8 @@ is included if its rank is `≤ cutoff` (the cutoff from `SliceExpr`). Unlike
 `ScoreboardRanking`, this is **rank-value-based**. It operates on the teams in
 the source scoreboard and **falls back to the full roster** if the scoreboard
 is empty. It requires the BEST module and its recorded notebook scores; a team
-with no notebook score is rejected in `include` mode.
+with no notebook score is rejected in `include` mode and left untouched in
+`exclude` mode.
 
 ```yaml
 - Rule: TopNotebooks

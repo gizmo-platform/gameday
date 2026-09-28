@@ -153,6 +153,54 @@ func TestNotebookAdvancementExclude(t *testing.T) {
 	}
 }
 
+// TestNotebookAdvancementReducedField verifies that the filter ranks
+// only the teams in the field it is handed.  The driver strips teams
+// blocked by an earlier exclude filter before calling the filter, so
+// the include cutoff must apply to the reduced field rather than to
+// the full population: team 300 (rank 1 of 2 in the field) and team
+// 400 (rank 2 of 2) both advance under a cutoff of 2, even though
+// team 400 would sit at rank 4 if the full field were ranked.
+func TestNotebookAdvancementReducedField(t *testing.T) {
+	_, d := newTestModule(t)
+	full := seedBestScores(t, d, map[int]map[string]float32{
+		100: {"notebook": 300},
+		200: {"notebook": 250},
+		300: {"notebook": 200},
+		400: {"notebook": 100},
+	})
+
+	byNumber := make(map[int]team.Team, len(full))
+	for _, team := range full {
+		byNumber[team.Number] = team
+	}
+
+	// The remaining field after an earlier exclude filter dropped the
+	// top two seeders: only teams 300 and 400 remain.
+	field := map[uint]team.Team{
+		byNumber[300].ID: byNumber[300],
+		byNumber[400].ID: byNumber[400],
+	}
+
+	sctx := game.AdvancementFilterContext{
+		Roster:     field,
+		Candidates: make(map[uint]team.Team),
+	}
+
+	nb := &NotebookAdvancement{db: d}
+	if err := nb.Apply(&sctx, "2", game.GamePhaseAdvancementFilterModeInclude, "2"); err != nil {
+		t.Fatalf("Apply include: %v", err)
+	}
+
+	if len(sctx.Candidates) != 2 {
+		t.Fatalf("expected 2 advancing teams, got %d: %v", len(sctx.Candidates), sctx.Candidates)
+	}
+	for _, number := range []int{300, 400} {
+		if _, ok := sctx.Candidates[byNumber[number].ID]; !ok {
+			t.Errorf("expected team %d in candidates", number)
+		}
+	}
+}
+
 func TestNotebookAdvancementBadExpression(t *testing.T) {
 	_, d := newTestModule(t)
 	roster := seedBestScores(t, d, map[int]map[string]float32{100: {"notebook": 300}})

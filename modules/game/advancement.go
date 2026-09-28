@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sort"
 
 	"gorm.io/gorm"
@@ -121,46 +122,45 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 }
 
 // runAdvancementFilters applies every advancement filter configured on
-// a phase for a single division.  For a filter with SelectFrom of 0
-// the scoreboard is left empty so the filter selects from the full
-// roster (the start-of-schedule case); otherwise the scoreboard for
-// the referenced phase is loaded.  A filter with a When condition is
+// a phase for a single division.  The filters run in order against a
+// single shared candidate pool: an include filter adds the teams it
+// selects, and an exclude filter removes the teams it selects.  Teams
+// an exclude filter removes join a blocklist that is then stripped from
+// the field every later filter sees, so an include filter's cutoff
+// applies to the teams that remain (a "best of the losers" ranking) and
+// no later include can re-advance them.  For a filter with SelectFrom
+// of 0 the scoreboard is left empty so the filter selects from the full
+// roster (the start-of-schedule case); otherwise the scoreboard for the
+// referenced phase is loaded.  A filter with a When condition is
 // evaluated against the same context as a phase When expression (with
-// the filter's own scoreboard) and is skipped entirely when it
+// the filter's own raw scoreboard) and is skipped entirely when it
 // evaluates to false.  The remaining candidates and the accumulated
 // determinations are returned.
 func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool, division string, teams []team.Team) (map[uint]struct{}, []AdvancementDeterminationResult, error) {
-	advancing := make(map[uint]struct{})
 	determinations := []AdvancementDeterminationResult{}
+	// candidates is the shared pool of teams advanced so far; include
+	// filters add to it.  excluded is the blocklist of teams an exclude
+	// filter removed, which is stripped from the field of every later
+	// filter and must never be re-advanced.
+	candidates := make(map[uint]team.Team)
+	excluded := make(map[uint]struct{})
 	wctx := WhenContext{
 		Phases:     phaseStates(phases, phaseComplete),
 		Roster:     makeRoster(teams),
 		Division:   division,
 	}
 	for _, filter := range phase.AdvancementFilters {
-		sctx := AdvancementFilterContext{
-			Roster:     make(map[uint]team.Team),
-			Candidates: make(map[uint]team.Team),
-		}
-		for _, team := range teams {
-			sctx.Roster[team.ID] = team
-		}
-
-		if filter.SelectFrom == 0 {
-			// Roster-sourced selection: no source phase, so the
-			// scoreboard is intentionally empty and filters scope
-			// from the full roster.
-			sctx.Scoreboard = nil
-		} else {
-			rowData, err := m.scoreboardRankings(ctx, filter.SelectFrom, division)
+		var rowData []scoreboardRow
+		if filter.SelectFrom != 0 {
+			var err error
+			rowData, err = m.scoreboardRankings(ctx, filter.SelectFrom, division)
 			if err != nil {
 				slog.Error("Error retrieving filter scoreboard", "filter", filter)
 				return nil, nil, err
 			}
-			sctx.Scoreboard = rowData
 		}
 
-		wctx.Scoreboard = sctx.Scoreboard
+		wctx.Scoreboard = rowData
 		satisfied, err := evalWhen(filter.When, wctx, fmt.Sprintf("When expression on filter %q", filter.Rule))
 		if err != nil {
 			slog.Error("Error evaluating filter When", "filter", filter, "error", err)
@@ -176,15 +176,61 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 			slog.Error("Tried to load unregistered filter", "filter", filter)
 			return nil, nil, fmt.Errorf("advancement filter %q is not registered", filter.Filter)
 		}
-		if err := f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr); err != nil {
-			slog.Error("Error applying advancement filter", "filter", filter, "error", err)
-			return nil, nil, err
+
+		// The field the filter sees is the roster minus the
+		// blocklist, so a cutoff applies to the teams that remain
+		// rather than to the whole field.
+		remaining := make(map[uint]team.Team, len(teams))
+		for id, t := range makeRoster(teams) {
+			if _, blocked := excluded[id]; !blocked {
+				remaining[id] = t
+			}
+		}
+		remainingBoard := make([]scoreboardRow, 0, len(rowData))
+		for _, row := range rowData {
+			if _, blocked := excluded[row.Team.ID]; !blocked {
+				remainingBoard = append(remainingBoard, row)
+			}
+		}
+		sctx := AdvancementFilterContext{
+			Roster:     remaining,
+			Scoreboard: remainingBoard,
 		}
 
-		for _, t := range sctx.Candidates {
-			advancing[t.ID] = struct{}{}
+		if filter.Mode == GamePhaseAdvancementFilterModeExclude {
+			// An exclude filter removes teams.  Run it against a
+			// copy of the remaining field so every removal lands;
+			// the field-minus-result diff is the filter's full
+			// target set, which joins the blocklist.
+			sctx.Candidates = make(map[uint]team.Team, len(remaining))
+			maps.Copy(sctx.Candidates, remaining)
+			if err := f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr); err != nil {
+				slog.Error("Error applying advancement filter", "filter", filter, "error", err)
+				return nil, nil, err
+			}
+			for id := range remaining {
+				if _, kept := sctx.Candidates[id]; !kept {
+					excluded[id] = struct{}{}
+				}
+			}
+			// Keep the pool free of newly blocked teams as well.
+			for id := range excluded {
+				delete(candidates, id)
+			}
+		} else {
+			sctx.Candidates = candidates
+			if err := f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr); err != nil {
+				slog.Error("Error applying advancement filter", "filter", filter, "error", err)
+				return nil, nil, err
+			}
 		}
+
 		determinations = append(determinations, sctx.Determinations...)
+	}
+
+	advancing := make(map[uint]struct{}, len(candidates))
+	for id := range candidates {
+		advancing[id] = struct{}{}
 	}
 	return advancing, determinations, nil
 }

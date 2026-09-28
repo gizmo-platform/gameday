@@ -269,14 +269,10 @@ func (n *NotebookAdvancement) Apply(sctx *game.AdvancementFilterContext, rule st
 				Reason: fmt.Sprintf("Notebook rank within cutoff (%d <= %d)", row.Rank, cutoff),
 			})
 		case game.GamePhaseAdvancementFilterModeExclude:
+			// No score means the team is not in the exclusion
+			// range, so it is not removed and no determination
+			// is emitted (it did not affect advancement).
 			if !ok {
-				sctx.Determinations = append(sctx.Determinations, game.AdvancementDeterminationResult{
-					Filter: n.Name(),
-					Rule:   rule,
-					Team:   t,
-					Result: game.AdvancementDeterminationReject,
-					Reason: "No notebook score recorded",
-				})
 				continue
 			}
 			if row.Rank > cutoff {

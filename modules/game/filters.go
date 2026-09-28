@@ -42,7 +42,9 @@ type AdvancementFilter interface {
 // and any filter configuration.  The candidates map is blank until a
 // filter adds a team to the list.  Scoreboard is empty for
 // roster-sourced filters (SelectFrom of 0), which must scope their
-// selection from Roster.
+// selection from Roster.  The driver passes a field with any teams
+// blocked by an earlier exclude filter already removed, so a filter's
+// cutoff applies to the teams that remain.
 type AdvancementFilterContext struct {
 	Roster     map[uint]team.Team
 	Candidates map[uint]team.Team

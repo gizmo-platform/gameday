@@ -342,6 +342,88 @@ func TestRunAdvancementFiltersRealSource(t *testing.T) {
 	}
 }
 
+// TestRunAdvancementFiltersExcludeThenInclude verifies the
+// "best of the losers" pipeline: an exclude filter rejects the top
+// seeders, and the subsequent include filter selects the top teams
+// of what remains, so the include cutoff applies to the remaining
+// field rather than the whole field.  Mirrors the byte2bite Wildcard
+// phase (drop the seeding leaders, then take the top remaining
+// teams from the scoreboard).
+func TestRunAdvancementFiltersExcludeThenInclude(t *testing.T) {
+	m, d := newTestModule(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 12)
+
+	src := GamePhase{Name: "qualifying", ScoreSummation: "AverageWithMulligan", ScheduleType: "RandomSeeding"}
+	if err := d.Create(&src).Error; err != nil {
+		t.Fatalf("create source phase: %v", err)
+	}
+	// Distinct scores: teams[0] has the highest score, so the
+	// scoreboard is teams[0] (highest) through teams[11] (lowest).
+	for i, tr := range teams {
+		ms := MatchScore{Score: (len(teams) - i) * 10, GamePhaseID: src.ID, TeamID: tr.ID}
+		if err := d.Create(&ms).Error; err != nil {
+			t.Fatalf("create match score: %v", err)
+		}
+	}
+
+	phase := GamePhase{Name: "wildcard", ScoreSummation: "AverageWithMulligan", ScheduleType: "RandomSeeding"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	excl := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "ScoreboardRanking",
+		Rule:        "DropTop4",
+		Mode:        GamePhaseAdvancementFilterModeExclude,
+		SelectFrom:  src.ID,
+		SliceExpr:   "4",
+	}
+	if err := d.Create(&excl).Error; err != nil {
+		t.Fatalf("create exclude filter: %v", err)
+	}
+	incl := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "ScoreboardRanking",
+		Rule:        "PickTop6",
+		Mode:        GamePhaseAdvancementFilterModeInclude,
+		SelectFrom:  src.ID,
+		SliceExpr:   "6",
+	}
+	if err := d.Create(&incl).Error; err != nil {
+		t.Fatalf("create include filter: %v", err)
+	}
+	phase.AdvancementFilters = []GamePhaseAdvancementFilter{excl, incl}
+
+	advancing, _, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
+	if err != nil {
+		t.Fatalf("runAdvancementFilters: %v", err)
+	}
+
+	// The top 4 seeders are rejected; of the 8 remaining teams the
+	// top 6 (teams[4] through teams[9]) advance.  Under the old
+	// whole-field cutoff only teams[4] and teams[5] would advance.
+	for i := 0; i < 4; i++ {
+		if _, ok := advancing[teams[i].ID]; ok {
+			t.Errorf("excluded team %d (scoreboard position %d) advanced", teams[i].ID, i+1)
+		}
+	}
+	for i := 4; i < 10; i++ {
+		if _, ok := advancing[teams[i].ID]; !ok {
+			t.Errorf("remaining team %d (scoreboard position %d) did not advance", teams[i].ID, i+1)
+		}
+	}
+	for i := 10; i < len(teams); i++ {
+		if _, ok := advancing[teams[i].ID]; ok {
+			t.Errorf("out-of-cutoff team %d (scoreboard position %d) advanced", teams[i].ID, i+1)
+		}
+	}
+	if len(advancing) != 6 {
+		t.Errorf("advancing = %v, want 6 teams", advancing)
+	}
+}
+
 // TestRunAdvancementFiltersUnregisteredFilter verifies that an
 // unregistered filter name produces an error from the driver.
 func TestRunAdvancementFiltersUnregisteredFilter(t *testing.T) {
