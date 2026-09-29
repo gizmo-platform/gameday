@@ -145,6 +145,18 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if c.Clock != (ClockConfig{}) {
+		if err := db.InsertOrUpdate[ClockSettings](r.Context(), m.db.DB, &ClockSettings{
+			ID:       ClockSettingsID,
+			Duration: c.Clock.Duration,
+			Hurry:    c.Clock.Hurry,
+		}); err != nil {
+			slog.Error("Error saving clock settings", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
+	}
+
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
 }
 

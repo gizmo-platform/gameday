@@ -1,0 +1,18 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Clock Error{% endblock %}
+
+{% block content %}
+<div class="foreground box">
+  <h1>Clock Error</h1>
+  <br />
+  <hr />
+  <div class="notification is-danger">
+    {{ error }}
+  </div>
+  <br />
+  <div class="flex-container flex-center">
+    <a class="flex-item button" href="{{ back }}">Back to Timekeeping</a>
+  </div>
+</div>
+{% endblock %}

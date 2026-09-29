@@ -44,7 +44,7 @@ func (f *recordingFilter) Apply(sctx *AdvancementFilterContext, rule string, mod
 	return nil
 }
 
-func newTestModule(t *testing.T) (*Module, *db.DB) {
+func newTestModule(t *testing.T, opts ...web.Option) (*Module, *db.DB) {
 	t.Helper()
 
 	t.Setenv("GAMEDAY_DB", filepath.Join(t.TempDir(), "test.db"))
@@ -54,7 +54,9 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		t.Fatalf("db.New: %v", err)
 	}
 
-	ws, err := web.NewServer(web.WithDB(d))
+	defaults := []web.Option{web.WithDB(d)}
+	defaults = append(defaults, opts...)
+	ws, err := web.NewServer(defaults...)
 	if err != nil {
 		t.Fatalf("web.NewServer: %v", err)
 	}
@@ -75,6 +77,8 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 	if err := m.Migrate(); err != nil {
 		t.Fatalf("game Migrate: %v", err)
 	}
+	ws.AddTemplateLoader(m.TemplateLoader())
+	m.basePath = "/ui/mod/game"
 
 	return m, d
 }

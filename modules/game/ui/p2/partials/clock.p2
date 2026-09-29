@@ -1,0 +1,168 @@
+<div class="clock" id="clock" data-running="{% if running %}true{% else %}false{% endif %}" data-duration="{{ duration_ms }}" data-hurry="{{ hurry_ms }}" data-end="{{ end_ms }}" data-start="{{ start_ms }}">
+  <span class="clock-count" id="clock-count">--</span>
+  <span class="clock-status" id="clock-status"></span>
+</div>
+<script src="/static/js/eventbus.js"></script>
+<script>
+(function () {
+  var root = document.getElementById("clock");
+  var count = document.getElementById("clock-count");
+  var status = document.getElementById("clock-status");
+
+  var duration = parseInt(root.dataset.duration, 10) || 0;
+
+  // On load the fragment adopts the running state rendered by the
+  // server (DB-backed), so a page opened while a clock is already
+  // running resumes ticking and the buttons reflect the same state.
+  // Live transitions after this are driven by the event bus only.
+  var running = root.dataset.running === "true";
+  var hurry = running ? parseInt(root.dataset.hurry, 10) || 0 : 0;
+  var end = running ? parseInt(root.dataset.end, 10) || 0 : 0;
+
+  function fmt(ms) {
+    if (ms <= 0) {
+      return "0.0";
+    }
+    if (ms > 60000) {
+      var totalSec = Math.ceil(ms / 1000);
+      var m = Math.floor(totalSec / 60);
+      var s = totalSec % 60;
+      return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+    return (Math.floor(ms / 100) / 10).toFixed(1);
+  }
+
+  // Every state change (initial, start, hurry, end, cancel) is
+  // broadcast to the page so the control buttons on any clock
+  // instance update in lockstep.
+  function changed() {
+    root.dataset.running = running ? "true" : "false";
+    document.dispatchEvent(new CustomEvent("gameday:clock", {
+      detail: {
+        running: running,
+        start: new Date(root.dataset.start || 0),
+        end: new Date(root.dataset.end || 0),
+        hurry: new Date(root.dataset.hurry || 0),
+      },
+    }));
+  }
+
+  function setRun(st, et, ht) {
+    running = true;
+    end = new Date(et).getTime();
+    hurry = new Date(ht).getTime();
+    root.dataset.start = new Date(st).getTime();
+    root.dataset.end = end;
+    root.dataset.hurry = hurry;
+  }
+
+  function stopRun() {
+    running = false;
+    root.dataset.start = "";
+    root.dataset.end = "";
+    root.dataset.hurry = "";
+  }
+
+  function onEvent(env) {
+    if (env.replay || !env.data) {
+      return;
+    }
+    var d = env.data;
+    switch (env.type) {
+      case "game.clock.start":
+        if (d.end_time && new Date(d.end_time) > new Date()) {
+          setRun(d.start_time, d.end_time, d.hurry_time);
+          changed();
+        }
+        break;
+      case "game.clock.hurry":
+        if (running && d.hurry_time && end === new Date(d.end_time).getTime()) {
+          hurry = new Date(d.hurry_time).getTime();
+          status.textContent = "Hurry!";
+          changed();
+        }
+        break;
+      case "game.clock.end":
+      case "game.clock.cancel":
+        if (running && end === new Date(d.end_time).getTime()) {
+          stopRun();
+          changed();
+        }
+        break;
+    }
+  }
+
+  function tick() {
+    var now = Date.now();
+    if (!running) {
+      count.textContent = fmt(duration);
+      status.textContent = "";
+      count.classList.remove("clock-hurry");
+      return;
+    }
+    var rem = end - now;
+    if (rem <= 0) {
+      // Hold at zero; the end/cancel event clears the run and the
+      // buttons reset on the same event.
+      count.textContent = "0.0";
+      status.textContent = "Time";
+      return;
+    }
+    count.textContent = fmt(rem);
+    if (hurry > 0 && now >= hurry) {
+      count.classList.add("clock-hurry");
+      status.textContent = "Hurry!";
+    } else {
+      count.classList.remove("clock-hurry");
+      status.textContent = "";
+    }
+  }
+
+  tick();
+  setInterval(tick, 100);
+  changed();
+
+  if (typeof createEventBus === "function") {
+    createEventBus({
+      types: [
+        "game.clock.start",
+        "game.clock.hurry",
+        "game.clock.end",
+        "game.clock.cancel",
+      ],
+      replay: 8,
+      onEvent: onEvent,
+    });
+  }
+})();
+</script>
+<style>
+.clock {
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+.clock-count {
+  display: block;
+  font-family: "Courier New", monospace;
+  font-size: 7rem;
+  font-weight: bold;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-hurry {
+  color: hsl(348, 100%, 45%);
+}
+
+.clock-status {
+  display: block;
+  margin-top: 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  min-height: 1.5rem;
+}
+</style>

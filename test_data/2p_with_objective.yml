@@ -10,6 +10,10 @@ Field:
       Color1: 5b7ab6
       Color2: 9fb1d4
 
+Clock:
+  Duration: "2m30s"
+  Hurry: "30s"
+
 Game:
   Phases:
     - Name: seeding

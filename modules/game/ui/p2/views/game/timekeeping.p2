@@ -1,0 +1,96 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Timekeeping{% endblock %}
+
+{% block content %}
+<div class="box is-flex is-flex-direction-column is-justify-content-center">
+  <div class="content"><h1>Timekeeping</h1></div>
+
+  {% include "../../partials/clock.p2" %}
+
+  {% if profile | hasPermission:"GAME:TIMEKEEPER" %}
+  <div class="is-flex is-justify-content-center">
+    <form id="start-form" method="POST" action="timekeeping/start" class="is-flex is-justify-content-center{% if running %} clock-ctl-hidden{% endif %}">
+      {% if configured %}
+      <button class="button is-primary is-large is-fullwidth" type="submit">Start</button>
+      {% else %}
+      <button class="button is-large is-fullwidth" type="button" disabled>Start</button>
+      {% endif %}
+    </form>
+    <div id="cancel-wrap" class="is-flex is-justify-content-center{% if not running %} clock-ctl-hidden{% endif %}">
+      <button class="button is-danger is-large is-fullwidth" id="cancel-btn" type="button">
+        Cancel
+      </button>
+    </div>
+    {% if not configured %}
+    <p class="has-text-centered has-text-grey">The clock is not configured. Add a <code>clock:</code> section to the game setup file.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if profile | hasPermission:"GAME:TIMEKEEPER" %}
+<div class="modal" id="cancel-modal">
+  <div class="modal-background" id="cancel-modal-bg"></div>
+  <div class="modal-card">
+    <header class="modal-card-head">
+      <p class="modal-card-title">Cancel the running clock?</p>
+    </header>
+    <section class="modal-card-body">
+      The clock will stop immediately and the remaining time will be discarded.
+    </section>
+    <footer class="modal-card-foot">
+      <button class="button" id="cancel-keep" type="button">Keep running</button>
+      <form method="POST" action="timekeeping/cancel">
+        <button class="button is-danger" type="submit">Cancel clock</button>
+      </form>
+    </footer>
+  </div>
+</div>
+<style>
+#start-form.clock-ctl-hidden,
+#cancel-wrap.clock-ctl-hidden {
+  display: none !important;
+}
+</style>
+<script>
+(function () {
+  var clock = document.getElementById("clock");
+  var startForm = document.getElementById("start-form");
+  var cancelWrap = document.getElementById("cancel-wrap");
+  var modal = document.getElementById("cancel-modal");
+  var btn = document.getElementById("cancel-btn");
+  var keep = document.getElementById("cancel-keep");
+  var bg = document.getElementById("cancel-modal-bg");
+
+  // The control buttons track the clock state, which the clock
+  // fragment broadcasts on every start/end/cancel (driven by the
+  // event bus), so all clock instances reset in lockstep.
+  function applyState(running) {
+    startForm.classList.toggle("clock-ctl-hidden", running);
+    cancelWrap.classList.toggle("clock-ctl-hidden", !running);
+    if (!running) {
+      modal.classList.remove("is-active");
+    }
+  }
+
+  function open() {
+    modal.classList.add("is-active");
+  }
+
+  function close() {
+    modal.classList.remove("is-active");
+  }
+
+  document.addEventListener("gameday:clock", function (e) {
+    applyState(e.detail.running);
+  });
+  applyState(clock.dataset.running === "true");
+
+  btn.addEventListener("click", open);
+  keep.addEventListener("click", close);
+  bg.addEventListener("click", close);
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -23,9 +24,10 @@ const (
 
 	ModuleName = "GAME"
 
-	PermissionAdmin    = "ADMIN"
-	PermissionSchedule = "SCHEDULE"
-	PermissionReferee  = "REFEREE"
+	PermissionAdmin      = "ADMIN"
+	PermissionSchedule   = "SCHEDULE"
+	PermissionReferee    = "REFEREE"
+	PermissionTimekeeper = "TIMEKEEPER"
 )
 
 // MatchState is an enum of states that a match can be in, used for
@@ -157,6 +159,21 @@ var efs embed.FS
 type Config struct {
 	Field ConfigField `yaml:"Field"`
 	Game  Game        `yaml:"Game"`
+
+	// Clock is an optional top-level clock configuration section in
+	// the game setup file.
+	Clock ClockConfig `yaml:"Clock"`
+}
+
+// ClockConfig holds the configurable parameters of the match clock
+// as declared in the game setup file.
+type ClockConfig struct {
+	// Duration is the total length of a clock run.
+	Duration time.Duration `yaml:"Duration"`
+
+	// Hurry is the window before the end of the clock that triggers
+	// the hurry state.
+	Hurry time.Duration `yaml:"Hurry"`
 }
 
 type ConfigField struct {
@@ -350,7 +367,7 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 	}
 
 	if m.ws != nil {
-		for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee} {
+		for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee, PermissionTimekeeper} {
 			if err := m.ws.InstallPermission(context.Background(), ModuleName, p); err != nil {
 				return nil
 			}
@@ -395,11 +412,18 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 			r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
 			r.Post("/{phase}/{match}/{field}/{position}", m.ws.GuardRoute(pReferee, m.uiViewScorecardSubmit))
 		})
+		r.Route("/timekeeping", func(r chi.Router) {
+			r.Use(m.ws.RequirePermission(web.Permission{Module: ModuleName, Grant: PermissionTimekeeper}))
+
+			r.Get("/", m.uiViewTimekeeping)
+			r.Post("/start", m.uiViewTimekeepingStart)
+			r.Post("/cancel", m.uiViewTimekeepingCancel)
+		})
 		r.Route("/scoreboard", func(r chi.Router) {
 			r.Get("/", m.uiViewScoreboard)
 			r.Get("/data", m.uiViewScoreboardData)
 		})
-	})
+})
 
 	return &m
 }
@@ -421,6 +445,8 @@ func (m *Module) Migrate() error {
 		MatchScore{},
 		ScorecardElement{},
 		ScorecardValue{},
+		ClockSettings{},
+		ActiveClock{},
 	)
 }
 
@@ -457,6 +483,10 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		}, {
 			Text:   "Schedule",
 			Target: path.Join(prefix, "/schedule"),
+		}, {
+			Text:       "Timekeeping",
+			Target:     path.Join(prefix, "/timekeeping"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionTimekeeper},
 		}, {
 			Text:   "Scorecards",
 			Target: path.Join(prefix, "/scorecard"),
