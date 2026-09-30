@@ -1,3 +1,4 @@
 *.db
+*.min.css
 gameday
 dist/

@@ -23,6 +23,11 @@ const (
 	PermissionAdmin = "ADMIN"
 )
 
+// Vendor the Bulma CSS files so that the binary works even on an
+// air-gapped network.
+//
+//go:generate curl -s -z ui/static/css/bulma.min.css -o ui/static/css/bulma.min.css https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css
+
 //go:embed ui/*
 var uifs embed.FS
 
