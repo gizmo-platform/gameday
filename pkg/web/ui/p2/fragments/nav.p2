@@ -10,7 +10,7 @@
       <div class="navbar-item">{{ element.Text }}</div>
       <div class="navbar-dropdown">
         {% for child in element.Children %}
-        <a class="navbar-item" href="{{ child.Target }}">{{ child.Text }}</a>
+        <a class="navbar-item" href="{{ child.Target }}"{% if child.Blank %} target="_blank"{% endif %}>{{ child.Text }}</a>
         {% endfor %}
       </div>
     </div>

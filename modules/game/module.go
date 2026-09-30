@@ -423,6 +423,7 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 			r.Get("/", m.uiViewScoreboard)
 			r.Get("/data", m.uiViewScoreboardData)
 		})
+		r.Get("/clock", m.uiViewClockDisplay)
 })
 
 	return &m
@@ -493,6 +494,10 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		}, {
 			Text:   "Scoreboard",
 			Target: path.Join(prefix, "/scoreboard"),
+		}, {
+			Text:   "Clock Display",
+			Target: path.Join(prefix, "/clock"),
+			Blank:  true,
 		}},
 	}}
 }

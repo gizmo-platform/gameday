@@ -1,4 +1,4 @@
-<div class="clock" id="clock" data-running="{% if running %}true{% else %}false{% endif %}" data-duration="{{ duration_ms }}" data-hurry="{{ hurry_ms }}" data-end="{{ end_ms }}" data-start="{{ start_ms }}">
+<div class="clock{% if is_standalone %} is-standalone{% endif %}" id="clock" data-running="{% if running %}true{% else %}false{% endif %}" data-duration="{{ duration_ms }}" data-hurry="{{ hurry_ms }}" data-end="{{ end_ms }}" data-start="{{ start_ms }}">
   <span class="clock-count" id="clock-count">--</span>
   <span class="clock-status" id="clock-status"></span>
 </div>
@@ -18,6 +18,25 @@
   var running = root.dataset.running === "true";
   var hurry = running ? parseInt(root.dataset.hurry, 10) || 0 : 0;
   var end = running ? parseInt(root.dataset.end, 10) || 0 : 0;
+
+  // After a clock ends or is cancelled the readout holds at 0.0 for
+  // this long before returning to the full duration.
+  var holdMs = 5000;
+
+  // Every live envelope is stamped with the server's observed time
+  // (ts); the difference against the local clock is this host's
+  // offset from the server (one-way delay included, milliseconds).
+  // Re-estimated on each live envelope so all instances tick
+  // together even when their host clocks are not synced. Replayed
+  // envelopes are skipped because their stamps are stale.
+  var offset = 0;
+  var holdUntil = 0;
+  function noteOffset(ts) {
+    var t = new Date(ts).getTime();
+    if (!isNaN(t)) {
+      offset = Date.now() - t;
+    }
+  }
 
   function fmt(ms) {
     if (ms <= 0) {
@@ -61,16 +80,24 @@
     root.dataset.start = "";
     root.dataset.end = "";
     root.dataset.hurry = "";
+    // The readout stays at 0.0 for a few seconds after the clock
+    // stops so it is obvious the timer actually hit zero; the
+    // buttons already reset on the same event. Stamped in
+    // server-time so the hold lasts exactly holdMs.
+    holdUntil = Date.now() - offset + holdMs;
   }
 
   function onEvent(env) {
     if (env.replay || !env.data) {
       return;
     }
+    // Stamp the clock offset from live envelopes, including the
+    // fresh `subscribed` one, so late-joiners tick in sync too.
+    noteOffset(env.ts);
     var d = env.data;
     switch (env.type) {
       case "game.clock.start":
-        if (d.end_time && new Date(d.end_time) > new Date()) {
+        if (d.end_time && new Date(d.end_time).getTime() > Date.now() - offset) {
           setRun(d.start_time, d.end_time, d.hurry_time);
           changed();
         }
@@ -94,22 +121,26 @@
 
   function tick() {
     var now = Date.now();
+    var serverNow = now - offset; // server-time estimate
     if (!running) {
-      count.textContent = fmt(duration);
+      if (serverNow >= holdUntil) {
+        holdUntil = 0;
+      }
+      count.textContent = holdUntil > serverNow ? "0.0" : fmt(duration);
       status.textContent = "";
       count.classList.remove("clock-hurry");
       return;
     }
-    var rem = end - now;
+    var rem = end - serverNow;
     if (rem <= 0) {
-      // Hold at zero; the end/cancel event clears the run and the
-      // buttons reset on the same event.
+      // Hold at zero; the end/cancel event clears the run (and arms
+      // the post-end hold) and the buttons reset on the same event.
       count.textContent = "0.0";
       status.textContent = "Time";
       return;
     }
     count.textContent = fmt(rem);
-    if (hurry > 0 && now >= hurry) {
+    if (hurry > 0 && serverNow >= hurry) {
       count.classList.add("clock-hurry");
       status.textContent = "Hurry!";
     } else {
@@ -164,5 +195,35 @@
   text-transform: uppercase;
   letter-spacing: 0.2em;
   min-height: 1.5rem;
+}
+
+/* Display-only (standalone) variant: full-viewport timer with no
+   page chrome, for projectors and downstream compositing. */
+.clock.is-standalone {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: black;
+  color: white;
+  padding: 0;
+}
+
+.clock.is-standalone .clock-count {
+  /* Fill ~80% of the viewport width: 4-char reads ("10.0") use the
+     full budget; 5-char reads ("m:ss") render slightly under it. */
+  font-size: min(70vh, 31vw);
+}
+
+.clock.is-standalone .clock-status {
+  margin-top: 2vh;
+  font-size: 5vh;
+  min-height: 6vh;
+}
+
+.clock.is-standalone .clock-hurry {
+  color: hsl(348, 100%, 55%);
 }
 </style>

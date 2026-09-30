@@ -1,0 +1,7 @@
+{% extends "../../fullscreen.p2" %}
+
+{% block title %}Clock Display{% endblock %}
+
+{% block content %}
+{% include "../../partials/clock.p2" %}
+{% endblock %}

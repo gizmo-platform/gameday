@@ -533,3 +533,46 @@ func waitNoEvent(t *testing.T, ch <-chan event.Envelope, window time.Duration) {
 	case <-time.After(window):
 	}
 }
+
+// TestClockDisplayPage verifies the public display-only clock: it
+// must be reachable without a profile (no permission guard), render
+// the standalone full-screen fragment with no controls, and reflect
+// the running state from the server.
+func TestClockDisplayPage(t *testing.T) {
+	m, _ := newTestModule(t)
+	seedClockSettings(t, m, 150*time.Second, 30*time.Second)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/mod/game/clock", nil)
+	rec := httptest.NewRecorder()
+	m.uiViewClockDisplay(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /clock = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`class="clock is-standalone"`,
+		`data-running="false"`,
+		`data-duration="150000"`,
+	} {
+		if !bytes.Contains([]byte(body), []byte(want)) {
+			t.Errorf("display page missing %q", want)
+		}
+	}
+	for _, absent := range []string{`id="start-form"`, `id="cancel-wrap"`, `id="cancel-modal"`, `<nav`} {
+		if bytes.Contains([]byte(body), []byte(absent)) {
+			t.Errorf("display page should not contain %q", absent)
+		}
+	}
+
+	if !startClock(t, m) {
+		t.Fatal("start failed")
+	}
+	rec = httptest.NewRecorder()
+	m.uiViewClockDisplay(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /clock (running) = %d, want 200", rec.Code)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`data-running="true"`)) {
+		t.Error("display page should show data-running=true while running")
+	}
+}

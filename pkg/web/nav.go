@@ -15,6 +15,10 @@ type NavChild struct {
 	Text       string
 	Target     string
 	Permission Permission
+
+	// Blank, when set, renders the link with target="_blank" so it
+	// opens in a new window.
+	Blank bool
 }
 
 func (s *Server) AddNavElement(n ...NavElement) {

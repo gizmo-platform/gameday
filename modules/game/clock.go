@@ -234,6 +234,47 @@ func (m *Module) uiViewTimekeeping(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// uiViewClockDisplay renders the public, display-only clock: a
+// full-screen timer with no chrome or controls, intended for
+// projectors and downstream compositing.
+func (m *Module) uiViewClockDisplay(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	now := time.Now()
+
+	cs, err := m.clockSettings(ctx)
+	if err != nil && !errors.Is(err, errClockNotConfigured) {
+		slog.Error("Error loading clock settings", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	ac, err := m.activeClock(ctx)
+	if err != nil {
+		slog.Error("Error loading active clock", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	var durationMS, hurryMS, endMS, startMS int64
+	if cs != nil {
+		durationMS = cs.Duration.Milliseconds()
+	}
+	if ac != nil {
+		startMS = ac.StartTime.UnixMilli()
+		hurryMS = ac.HurryTime.UnixMilli()
+		endMS = ac.EndTime.UnixMilli()
+	}
+
+	m.ws.DoTemplate(w, r, "views/game/clock_display.p2", pongo2.Context{
+		"is_standalone": true,
+		"running":       activeClockRunning(ac, now),
+		"duration_ms":   durationMS,
+		"hurry_ms":      hurryMS,
+		"end_ms":        endMS,
+		"start_ms":      startMS,
+	})
+}
+
 // uiViewTimekeepingStart starts a new clock run from the configured
 // duration and hurry window.
 func (m *Module) uiViewTimekeepingStart(w http.ResponseWriter, r *http.Request) {
