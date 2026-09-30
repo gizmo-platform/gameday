@@ -8,6 +8,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=1 go build -o /gameday -ldflags '-extldflags "-static"' .
 
 FROM scratch
+LABEL org.opencontainers.image.source = "https://github.com/gizmo-platform/gameday"
 COPY --from=build /sbin/tini-static /tini
 COPY --from=build /gameday /gameday
 ENV GAMEDAY_DB=/data/gameday.db
