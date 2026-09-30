@@ -21,7 +21,7 @@ func init() {
 }
 
 func versionCmdRun(c *cobra.Command, args []string) {
-	fmt.Println("Gizmo Platform Gameday")
+	fmt.Println("Gizmo Gameday")
 	fmt.Printf("Version: %s\n", buildinfo.Version)
 	fmt.Printf("Commit: %s\n", buildinfo.Commit)
 	fmt.Printf("Built: %s\n", buildinfo.BuildDate)

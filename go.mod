@@ -3,6 +3,7 @@ module github.com/gizmo-platform/gameday
 go 1.24.4
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/expr-lang/expr v1.17.8
 	github.com/flosch/pongo2/v6 v6.1.0
 	github.com/go-chi/chi/v5 v5.2.3
@@ -17,7 +18,6 @@ require (
 
 require (
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5 // indirect
-	github.com/coder/websocket v1.8.15 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
