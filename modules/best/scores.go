@@ -35,6 +35,7 @@ type scoreRow struct {
 func (m *Module) ListTeamScores(ctx context.Context, saved string) ([]scoreRow, error) {
 	teams, err := gorm.G[team.Team](m.db.DB).
 		Preload("Division", nil).
+		Preload("Region", nil).
 		Order("id ASC").
 		Find(ctx)
 	if err != nil {

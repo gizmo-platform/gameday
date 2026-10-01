@@ -1,0 +1,42 @@
+{% extends "../../../base.p2" %}
+
+{% block title %}Regions{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+    <p>Below is a list of all regions.</p>
+    <br />
+    <hr />
+    {% if profile | hasPermission:"TEAM:ADMIN" %}
+      <div class="is-flex is-justify-content-center">
+        <a class="button is-primary" href="{{ pageBase }}/add">Add Region</a>
+      </div>
+      <hr />
+    {% endif %}
+
+      <table class="table">
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          {% if profile | hasPermission:"TEAM:ADMIN" %}
+            <th>Actions</th>
+          {% endif %}
+        </tr>
+        {% for region in regions %}
+          <tr>
+            <td>{{ region.ID }}</td>
+            <td>{{ region.Name }}</td>
+            {% if profile | hasPermission:"TEAM:ADMIN" %}
+              <td>
+                <a class="button" href="{{ pageBase }}/{{ region.ID }}/edit">Edit</a>
+                <a class="button" href="{{ pageBase }}/{{ region.ID }}/delete">Delete</a>
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+    </div>
+  </div>
+{% endblock %}

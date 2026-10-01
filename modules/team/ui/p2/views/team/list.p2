@@ -28,7 +28,7 @@
             <td>{{ team.Number }}</td>
             <td>{{ team.Name }}</td>
             <td>{{ team.Division.Name }}</td>
-            <td>{{ team.Region }}</td>
+            <td>{{ team.Region.Name }}</td>
             {% if profile | hasPermission:"TEAM:ADMIN" %}
               <td class="flex-container">
                 <a class="flex-item button" href="{{ pageBase }}/{{ team.ID }}/edit">Edit</a>

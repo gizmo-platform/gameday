@@ -52,6 +52,11 @@ type Division struct {
 	NoCompact bool // When true, this division's matches will not be compacted with others
 }
 
+type Region struct {
+	ID   uint
+	Name string `gorm:"uniqueIndex"`
+}
+
 type Team struct {
 	ID uint
 
@@ -59,7 +64,8 @@ type Team struct {
 	Number     int
 	DivisionID uint
 	Division   Division
-	Region     string
+	RegionID   uint
+	Region     Region
 }
 
 func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
@@ -91,6 +97,13 @@ func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 		r.Get("/divisions/{division_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewEditDivision))
 		r.Post("/divisions/{division_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewUpsertDivision))
 		r.Post("/divisions/{division_id}/delete", m.ws.GuardRoute(pAdmin, m.uiViewDeleteDivision))
+
+		r.Get("/regions", m.uiViewListRegions)
+		r.Get("/regions/add", m.ws.GuardRoute(pAdmin, m.uiViewAddRegion))
+		r.Post("/regions/add", m.ws.GuardRoute(pAdmin, m.uiViewUpsertRegion))
+		r.Get("/regions/{region_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewEditRegion))
+		r.Post("/regions/{region_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewUpsertRegion))
+		r.Post("/regions/{region_id}/delete", m.ws.GuardRoute(pAdmin, m.uiViewDeleteRegion))
 	})
 
 	pongo2.RegisterFilter("teamList", filterTeamList)
@@ -114,6 +127,11 @@ func (m *Module) RegisterDivision(div Division) {
 func (m *Module) Migrate() error {
 	// Auto-migrate Division first
 	if err := m.db.AutoMigrate(Division{}); err != nil {
+		return err
+	}
+
+	// Auto-migrate Region
+	if err := m.db.AutoMigrate(Region{}); err != nil {
 		return err
 	}
 
@@ -195,6 +213,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 			Text:   "Divisions",
 			Target: path.Join(prefix, "/divisions"),
 		}, {
+			Text:   "Regions",
+			Target: path.Join(prefix, "/regions"),
+		}, {
 			Text:       "Bulk Import",
 			Target:     path.Join(prefix, "/import"),
 			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
@@ -204,7 +225,7 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 
 // ListTeams returns a selection of teams matching the filter.
 func (m *Module) ListTeams(ctx context.Context, filter Team) ([]Team, error) {
-	out, err := gorm.G[Team](m.db.DB).Preload("Division", nil).Where(filter).Find(ctx)
+	out, err := gorm.G[Team](m.db.DB).Preload("Division", nil).Preload("Region", nil).Where(filter).Find(ctx)
 	return out, err
 }
 
@@ -291,14 +312,37 @@ func (m *Module) uiViewImportTeamsSubmit(w http.ResponseWriter, r *http.Request)
 		divisionMap[divName] = div.ID
 	}
 
-	// Upsert teams with resolved division IDs
+	// Get or create all regions referenced by the import
+	regionMap := make(map[string]uint)
+	regionMap[""] = 0
+	for _, team := range teams {
+		regName := team["Region"]
+		if _, ok := regionMap[regName]; ok {
+			continue
+		}
+
+		reg, err := gorm.G[Region](m.db.DB).Where(&Region{Name: regName}).First(r.Context())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			reg = Region{Name: regName}
+			if err := m.db.Create(&reg).Error; err != nil {
+				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+				return
+			}
+		} else if err != nil {
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
+		regionMap[regName] = reg.ID
+	}
+
+	// Upsert teams with resolved division and region IDs
 	for _, team := range teams {
 		n, _ := strconv.Atoi(team["Number"])
 		db.InsertOrUpdate[Team](r.Context(), m.db.DB, &Team{
 			Name:       team["Name"],
 			Number:     n,
 			DivisionID: divisionMap[team["Division"]],
-			Region:     team["Region"],
+			RegionID:   regionMap[team["Region"]],
 		})
 	}
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
@@ -315,15 +359,19 @@ func (m *Module) uiViewAddForm(w http.ResponseWriter, r *http.Request) {
 		return divisions[i].Name < divisions[j].Name
 	})
 
-	regions := []string{}
-	if res := m.db.Model(&Team{}).Distinct("region").Find(&regions); res.Error != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	regions, err := gorm.G[Region](m.db.DB).Find(r.Context())
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
+	sort.Slice(regions, func(i, j int) bool {
+		return regions[i].Name < regions[j].Name
+	})
+
 	ctx := pongo2.Context{
 		"divisions": divisions,
-		"regions":   append(regions, "None"),
+		"regions":   regions,
 	}
 
 	m.ws.DoTemplate(w, r, "views/team/form_single.p2", ctx)
@@ -331,6 +379,7 @@ func (m *Module) uiViewAddForm(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) uiViewEditForm(w http.ResponseWriter, r *http.Request) {
 	t, err := gorm.G[Team](m.db.DB).
+		Preload("Region", nil).
 		Where(&Team{ID: m.ws.StrToUint(chi.URLParam(r, "id"))}).
 		First(r.Context())
 	if err != nil {
@@ -348,11 +397,15 @@ func (m *Module) uiViewEditForm(w http.ResponseWriter, r *http.Request) {
 		return divisions[i].Name < divisions[j].Name
 	})
 
-	regions := []string{}
-	if res := m.db.Model(&Team{}).Distinct("region").Find(&regions); res.Error != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": res.Error})
+	regions, err := gorm.G[Region](m.db.DB).Find(r.Context())
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
+
+	sort.Slice(regions, func(i, j int) bool {
+		return regions[i].Name < regions[j].Name
+	})
 
 	ctx := pongo2.Context{
 		"team":      t,
@@ -370,7 +423,7 @@ func (m *Module) uiViewUpsert(w http.ResponseWriter, r *http.Request) {
 		Name:       r.FormValue("team_name"),
 		Number:     int(m.ws.StrToUint(r.FormValue("team_number"))),
 		DivisionID: m.ws.StrToUint(r.FormValue("team_division")),
-		Region:     r.FormValue("team_region"),
+		RegionID:   m.ws.StrToUint(r.FormValue("team_region")),
 	}
 
 	if err := db.InsertOrUpdate[Team](r.Context(), m.db.DB, &t); err != nil {
@@ -451,4 +504,71 @@ func (m *Module) uiViewDeleteDivision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, path.Join(m.basePath, "/divisions"), http.StatusSeeOther)
+}
+
+// --- Region CRUD ---
+
+func (m *Module) uiViewListRegions(w http.ResponseWriter, r *http.Request) {
+	regions, err := gorm.G[Region](m.db.DB).Find(r.Context())
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	sort.Slice(regions, func(i, j int) bool {
+		return regions[i].Name < regions[j].Name
+	})
+
+	m.ws.DoTemplate(w, r, "views/team/regions/list.p2", pongo2.Context{"regions": regions})
+}
+
+func (m *Module) uiViewAddRegion(w http.ResponseWriter, r *http.Request) {
+	m.ws.DoTemplate(w, r, "views/team/regions/form.p2", pongo2.Context{"region": Region{}})
+}
+
+func (m *Module) uiViewEditRegion(w http.ResponseWriter, r *http.Request) {
+	reg, err := gorm.G[Region](m.db.DB).Where(&Region{ID: m.ws.StrToUint(chi.URLParam(r, "region_id"))}).First(r.Context())
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	m.ws.DoTemplate(w, r, "views/team/regions/form.p2", pongo2.Context{"region": reg})
+}
+
+func (m *Module) uiViewUpsertRegion(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	reg := Region{
+		ID:   m.ws.StrToUint(chi.URLParam(r, "region_id")),
+		Name: r.FormValue("region_name"),
+	}
+
+	if err := db.InsertOrUpdate[Region](r.Context(), m.db.DB, &reg); err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	http.Redirect(w, r, path.Join(m.basePath, "/regions"), http.StatusSeeOther)
+}
+
+func (m *Module) uiViewDeleteRegion(w http.ResponseWriter, r *http.Request) {
+	id := m.ws.StrToUint(chi.URLParam(r, "region_id"))
+
+	_, err := gorm.G[Region](m.db.DB).Where(&Region{ID: id}).First(r.Context())
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	var count int64
+	m.db.Model(&Team{}).Where("region_id = ?", id).Count(&count)
+	if count > 0 {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "cannot delete region with associated teams"})
+		return
+	}
+
+	if err := m.db.Delete(&Region{ID: id}).Error; err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	http.Redirect(w, r, path.Join(m.basePath, "/regions"), http.StatusSeeOther)
 }

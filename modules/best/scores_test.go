@@ -54,7 +54,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 	ws.AddTemplateLoader(m.TemplateLoader())
 	m.NavList("/ui/mod/best")
 
-	tm2 := team.Team{Name: "Test Team", Number: 42, Region: "NW"}
+	tm2 := team.Team{Name: "Test Team", Number: 42}
 	if err := d.Create(&tm2).Error; err != nil {
 		t.Fatalf("create team: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestImportScores(t *testing.T) {
 	m, d := newTestModule(t)
 
 	tm := teamByNumber(t, d)
-	second := team.Team{Name: "Second Team", Number: 7, Region: "NW"}
+	second := team.Team{Name: "Second Team", Number: 7}
 	if err := d.Create(&second).Error; err != nil {
 		t.Fatalf("create second team: %v", err)
 	}

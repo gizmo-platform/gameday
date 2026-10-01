@@ -51,7 +51,7 @@
             <div class="select is-multiple">
               <select name="selected_teams" size="25" multiple>
                 {% for team in teams %}
-                <option value="{{ team.ID }}" {% if advancingTeams[team.ID] %}selected{% endif %}>{{ team.Number }} - {{ team.Name }} ({{ team.Division.Name }} / {{ team.Region }})</option>
+                <option value="{{ team.ID }}" {% if advancingTeams[team.ID] %}selected{% endif %}>{{ team.Number }} - {{ team.Name }} ({{ team.Division.Name }} / {{ team.Region.Name }})</option>
                 {% endfor %}
               </select>
             </div>

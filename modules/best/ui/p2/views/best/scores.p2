@@ -29,7 +29,7 @@
             <td>{{ row.Team.Number }}</td>
             <td>{{ row.Team.Name }}</td>
             <td>{{ row.Team.Division.Name }}</td>
-            <td>{{ row.Team.Region }}</td>
+            <td>{{ row.Team.Region.Name }}</td>
             {% for c in row.Cells %}
             <td class="has-text-right{% if c.Saved %} score-saved{% endif %}">
               <form method="post" action="{{ c.Action }}" class="score-form">

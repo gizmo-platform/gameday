@@ -88,7 +88,7 @@ func seedTeams(t *testing.T, d *db.DB, n int) []team.Team {
 
 	var teams []team.Team
 	for i := 1; i <= n; i++ {
-		tr := team.Team{Name: fmt.Sprintf("Team %d", i), Number: i * 10, Region: "NW"}
+		tr := team.Team{Name: fmt.Sprintf("Team %d", i), Number: i * 10}
 		if err := d.Create(&tr).Error; err != nil {
 			t.Fatalf("create team: %v", err)
 		}

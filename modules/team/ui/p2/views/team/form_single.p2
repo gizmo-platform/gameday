@@ -37,8 +37,9 @@
         <div class="control is-expanded">
           <div class="select is-fullwidth">
             <select name="team_region">
+              <option value="0">None</option>
               {% for region in regions %}
-                <option value="{{ region }}" {% if region == team.Region %}selected{% endif %}>{{ region }}</option>
+                <option value="{{ region.ID }}" {% if region.ID == team.RegionID %}selected{% endif %}>{{ region.Name }}</option>
               {% endfor %}
             </select>
           </div>
