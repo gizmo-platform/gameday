@@ -235,7 +235,7 @@ func (m *Module) uiViewTimekeeping(w http.ResponseWriter, r *http.Request) {
 	if cs != nil {
 		durationMS = cs.Duration.Milliseconds()
 		transitions = cs.Transitions
-		nextMatch = cs.NextMatch
+		nextMatch = m.displayClockNextMatch(ctx, cs)
 	}
 	if ac != nil {
 		startMS = ac.StartTime.UnixMilli()

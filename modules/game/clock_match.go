@@ -263,6 +263,19 @@ func (m *Module) clockTransitionsEnabled(ctx context.Context) bool {
 	return err == nil && cs.Transitions
 }
 
+// displayClockNextMatch reports the match number the next clock run
+// will act on: the same target resolution a start performs (operator
+// pointer first, then the lowest non-terminal match).  It returns 0
+// when there is no active phase or the clock has run off the end of
+// the schedule.
+func (m *Module) displayClockNextMatch(ctx context.Context, cs *ClockSettings) int {
+	_, cur, _, err := m.clockMatchTarget(ctx, cs)
+	if err != nil {
+		return 0
+	}
+	return cur
+}
+
 // clockCancelMatchTransitions reverts the match state transitions a
 // clock run made in the active phase: Running and Queued placements
 // go back to Scheduled.  A missing active phase is a no-op (nothing
