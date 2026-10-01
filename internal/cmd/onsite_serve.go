@@ -55,7 +55,7 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 		port = p
 	}
 
-	d, err := db.New()
+	d, err := db.New(db.WithEnvPath("GAMEDAY_ONSITE_DB"))
 	if err != nil {
 		slog.Error("Error initializing database", "error", err)
 		os.Exit(2)

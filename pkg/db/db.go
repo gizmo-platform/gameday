@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"gorm.io/driver/sqlite"
@@ -9,19 +10,77 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const (
+	// DriverSQLite is the SQLite database type.
+	DriverSQLite = "sqlite"
+)
+
 type DB struct {
 	*gorm.DB
 }
 
-func New() (*DB, error) {
-	dbPath := os.Getenv("GAMEDAY_DB")
-	if dbPath == "" {
-		dbPath = "gameday.db"
+// Option configures the database connection created by New.
+type Option func(*config)
+
+type config struct {
+	driver string
+	path   string
+}
+
+// defaultConfig returns the default connection settings: the SQLite
+// driver with the path from GAMEDAY_DB (defaulting to "gameday.db").
+func defaultConfig() config {
+	path := os.Getenv("GAMEDAY_DB")
+	if path == "" {
+		path = "gameday.db"
 	}
-	d, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		PrepareStmt:            true,
-		SkipDefaultTransaction: true,
-	})
+	return config{driver: DriverSQLite, path: path}
+}
+
+// WithDriver selects the database type. DriverSQLite is the only
+// supported driver.
+func WithDriver(driver string) Option {
+	return func(c *config) {
+		c.driver = driver
+	}
+}
+
+// WithPath overrides the database file path.
+func WithPath(path string) Option {
+	return func(c *config) {
+		c.path = path
+	}
+}
+
+// WithEnvPath overrides the database file path from the named
+// environment variable when it is set.
+func WithEnvPath(name string) Option {
+	return func(c *config) {
+		if p := os.Getenv(name); p != "" {
+			c.path = p
+		}
+	}
+}
+
+// New opens a database connection. Without options it connects to
+// SQLite at the GAMEDAY_DB path (default "gameday.db").
+func New(opts ...Option) (*DB, error) {
+	cfg := defaultConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	var d *gorm.DB
+	var err error
+	switch cfg.driver {
+	case DriverSQLite:
+		d, err = gorm.Open(sqlite.Open(cfg.path), &gorm.Config{
+			PrepareStmt:            true,
+			SkipDefaultTransaction: true,
+		})
+	default:
+		return nil, fmt.Errorf("unknown database driver %q", cfg.driver)
+	}
 	if err != nil {
 		return nil, err
 	}
