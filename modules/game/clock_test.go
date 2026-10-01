@@ -100,6 +100,9 @@ func TestClockYAMLParse(t *testing.T) {
 	if c.Clock.Hurry != 30*time.Second {
 		t.Errorf("Hurry = %v, want 30s", c.Clock.Hurry)
 	}
+	if !c.Clock.Transitions {
+		t.Error("Transitions = false, want true")
+	}
 
 	// A fixture without a clock: section must parse to zero values.
 	b, err = os.ReadFile(filepath.Join("..", "..", "test_data", "2p_no_objective.yml"))

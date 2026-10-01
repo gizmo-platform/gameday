@@ -174,6 +174,10 @@ type ClockConfig struct {
 	// Hurry is the window before the end of the clock that triggers
 	// the hurry state.
 	Hurry time.Duration `yaml:"Hurry"`
+
+	// Transitions enables the clock driving match state transitions
+	// (start/end/cancel) for the active phase.
+	Transitions bool `yaml:"Transitions"`
 }
 
 type ConfigField struct {
@@ -418,6 +422,8 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 			r.Get("/", m.uiViewTimekeeping)
 			r.Post("/start", m.uiViewTimekeepingStart)
 			r.Post("/cancel", m.uiViewTimekeepingCancel)
+			r.Post("/transitions", m.uiViewTimekeepingTransitions)
+			r.Post("/next-match", m.uiViewTimekeepingSetNextMatch)
 		})
 		r.Route("/scoreboard", func(r chi.Router) {
 			r.Get("/", m.uiViewScoreboard)

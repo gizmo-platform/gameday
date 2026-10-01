@@ -146,11 +146,20 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if c.Clock != (ClockConfig{}) {
-		if err := db.InsertOrUpdate[ClockSettings](r.Context(), m.db.DB, &ClockSettings{
-			ID:       ClockSettingsID,
-			Duration: c.Clock.Duration,
-			Hurry:    c.Clock.Hurry,
-		}); err != nil {
+		settings := ClockSettings{
+			ID:          ClockSettingsID,
+			Duration:    c.Clock.Duration,
+			Hurry:       c.Clock.Hurry,
+			Transitions: c.Clock.Transitions,
+		}
+		// A re-upload resets the file-sourced fields but preserves
+		// the operator's next-match override, which is runtime state
+		// set from the timekeeping page, not file state.
+		if cur, err := m.clockSettings(r.Context()); err == nil {
+			settings.NextMatch = cur.NextMatch
+			settings.NextMatchPhase = cur.NextMatchPhase
+		}
+		if err := db.InsertOrUpdate[ClockSettings](r.Context(), m.db.DB, &settings); err != nil {
 			slog.Error("Error saving clock settings", "error", err)
 			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 			return

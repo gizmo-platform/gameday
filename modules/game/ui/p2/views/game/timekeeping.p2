@@ -26,6 +26,37 @@
     <p class="has-text-centered has-text-grey">The clock is not configured. Add a <code>clock:</code> section to the game setup file.</p>
     {% endif %}
   </div>
+
+  {% if configured %}
+  <div>
+    <form method="POST" action="timekeeping/transitions">
+      <div class="field is-flex is-justify-content-center is-align-items-center">
+        <label class="label mr-3" for="transitions">Clock match transitions</label>
+        <div class="field is-grouped is-grouped-centered">
+          <div class="control">
+            <input class="checkbox" type="checkbox" name="transitions" value="on"{% if transitions %} checked{% endif %}>
+          </div>
+          <div class="control">
+            <button class="button" type="submit">Update Transition Control Mode</button>
+          </div>
+        </div>
+      </div>
+    </form>
+    <form method="POST" action="timekeeping/next-match">
+      <div class="field is-flex is-justify-content-center is-align-items-center">
+        <label class="label mr-3" for="match">Next Match</label>
+        <div class="field is-grouped is-grouped-centered">
+          <div class="control">
+            <input class="input" type="number" name="match" min="0" value="{{ next_match }}">
+          </div>
+          <div class="control">
+            <button class="button" type="submit">Set next match</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+  {% endif %}
   {% endif %}
 </div>
 
@@ -48,13 +79,13 @@
   </div>
 </div>
 <style>
-#start-form.clock-ctl-hidden,
-#cancel-wrap.clock-ctl-hidden {
+  #start-form.clock-ctl-hidden,
+  #cancel-wrap.clock-ctl-hidden {
   display: none !important;
-}
+  }
 </style>
 <script>
-(function () {
+  (function () {
   var clock = document.getElementById("clock");
   var startForm = document.getElementById("start-form");
   var cancelWrap = document.getElementById("cancel-wrap");
@@ -67,30 +98,30 @@
   // fragment broadcasts on every start/end/cancel (driven by the
   // event bus), so all clock instances reset in lockstep.
   function applyState(running) {
-    startForm.classList.toggle("clock-ctl-hidden", running);
-    cancelWrap.classList.toggle("clock-ctl-hidden", !running);
-    if (!running) {
-      modal.classList.remove("is-active");
-    }
+  startForm.classList.toggle("clock-ctl-hidden", running);
+  cancelWrap.classList.toggle("clock-ctl-hidden", !running);
+  if (!running) {
+  modal.classList.remove("is-active");
+  }
   }
 
   function open() {
-    modal.classList.add("is-active");
+  modal.classList.add("is-active");
   }
 
   function close() {
-    modal.classList.remove("is-active");
+  modal.classList.remove("is-active");
   }
 
   document.addEventListener("gameday:clock", function (e) {
-    applyState(e.detail.running);
+  applyState(e.detail.running);
   });
   applyState(clock.dataset.running === "true");
 
   btn.addEventListener("click", open);
   keep.addEventListener("click", close);
   bg.addEventListener("click", close);
-})();
+  })();
 </script>
 {% endif %}
 {% endblock %}

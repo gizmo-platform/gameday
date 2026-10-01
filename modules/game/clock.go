@@ -3,9 +3,11 @@ package game
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/flosch/pongo2/v6"
@@ -56,6 +58,18 @@ type ClockSettings struct {
 	// Hurry is the window before the end of the clock that triggers
 	// the hurry state.
 	Hurry time.Duration
+
+	// Transitions enables the clock driving match state transitions
+	// for the active phase.
+	Transitions bool
+
+	// NextMatch is the operator override for which match the next
+	// clock run acts on; zero means auto (lowest non-terminal match).
+	NextMatch int
+
+	// NextMatchPhase is the phase ID that NextMatch applies to; zero
+	// means no override is set.
+	NextMatchPhase uint
 }
 
 // ActiveClock is the running-state of the match clock.  It is stored
@@ -177,6 +191,7 @@ func (m *Module) scheduleClockTimers(ac *ActiveClock) {
 			if m.activeClockStill(context.Background(), ac) {
 				m.autoStopClock(ac.EndTime)
 				m.publishClockEvent(context.Background(), eventTypeClockEnd, clockEventFromClock(ac))
+				m.clockEndMatchTransition()
 			}
 		}()
 	}
@@ -215,8 +230,12 @@ func (m *Module) uiViewTimekeeping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var durationMS, hurryMS, endMS, startMS int64
+	transitions := false
+	nextMatch := 0
 	if cs != nil {
 		durationMS = cs.Duration.Milliseconds()
+		transitions = cs.Transitions
+		nextMatch = cs.NextMatch
 	}
 	if ac != nil {
 		startMS = ac.StartTime.UnixMilli()
@@ -231,6 +250,8 @@ func (m *Module) uiViewTimekeeping(w http.ResponseWriter, r *http.Request) {
 		"hurry_ms":    hurryMS,
 		"end_ms":      endMS,
 		"start_ms":    startMS,
+		"transitions": transitions,
+		"next_match":  nextMatch,
 	})
 }
 
@@ -305,6 +326,29 @@ func (m *Module) uiViewTimekeepingStart(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if cs.Transitions {
+		// Drive the match states before the clock row exists so a
+		// failure leaves no running clock behind (and vice versa).
+		phase, cur, next, err := m.clockMatchTarget(ctx, cs)
+		if err != nil {
+			m.renderTimekeepingError(w, r, err)
+			return
+		}
+		if err := m.applyClockMatchStart(ctx, phase.ID, cur, next); err != nil {
+			slog.Error("Error applying clock match start transitions", "phase", phase.ID, "error", err)
+			m.renderTimekeepingError(w, r, fmt.Errorf("failed to update match states: %w", err))
+			return
+		}
+		// Advance the next-match pointer so the following start picks
+		// up the match that was just queued (clearing it when there
+		// is no match after cur).
+		if err := m.setClockNextMatch(ctx, phase.ID, next); err != nil {
+			slog.Error("Error advancing clock next-match pointer", "error", err)
+			m.renderTimekeepingError(w, r, fmt.Errorf("failed to update clock settings: %w", err))
+			return
+		}
+	}
+
 	start := time.Now()
 	ac = &ActiveClock{
 		ID:        ActiveClockID,
@@ -366,6 +410,16 @@ func (m *Module) uiViewTimekeepingCancel(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Revert the match state transitions this run made.  The clock
+	// row is already gone, so a database failure here is reported
+	// but cannot unstop the clock.
+	if m.clockTransitionsEnabled(ctx) {
+		if err := m.clockCancelMatchTransitions(ctx); err != nil {
+			m.renderTimekeepingError(w, r, err)
+			return
+		}
+	}
+
 	m.publishClockEvent(ctx, eventTypeClockCancel, cancelled)
 
 	http.Redirect(w, r, path.Join(m.basePath, "/timekeeping"), http.StatusSeeOther)
@@ -380,4 +434,60 @@ func (m *Module) renderTimekeepingError(w http.ResponseWriter, r *http.Request, 
 		"error": err,
 		"back":  path.Join(m.basePath, "/timekeeping"),
 	})
+}
+
+// uiViewTimekeepingTransitions toggles whether the clock drives
+// match state transitions for the active phase.
+func (m *Module) uiViewTimekeepingTransitions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	cs, err := m.clockSettings(ctx)
+	if err != nil {
+		m.renderTimekeepingError(w, r, err)
+		return
+	}
+
+	cs.Transitions = r.FormValue("transitions") == "on"
+	if err := db.InsertOrUpdate(ctx, m.db.DB, cs); err != nil {
+		slog.Error("Error saving clock settings", "error", err)
+		m.renderTimekeepingError(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, path.Join(m.basePath, "/timekeeping"), http.StatusSeeOther)
+}
+
+// uiViewTimekeepingSetNextMatch sets the operator's override for
+// which match the next clock run acts on; a value of 0 clears the
+// override and reverts to auto-selection.
+func (m *Module) uiViewTimekeepingSetNextMatch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	n, err := strconv.Atoi(r.FormValue("match"))
+	if err != nil || n < 0 {
+		m.renderTimekeepingError(w, r, errors.New("match must be a non-negative integer"))
+		return
+	}
+
+	phase, err := m.activePhase(ctx)
+	if err != nil {
+		m.renderTimekeepingError(w, r, err)
+		return
+	}
+	if n > 0 && phase == nil {
+		m.renderTimekeepingError(w, r, errors.New("no active phase to set the next match for"))
+		return
+	}
+
+	phaseID := uint(0)
+	if phase != nil {
+		phaseID = phase.ID
+	}
+	if err := m.setClockNextMatch(ctx, phaseID, n); err != nil {
+		slog.Error("Error setting clock next match", "match", n, "error", err)
+		m.renderTimekeepingError(w, r, err)
+		return
+	}
+
+	http.Redirect(w, r, path.Join(m.basePath, "/timekeeping"), http.StatusSeeOther)
 }

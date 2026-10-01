@@ -13,6 +13,7 @@ Field:
 Clock:
   Duration: "2m30s"
   Hurry: "30s"
+  Transitions: true
 
 Game:
   Phases:
