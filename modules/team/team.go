@@ -248,16 +248,143 @@ func filterTeamList(in, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 	return pongo2.AsValue(v[param.Integer()].Name), nil
 }
 
+// uiViewListTeams renders the admin team list with server-side search,
+// division/region facet filters, and pagination. Disabled teams remain
+// visible so they can be re-enabled; this differs from ListTeams, which
+// excludes them on a default (roster) filter.
 func (m *Module) uiViewListTeams(w http.ResponseWriter, r *http.Request) {
-	// Query directly so disabled teams remain visible for management;
-	// ListTeams would exclude them on a default (roster) filter.
-	teams, err := gorm.G[Team](m.db.DB).Preload("Division", nil).Preload("Region", nil).Find(r.Context())
+	ctx := r.Context()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	divID := m.ws.StrToUint(r.URL.Query().Get("division_id"))
+	regID := m.ws.StrToUint(r.URL.Query().Get("region_id"))
+
+	// Compose the active filter predicates once so the total (Count) and the
+	// paged rows (Find) are always derived from the same constraint set.
+	var (
+		cond string
+		args []interface{}
+	)
+	if q != "" {
+		p := "%" + q + "%"
+		cond = "(name LIKE ? OR CAST(number AS TEXT) LIKE ?)"
+		args = []interface{}{p, p}
+	}
+	if divID != 0 {
+		if cond != "" {
+			cond += " AND "
+		}
+		cond += "division_id = ?"
+		args = append(args, divID)
+	}
+	if regID != 0 {
+		if cond != "" {
+			cond += " AND "
+		}
+		cond += "region_id = ?"
+		args = append(args, regID)
+	}
+
+	// gorm's generic G[T] re-sessions with NewDB, so WHERE/LIMIT/OFFSET applied
+	// to a raw *gorm.DB before G[T] are dropped. Apply the filters through the
+	// generic chain (ChainInterface) so they survive; Count and Find share it.
+	base := gorm.G[Team](m.db.DB).
+		Preload("Division", nil).
+		Preload("Region", nil)
+	if cond != "" {
+		base = base.Where(cond, args...)
+	}
+
+	// Count over the full filtered set (no limit) so the total and the page
+	// always agree. Preload does not affect the count value.
+	total, err := base.Count(ctx, "*")
 	if err != nil {
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
-	m.ws.DoTemplate(w, r, "views/team/list.p2", pongo2.Context{"teams": teams})
+	// web.PageParams mirrors web.Paginate's clamping; the generic chain takes
+	// explicit Offset/Limit rather than a *gorm.DB scope.
+	page, pageSize := web.PageParams(r)
+	teams, err := base.
+		Order("number ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(ctx)
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	divisions, err := gorm.G[Division](m.db.DB).Find(ctx)
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	sort.Slice(divisions, func(i, j int) bool {
+		return divisions[i].Name < divisions[j].Name
+	})
+
+	regions, err := gorm.G[Region](m.db.DB).Find(ctx)
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	sort.Slice(regions, func(i, j int) bool {
+		return regions[i].Name < regions[j].Name
+	})
+
+	pages := 0
+	if total > 0 {
+		pages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+	window := pageWindow(page, pages)
+
+	// The filter form drops "page" (resets to page 1); pager links re-append
+	// it. Preserve the other query params on the pager links via filtersQS.
+	fq := r.URL.Query()
+	fq.Del("page")
+
+	prevPage, nextPage := page-1, page+1
+	m.ws.DoTemplate(w, r, "views/team/list.p2", pongo2.Context{
+		"teams":      teams,
+		"divisions":  divisions,
+		"regions":    regions,
+		"q":          q,
+		"divisionID": divID,
+		"regionID":   regID,
+		"filtersQS":  fq.Encode(),
+		"total":      total,
+		"page":       page,
+		"pages":      pages,
+		"pageSize":   pageSize,
+		"prevPage":   prevPage,
+		"nextPage":   nextPage,
+		"pageWindow": window,
+	})
+}
+
+// pageWindow returns the page numbers to display as links in the pager,
+// centered on page and clamped to [1, pages]. At most (radius*2 + 1)
+// numbers are shown; the ellipsis logic is left to the template which only
+// renders the window we hand it.
+func pageWindow(page, pages int) []int {
+	if pages <= 0 {
+		return nil
+	}
+	const radius = 2
+	start := page - radius
+	if start < 1 {
+		start = 1
+	}
+	end := page + radius
+	if end > pages {
+		end = pages
+	}
+	out := make([]int, 0, end-start+1)
+	for n := start; n <= end; n++ {
+		out = append(out, n)
+	}
+	return out
 }
 
 func (m *Module) uiViewImportTeams(w http.ResponseWriter, r *http.Request) {
