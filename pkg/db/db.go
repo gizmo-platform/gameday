@@ -95,7 +95,15 @@ func (d *DB) Migrate(tables ...interface{}) error {
 	return d.AutoMigrate(tables)
 }
 
-func InsertOrUpdate[T any](ctx context.Context, db *gorm.DB, data *T) error {
+// InsertOrUpdate creates or updates a record. Without an explicit
+// clause it upserts on the primary key; callers with a business key
+// may pass clause.OnConflict{Columns: ...} to upsert on a unique
+// index instead.
+func InsertOrUpdate[T any](ctx context.Context, db *gorm.DB, data *T, opts ...clause.Expression) error {
+	if len(opts) > 0 {
+		err := gorm.G[T](db, opts...).Create(ctx, data)
+		return err
+	}
 	err := gorm.G[T](db, clause.OnConflict{
 		UpdateAll: true,
 	}).Create(ctx, data)

@@ -17,6 +17,7 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/pkg/db"
@@ -61,11 +62,14 @@ type Team struct {
 	ID uint
 
 	Name       string
-	Number     int
+	Number     int `gorm:"uniqueIndex"`
 	DivisionID uint
 	Division   Division
 	RegionID   uint
 	Region     Region
+
+	// When true, the team is excluded from default roster queries.
+	Disabled bool
 }
 
 func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
@@ -224,8 +228,15 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 }
 
 // ListTeams returns a selection of teams matching the filter.
+// Default (roster) queries, indicated by a zero ID, exclude disabled
+// teams; a specific ID filter returns that team regardless of its
+// disabled state.
 func (m *Module) ListTeams(ctx context.Context, filter Team) ([]Team, error) {
-	out, err := gorm.G[Team](m.db.DB).Preload("Division", nil).Preload("Region", nil).Where(filter).Find(ctx)
+	q := gorm.G[Team](m.db.DB).Preload("Division", nil).Preload("Region", nil).Where(filter)
+	if filter.ID == 0 {
+		q = q.Where("disabled = ?", false)
+	}
+	out, err := q.Find(ctx)
 	return out, err
 }
 
@@ -238,7 +249,9 @@ func filterTeamList(in, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
 }
 
 func (m *Module) uiViewListTeams(w http.ResponseWriter, r *http.Request) {
-	teams, err := m.ListTeams(r.Context(), Team{})
+	// Query directly so disabled teams remain visible for management;
+	// ListTeams would exclude them on a default (roster) filter.
+	teams, err := gorm.G[Team](m.db.DB).Preload("Division", nil).Preload("Region", nil).Find(r.Context())
 	if err != nil {
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
@@ -335,15 +348,24 @@ func (m *Module) uiViewImportTeamsSubmit(w http.ResponseWriter, r *http.Request)
 		regionMap[regName] = reg.ID
 	}
 
-	// Upsert teams with resolved division and region IDs
+	// Upsert teams keyed on team number: re-importing the same file
+	// updates the existing rows in place instead of duplicating them.
+	// Disabled is deliberately absent from the update set so a
+	// re-import cannot resurrect a manually-disabled team.
 	for _, team := range teams {
 		n, _ := strconv.Atoi(team["Number"])
-		db.InsertOrUpdate[Team](r.Context(), m.db.DB, &Team{
+		err := db.InsertOrUpdate[Team](r.Context(), m.db.DB, &Team{
 			Name:       team["Name"],
 			Number:     n,
 			DivisionID: divisionMap[team["Division"]],
 			RegionID:   regionMap[team["Region"]],
+		}, clause.OnConflict{
+			Columns:   []clause.Column{{Name: "number"}},
+			DoUpdates: clause.AssignmentColumns([]string{"name", "division_id", "region_id"}),
 		})
+		if err != nil {
+			slog.Error("Error upserting team on import", "number", n, "error", err)
+		}
 	}
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
 }
@@ -424,12 +446,16 @@ func (m *Module) uiViewUpsert(w http.ResponseWriter, r *http.Request) {
 		Number:     int(m.ws.StrToUint(r.FormValue("team_number"))),
 		DivisionID: m.ws.StrToUint(r.FormValue("team_division")),
 		RegionID:   m.ws.StrToUint(r.FormValue("team_region")),
+		Disabled:   r.FormValue("team_disabled") != "",
 	}
 
+	// The default UpdateAll upsert rewrites every column, so the flag
+	// is carried on both the insert (add) and update (edit) paths.
 	if err := db.InsertOrUpdate[Team](r.Context(), m.db.DB, &t); err != nil {
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
+
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
 }
 

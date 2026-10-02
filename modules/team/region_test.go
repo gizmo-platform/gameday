@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
+	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
 

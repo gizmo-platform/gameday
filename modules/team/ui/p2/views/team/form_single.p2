@@ -45,7 +45,17 @@
           </div>
         </div>
       </div>
-      
+
+      <div class="field">
+        <div class="control">
+          <label class="checkbox" for="team_disabled">
+            <input type="checkbox" name="team_disabled" value="1" {% if team.Disabled %}checked{% endif %} />
+            Disabled
+          </label>
+        </div>
+        <p class="help">Disabled teams are excluded from roster queries and scheduling.</p>
+      </div>
+
       <div class="field">
         <div class="control">
           <button type="submit" class="button is-primary is-fullwidth">Save</button>
