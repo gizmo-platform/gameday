@@ -15,6 +15,7 @@ import (
 
 	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/modules/team"
+	"github.com/gizmo-platform/gameday/pkg/cloud"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
@@ -137,6 +138,10 @@ func (gmpf GamePhaseAdvancementFilterMode) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+func (gmpf GamePhaseAdvancementFilterMode) MarshalText() ([]byte, error) {
+	return []byte(gmpf.String()), nil
 }
 
 func (gmpf *GamePhaseAdvancementFilterMode) UnmarshalText(b []byte) error {
@@ -356,6 +361,8 @@ type Module struct {
 
 	tm TeamModule
 
+	cloudClient *cloud.Client
+
 	basePath string
 }
 
@@ -364,6 +371,8 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 		r:  chi.NewRouter(),
 		db: db,
 		ws: ws,
+
+		cloudClient: cloud.New(),
 	}
 
 	if tm, ok := deps["team"].(TeamModule); ok {
@@ -387,6 +396,12 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 		r.Get("/", m.uiViewGame)
 		r.Get("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupForm))
 		r.Post("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupSubmit))
+		r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
+		r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
+		// The cloud setup endpoint is public on purpose: the game file
+		// is game design, not sensitive data, and is pulled by other
+		// Gameday systems.
+		r.Get("/cloud/setup", m.cloudSetupData)
 
 		r.Route("/fields", func(r chi.Router) {
 			r.Use(m.ws.RequirePermission(pSchedule))
@@ -482,6 +497,10 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		}, {
 			Text:       "Setup",
 			Target:     path.Join(prefix, "/setup"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+		}, {
+			Text:       "Cloud Import",
+			Target:     path.Join(prefix, "/import-cloud"),
 			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}, {
 			Text:       "Fields",

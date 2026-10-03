@@ -155,6 +155,54 @@ func TestUnauthenticatedClientSendsNoAuthHeader(t *testing.T) {
 	}
 }
 
+func TestGetGameFileRoundTrip(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != gameSetupPath {
+			t.Errorf("path = %q, want %s", r.URL.Path, gameSetupPath)
+		}
+		if got := r.Header.Get("Accept"); got != "application/json" {
+			t.Errorf("Accept = %q, want application/json", got)
+		}
+		w.Header().Set("Content-Type", "text/yaml")
+		_, _ = w.Write([]byte("Field:\n  Positions:\n    - ID: 1\n      Name: red\n"))
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	body, err := c.GetGameFile(context.Background())
+	if err != nil {
+		t.Fatalf("GetGameFile: %v", err)
+	}
+	want := "Field:\n  Positions:\n    - ID: 1\n      Name: red\n"
+	if string(body) != want {
+		t.Errorf("body = %q, want %q", body, want)
+	}
+}
+
+func TestGetGameFileNon2xxReturnsCloudError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("no game file"))
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	_, err := c.GetGameFile(context.Background())
+	if err == nil {
+		t.Fatal("GetGameFile: expected error, got nil")
+	}
+	var ce *Error
+	if !errors.As(err, &ce) {
+		t.Fatalf("err = %T (%v), want *cloud.Error", err, err)
+	}
+	if ce.Status != http.StatusNotFound {
+		t.Errorf("Status = %d, want 404", ce.Status)
+	}
+	if ce.Message != "no game file" {
+		t.Errorf("Message = %q, want no game file", ce.Message)
+	}
+}
+
 func TestGetRegionsRoundTrip(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != teamRegionsPath {

@@ -113,6 +113,37 @@ func (c *Client) BaseURL() string {
 // return a *Error; transport and context failures return the
 // underlying error unchanged.
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, out any) error {
+	resp, err := c.do(ctx, method, path, query)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if out == nil {
+		io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// DoBytes issues a request against the cloud instance and returns
+// the full response body. Unlike Do it is not limited to JSON and
+// leaves the body untouched so callers can parse arbitrary payload
+// types (for example a raw YAML file). Non-2xx statuses return a
+// *Error; transport and context failures return the underlying error
+// unchanged.
+func (c *Client) DoBytes(ctx context.Context, method, path string, query url.Values) ([]byte, error) {
+	resp, err := c.do(ctx, method, path, query)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// do builds, authorizes, and executes a request, returning the
+// open response for 2xx statuses. The caller owns resp.Body.
+func (c *Client) do(ctx context.Context, method, path string, query url.Values) (*http.Response, error) {
 	u := c.base + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -120,29 +151,24 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 
 	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 
 	if c.auth != nil {
 		if err := c.auth.Apply(ctx, req); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return NewErrorFromBody(resp)
+		defer resp.Body.Close()
+		return nil, NewErrorFromBody(resp)
 	}
-
-	if out == nil {
-		io.Copy(io.Discard, resp.Body)
-		return nil
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return resp, nil
 }

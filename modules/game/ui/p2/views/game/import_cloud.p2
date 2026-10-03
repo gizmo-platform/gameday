@@ -1,0 +1,29 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Cloud Game Import{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <p>Import the game setup from the cloud instance at <code>{{ cloudBase }}</code>. Importing pulls the game file and applies it with the same upsert as a local file upload; re-importing updates the game in place.</p>
+
+      {% if imported %}
+        <div class="notification is-success">Game setup imported.</div>
+      {% endif %}
+
+      {% if error %}
+        <div class="notification is-danger">{{ error }}</div>
+      {% endif %}
+
+      {% if not error %}
+        <form method="post" action="{{ pageBase }}">
+          <button type="submit" class="button is-primary">Import Game Setup</button>
+        </form>
+      {% endif %}
+
+      <br />
+      <hr />
+      <a href="{{ pageBase }}/">Back to Game Configuration</a>
+    </div>
+  </div>
+{% endblock %}

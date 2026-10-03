@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -76,11 +77,25 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := m.applyGameConfig(r.Context(), c); err != nil {
+		slog.Error("Error applying game config", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		return
+	}
+
+	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
+}
+
+// applyGameConfig persists a parsed game setup document: field
+// positions, phases with their advancement filters, game elements
+// with states, values, and scorecard expressions, and (when present)
+// the clock section. It is the shared upsert used by both the local
+// file upload and the cloud import, so the two paths behave
+// identically.
+func (m *Module) applyGameConfig(ctx context.Context, c Config) error {
 	for _, pos := range c.Field.Positions {
-		if err := db.InsertOrUpdate[FieldPosition](r.Context(), m.db.DB, &pos); err != nil {
-			slog.Error("Error saving position", "error", err)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
+		if err := db.InsertOrUpdate[FieldPosition](ctx, m.db.DB, &pos); err != nil {
+			return err
 		}
 	}
 
@@ -90,56 +105,43 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 			filter.GamePhaseID = phase.ID
 			filter.ID = advFilterID
 			slog.Debug("Loading filter", "id", advFilterID, "filter", filter)
-			if err := db.InsertOrUpdate[GamePhaseAdvancementFilter](r.Context(), m.db.DB, &filter); err != nil {
-				slog.Error("Error saving phase advancement", "error", err)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return
+			if err := db.InsertOrUpdate[GamePhaseAdvancementFilter](ctx, m.db.DB, &filter); err != nil {
+				return err
 			}
 			advFilterID++
 		}
 		phase.AdvancementFilters = nil
-		if err := db.InsertOrUpdate[GamePhase](r.Context(), m.db.DB, &phase); err != nil {
-			slog.Error("Error saving phases", "error", err)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
+		if err := db.InsertOrUpdate[GamePhase](ctx, m.db.DB, &phase); err != nil {
+			return err
 		}
 	}
 
 	sceID := uint(1)
 	for _, element := range c.Game.Elements {
-		if err := db.InsertOrUpdate[GameElement](r.Context(), m.db.DB, &element); err != nil {
-			slog.Error("Error saving element", "error", err)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
+		if err := db.InsertOrUpdate[GameElement](ctx, m.db.DB, &element); err != nil {
+			return err
 		}
 
 		for _, state := range element.States {
 			state.GameElementID = element.ID
-			if err := db.InsertOrUpdate[GameElementState](r.Context(), m.db.DB, &state); err != nil {
-				slog.Error("Error saving element state", "error", err)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return
+			if err := db.InsertOrUpdate[GameElementState](ctx, m.db.DB, &state); err != nil {
+				return err
 			}
 
-			err := db.InsertOrUpdate[ScorecardElement](r.Context(), m.db.DB, &ScorecardElement{
+			if err := db.InsertOrUpdate[ScorecardElement](ctx, m.db.DB, &ScorecardElement{
 				ID:      sceID,
 				Element: element.EID + "_" + state.SID,
 				Type:    element.Type,
 				Expr:    exprForElementState(element, state),
-			})
-			if err != nil {
-				slog.Error("Error saving element state", "error", err)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return
+			}); err != nil {
+				return err
 			}
 			sceID++
 
 			for _, value := range state.Values {
 				value.GameElementStateID = state.ID
-				if err := db.InsertOrUpdate[GameElementStateValue](r.Context(), m.db.DB, &value); err != nil {
-					slog.Error("Error saving state value", "error", err)
-					m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-					return
+				if err := db.InsertOrUpdate[GameElementStateValue](ctx, m.db.DB, &value); err != nil {
+					return err
 				}
 			}
 		}
@@ -155,18 +157,16 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		// A re-upload resets the file-sourced fields but preserves
 		// the operator's next-match override, which is runtime state
 		// set from the timekeeping page, not file state.
-		if cur, err := m.clockSettings(r.Context()); err == nil {
+		if cur, err := m.clockSettings(ctx); err == nil {
 			settings.NextMatch = cur.NextMatch
 			settings.NextMatchPhase = cur.NextMatchPhase
 		}
-		if err := db.InsertOrUpdate[ClockSettings](r.Context(), m.db.DB, &settings); err != nil {
-			slog.Error("Error saving clock settings", "error", err)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
+		if err := db.InsertOrUpdate[ClockSettings](ctx, m.db.DB, &settings); err != nil {
+			return err
 		}
 	}
 
-	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
+	return nil
 }
 
 func (m *Module) uiViewFieldList(w http.ResponseWriter, r *http.Request) {
