@@ -17,9 +17,9 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/gizmo-platform/gameday/modules"
+	"github.com/gizmo-platform/gameday/pkg/cloud"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
@@ -44,6 +44,7 @@ type Module struct {
 	basePath string
 
 	staticDivisions []Division
+	cloudClient     *cloud.Client
 }
 
 type Division struct {
@@ -74,9 +75,10 @@ type Team struct {
 
 func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 	m := &Module{
-		r:  chi.NewRouter(),
-		db: db,
-		ws: ws,
+		r:           chi.NewRouter(),
+		db:          db,
+		ws:          ws,
+		cloudClient: cloud.New(),
 	}
 
 	if err := m.ws.InstallPermission(context.Background(), ModuleName, PermissionAdmin); err != nil {
@@ -108,6 +110,12 @@ func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 		r.Get("/regions/{region_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewEditRegion))
 		r.Post("/regions/{region_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewUpsertRegion))
 		r.Post("/regions/{region_id}/delete", m.ws.GuardRoute(pAdmin, m.uiViewDeleteRegion))
+
+		r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
+		r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
+
+		r.Get("/cloud/regions", m.cloudRegionsData)
+		r.Get("/cloud/teams", m.cloudTeamsData)
 	})
 
 	pongo2.RegisterFilter("teamList", filterTeamList)
@@ -222,6 +230,10 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		}, {
 			Text:       "Bulk Import",
 			Target:     path.Join(prefix, "/import"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+		}, {
+			Text:       "Cloud Import",
+			Target:     path.Join(prefix, "/import-cloud"),
 			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}},
 	}}
@@ -430,69 +442,20 @@ func (m *Module) uiViewImportTeamsSubmit(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// Get or create all divisions referenced by the import
-	divisionMap := make(map[string]uint)
-	for _, team := range teams {
-		divName := team["Division"]
-		if _, ok := divisionMap[divName]; ok {
-			continue
-		}
-
-		div, err := gorm.G[Division](m.db.DB).Where(&Division{Name: divName}).First(r.Context())
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			div = Division{Name: divName}
-			if err := m.db.Create(&div).Error; err != nil {
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return
-			}
-		} else if err != nil {
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
-		}
-		divisionMap[divName] = div.ID
-	}
-
-	// Get or create all regions referenced by the import
-	regionMap := make(map[string]uint)
-	regionMap[""] = 0
-	for _, team := range teams {
-		regName := team["Region"]
-		if _, ok := regionMap[regName]; ok {
-			continue
-		}
-
-		reg, err := gorm.G[Region](m.db.DB).Where(&Region{Name: regName}).First(r.Context())
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			reg = Region{Name: regName}
-			if err := m.db.Create(&reg).Error; err != nil {
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return
-			}
-		} else if err != nil {
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
-		}
-		regionMap[regName] = reg.ID
-	}
-
-	// Upsert teams keyed on team number: re-importing the same file
-	// updates the existing rows in place instead of duplicating them.
-	// Disabled is deliberately absent from the update set so a
-	// re-import cannot resurrect a manually-disabled team.
+	rows := make([]TeamRow, 0, len(teams))
 	for _, team := range teams {
 		n, _ := strconv.Atoi(team["Number"])
-		err := db.InsertOrUpdate[Team](r.Context(), m.db.DB, &Team{
-			Name:       team["Name"],
-			Number:     n,
-			DivisionID: divisionMap[team["Division"]],
-			RegionID:   regionMap[team["Region"]],
-		}, clause.OnConflict{
-			Columns:   []clause.Column{{Name: "number"}},
-			DoUpdates: clause.AssignmentColumns([]string{"name", "division_id", "region_id"}),
+		rows = append(rows, TeamRow{
+			Name:     team["Name"],
+			Number:   n,
+			Division: team["Division"],
+			Region:   team["Region"],
 		})
-		if err != nil {
-			slog.Error("Error upserting team on import", "number", n, "error", err)
-		}
+	}
+
+	if _, err := m.upsertTeamRows(r.Context(), rows); err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
 	}
 	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
 }

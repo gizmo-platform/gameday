@@ -1,0 +1,51 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Cloud Team Import{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <p>Import team rosters from the cloud instance at <code>{{ cloudBase }}</code>. Importing a region syncs every team in it to this system, keyed on team number; re-importing updates existing teams in place.</p>
+
+      {% if imported %}
+        <div class="notification is-success">Imported {{ imported }} team(s).</div>
+      {% endif %}
+
+      {% if error %}
+        <div class="notification is-danger">{{ error }}</div>
+      {% endif %}
+
+      {% if regions %}
+        <table class="table is-striped">
+          <thead>
+            <tr>
+              <th>Region</th>
+              <th>Teams</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for region in regions %}
+              <tr>
+                <td>{{ region.Name }}</td>
+                <td>{{ region.TeamCount }}</td>
+                <td>
+                  <form method="post" action="{{ pageBase }}">
+                    <input type="hidden" name="region" value="{{ region.Name }}" />
+                    <button type="submit" class="button is-primary">Import</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% elif not error %}
+        <p>No regions found on the cloud instance.</p>
+      {% endif %}
+
+      <br />
+      <hr />
+      <a href="{{ pageBase }}/">Back to Team List</a>
+    </div>
+  </div>
+{% endblock %}

@@ -3,15 +3,18 @@ package team
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/gizmo-platform/gameday/pkg/cloud"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
@@ -57,7 +60,7 @@ func teamCount(t *testing.T, d *db.DB) int64 {
 
 func fetchTeam(t *testing.T, d *db.DB, id uint) Team {
 	t.Helper()
-	tm, err := gorm.G[Team](d.DB).Where(&Team{ID: id}).First(context.Background())
+	tm, err := gorm.G[Team](d.DB).Where(&Team{ID: id}).Preload("Division", nil).Preload("Region", nil).First(context.Background())
 	if err != nil {
 		t.Fatalf("fetch team %d: %v", id, err)
 	}
@@ -66,7 +69,7 @@ func fetchTeam(t *testing.T, d *db.DB, id uint) Team {
 
 func fetchTeamByNumber(t *testing.T, d *db.DB, number int) Team {
 	t.Helper()
-	tm, err := gorm.G[Team](d.DB).Where(&Team{Number: number}).First(context.Background())
+	tm, err := gorm.G[Team](d.DB).Where(&Team{Number: number}).Preload("Division", nil).Preload("Region", nil).First(context.Background())
 	if err != nil {
 		t.Fatalf("fetch team by number %d: %v", number, err)
 	}
@@ -456,6 +459,276 @@ func TestListCombinedFilters(t *testing.T) {
 		if strings.Contains(n, "Team 1 ") || strings.Contains(n, "Team 2 ") || strings.Contains(n, "Team 10") {
 			t.Errorf("Open team leaked into combined filter: %q", n)
 		}
+	}
+}
+
+// seedCloudFixture builds a region/division/team dataset that the
+// cloud export endpoints must round-trip.
+func seedCloudFixture(t *testing.T, d *db.DB) (rookie Division, north, south Region) {
+	t.Helper()
+
+	open, err := gorm.G[Division](d.DB).Where(&Division{Name: "Open"}).First(context.Background())
+	if err != nil {
+		t.Fatalf("lookup Open: %v", err)
+	}
+	rookie = Division{Name: "Rookie"}
+	if err := d.Create(&rookie).Error; err != nil {
+		t.Fatalf("create Rookie: %v", err)
+	}
+	north = seedRegion(t, d, "North")
+	south = seedRegion(t, d, "South")
+	west := seedRegion(t, d, "West")
+
+	teams := []Team{
+		{Name: "Alpha", Number: 1, DivisionID: open.ID, RegionID: north.ID},
+		{Name: "Beta", Number: 2, DivisionID: rookie.ID, RegionID: north.ID},
+		{Name: "Gamma", Number: 3, DivisionID: open.ID, RegionID: south.ID},
+		{Name: "Delta", Number: 4, DivisionID: open.ID, RegionID: west.ID},
+		{Name: "Retired", Number: 5, DivisionID: open.ID, RegionID: north.ID},
+	}
+	for i := range teams {
+		if err := d.Create(&teams[i]).Error; err != nil {
+			t.Fatalf("create team %d: %v", teams[i].Number, err)
+		}
+	}
+	// Retired is disabled: exports must still include it (full roster),
+	// and its region's count must include it too.
+	if err := d.Model(&Team{}).Where("id = ?", teams[4].ID).Update("disabled", true).Error; err != nil {
+		t.Fatalf("disable team: %v", err)
+	}
+	return
+}
+
+func decodeJSON[T any](t *testing.T, body string) T {
+	t.Helper()
+	var out T
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("decode %T from %q: %v", out, body, err)
+	}
+	return out
+}
+
+func TestCloudRegionsEndpoint(t *testing.T) {
+	m, d := newTestModule(t)
+	seedCloudFixture(t, d)
+
+	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/cloud/regions", "")
+	if code != http.StatusOK {
+		t.Fatalf("regions endpoint = %d, want 200: %s", code, body)
+	}
+	regions := decodeJSON[[]cloud.RegionInfo](t, body)
+	if len(regions) != 3 {
+		t.Fatalf("len(regions) = %d, want 3: %+v", len(regions), regions)
+	}
+	// Ordered by name; counts include disabled teams and zero-team
+	// regions are still listed.
+	want := []cloud.RegionInfo{{Name: "North", TeamCount: 3}, {Name: "South", TeamCount: 1}, {Name: "West", TeamCount: 1}}
+	for i := range want {
+		if regions[i] != want[i] {
+			t.Errorf("regions[%d] = %+v, want %+v", i, regions[i], want[i])
+		}
+	}
+}
+
+func TestCloudTeamsEndpoint(t *testing.T) {
+	m, d := newTestModule(t)
+	rookie, _, _ := seedCloudFixture(t, d)
+
+	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/cloud/teams?region=North", "")
+	if code != http.StatusOK {
+		t.Fatalf("teams endpoint = %d, want 200: %s", code, body)
+	}
+	teams := decodeJSON[[]cloud.TeamInfo](t, body)
+	want := []cloud.TeamInfo{
+		{Number: 1, Name: "Alpha", Division: "Open", Region: "North"},
+		{Number: 2, Name: "Beta", Division: "Rookie", Region: "North"},
+		{Number: 5, Name: "Retired", Division: "Open", Region: "North"},
+	}
+	if len(teams) != len(want) {
+		t.Fatalf("len(teams) = %d, want %d: %+v", len(teams), len(want), teams)
+	}
+	for i := range want {
+		if teams[i] != want[i] {
+			t.Errorf("teams[%d] = %+v, want %+v", i, teams[i], want[i])
+		}
+	}
+	if rookie.ID == 0 {
+		t.Fatal("Rookie division missing")
+	}
+
+	// No region filter: every team, ordered by number.
+	code, body = routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/cloud/teams", "")
+	if code != http.StatusOK {
+		t.Fatalf("all teams endpoint = %d, want 200: %s", code, body)
+	}
+	all := decodeJSON[[]cloud.TeamInfo](t, body)
+	if len(all) != 5 {
+		t.Fatalf("len(all) = %d, want 5: %+v", len(all), all)
+	}
+	for i, wantNum := range []int{1, 2, 3, 4, 5} {
+		if all[i].Number != wantNum {
+			t.Errorf("all[%d].Number = %d, want %d", i, all[i].Number, wantNum)
+		}
+	}
+
+	// Unknown region: 404 with a JSON error body.
+	code, body = routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/cloud/teams?region=Nowhere", "")
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown region = %d, want 404: %s", code, body)
+	}
+	if !strings.Contains(body, "region not found") {
+		t.Errorf("404 body = %q, want it to mention region not found", body)
+	}
+}
+
+// fakeCloudServer serves the cloud JSON wire shapes with a canned
+// roster, so import tests never touch the network.
+func fakeCloudServer(t *testing.T, regions []cloud.RegionInfo, teamsByRegion map[string][]cloud.TeamInfo) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ui/mod/team/cloud/regions":
+			_ = json.NewEncoder(w).Encode(regions)
+		case "/ui/mod/team/cloud/teams":
+			name := r.URL.Query().Get("region")
+			_ = json.NewEncoder(w).Encode(teamsByRegion[name])
+		default:
+			t.Errorf("unexpected cloud path %q", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// importCloudRegion POSTs the per-region import form and returns the
+// response code and Location header.
+func importCloudRegion(t *testing.T, m *Module, region string) (int, string) {
+	t.Helper()
+	form := url.Values{"region": {region}}
+	req := httptest.NewRequest(http.MethodPost, "/ui/mod/team/import-cloud", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(adminContext())
+
+	mux := chi.NewRouter()
+	mux.Mount("/ui/mod/team", m.Router())
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec.Code, rec.Header().Get("Location")
+}
+
+func TestImportCloudEndToEnd(t *testing.T) {
+	srv := fakeCloudServer(t,
+		[]cloud.RegionInfo{{Name: "North", TeamCount: 2}},
+		map[string][]cloud.TeamInfo{
+			"North": {
+				{Number: 101, Name: "Cloud One", Division: "Open", Region: "North"},
+				{Number: 102, Name: "Cloud Two", Division: "", Region: "North"},
+			},
+		})
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModule(t)
+
+	// The page lists the cloud regions and their counts.
+	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/import-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("import page = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, srv.URL) || !strings.Contains(body, "North") {
+		t.Errorf("import page missing cloud base or region list:\n%s", body)
+	}
+
+	code, loc := importCloudRegion(t, m, "North")
+	if code != http.StatusSeeOther {
+		t.Fatalf("import POST = %d, want 303, location %q", code, loc)
+	}
+	if loc != "/ui/mod/team/import-cloud?imported=2" {
+		t.Fatalf("Location = %q, want /ui/mod/team/import-cloud?imported=2", loc)
+	}
+
+	if count := teamCount(t, d); count != 2 {
+		t.Fatalf("after import = %d teams, want 2", count)
+	}
+	one := fetchTeamByNumber(t, d, 101)
+	if one.Name != "Cloud One" || one.Division.Name != "Open" || one.Region.Name != "North" {
+		t.Errorf("team 101 = %+v, want Cloud One in Open/North", one)
+	}
+	// Blank division defaults to Open on import.
+	two := fetchTeamByNumber(t, d, 102)
+	if two.Division.Name != "Open" {
+		t.Errorf("team 102 division = %q, want Open", two.Division.Name)
+	}
+	// Division and region rows were get-or-created.
+	if _, err := gorm.G[Region](d.DB).Where(&Region{Name: "North"}).First(context.Background()); err != nil {
+		t.Errorf("North region missing after import: %v", err)
+	}
+}
+
+func TestImportCloudIdempotentAndDisabled(t *testing.T) {
+	teams := []cloud.TeamInfo{{Number: 201, Name: "Dup", Division: "Open", Region: "North"}}
+	srv := fakeCloudServer(t,
+		[]cloud.RegionInfo{{Name: "North", TeamCount: 1}},
+		map[string][]cloud.TeamInfo{"North": teams})
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModule(t)
+
+	if code, loc := importCloudRegion(t, m, "North"); code != http.StatusSeeOther {
+		t.Fatalf("first import = %d, want 303, location %q", code, loc)
+	}
+	if code, loc := importCloudRegion(t, m, "North"); code != http.StatusSeeOther {
+		t.Fatalf("second import = %d, want 303, location %q", code, loc)
+	}
+	if count := teamCount(t, d); count != 1 {
+		t.Fatalf("after re-import = %d teams, want 1 (no duplicates)", count)
+	}
+
+	// A manually-disabled import must stay disabled on re-import.
+	tm := fetchTeamByNumber(t, d, 201)
+	if err := d.Model(&Team{}).Where("id = ?", tm.ID).Update("disabled", true).Error; err != nil {
+		t.Fatalf("disable team: %v", err)
+	}
+	// Re-import with a renamed team: the name updates, the flag stays.
+	teams[0].Name = "Dup Renamed"
+	if code, loc := importCloudRegion(t, m, "North"); code != http.StatusSeeOther {
+		t.Fatalf("third import = %d, want 303, location %q", code, loc)
+	}
+	got := fetchTeamByNumber(t, d, 201)
+	if got.Name != "Dup Renamed" {
+		t.Errorf("re-imported name = %q, want Dup Renamed", got.Name)
+	}
+	if !got.Disabled {
+		t.Error("re-import cleared the disabled flag")
+	}
+}
+
+func TestImportCloudFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "cloud is on fire", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModule(t)
+
+	// GET surfaces the error on the page without failing hard.
+	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/import-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("import page = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "notification is-danger") {
+		t.Errorf("import page missing error alert:\n%s", body)
+	}
+
+	// POST against a failing cloud writes nothing and reports the error.
+	code, _ = importCloudRegion(t, m, "North")
+	if code != http.StatusOK {
+		t.Fatalf("failing import POST = %d, want 200 (error page)", code)
+	}
+	if count := teamCount(t, d); count != 0 {
+		t.Errorf("after failed import = %d teams, want 0", count)
 	}
 }
 
