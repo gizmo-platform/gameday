@@ -54,7 +54,7 @@ func init() {
 	// Register the BEST module's advancement filter and tie-breaker,
 	// mirroring the lint command.  The database and server are not
 	// used by the lint path.
-	best.New(nil, nil, nil)
+	best.New("onsite", nil, nil, nil)
 }
 
 func lintParse(t *testing.T, s string) game.Config {

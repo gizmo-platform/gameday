@@ -34,7 +34,7 @@ type Module struct {
 	basePath string
 }
 
-func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
+func New(_ string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 	m := &Module{
 		r:  chi.NewRouter(),
 		db: db,

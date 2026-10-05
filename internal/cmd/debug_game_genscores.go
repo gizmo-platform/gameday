@@ -41,7 +41,7 @@ func debugGameGenscoresCmdRun(c *cobra.Command, args []string) {
 	// that we have to be careful what we call below since a lot
 	// of things will explode with the module only partially
 	// initialized.
-	g := game.New(d, nil, nil)
+	g := game.New("onsite", d, nil, nil)
 
 	gPhaseID, err := strconv.Atoi(args[0])
 	if err != nil {

@@ -1,7 +1,9 @@
 package game
 
 import (
+	"bytes"
 	"context"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
 
+	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
@@ -219,10 +222,119 @@ func TestImportCloudFailure(t *testing.T) {
 	}
 }
 
-// TestCloudSetupDataEndpoint verifies the public endpoint serves the
-// configured game as YAML with runtime state stripped, and that the
-// emitted document round-trips through the same Config parser the
-// importer uses.
+// uploadSetupFile POSTs a game setup YAML file to the setup form as a
+// multipart upload, the way the browser form does.
+func uploadSetupFile(t *testing.T, m *Module, y []byte) (int, string) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, err := w.CreateFormFile("game_config", "game.yml")
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := fw.Write(y); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/mod/game/setup", &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req = req.WithContext(adminContext())
+
+	mux := chi.NewRouter()
+	mux.Mount("/ui/mod/game", m.Router())
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec.Code, rec.Header().Get("Location")
+}
+
+// newCloudTestModule builds a game module in the cloud scope on top of
+// the shared test database, the way `gameday cloud serve` wires it up.
+func newCloudTestModule(t *testing.T, d *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
+	t.Helper()
+
+	cm := New("cloud", d, ws, deps)
+	if cm == nil {
+		t.Fatal("cloud game.New failed")
+	}
+	if err := cm.Migrate(); err != nil {
+		t.Fatalf("cloud game Migrate: %v", err)
+	}
+	cm.basePath = "/ui/mod/game"
+	return cm
+}
+
+// TestCloudSetupScreens verifies the cloud scope serves the
+// configuration and setup screens and applies an uploaded game setup
+// file, while leaving the onsite-only routes unregistered.
+func TestCloudSetupScreens(t *testing.T) {
+	srv := fakeCloudGameServer(t, readGameFile(t))
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	// The configuration screen renders the empty state.
+	code, body, _ := routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/", "")
+	if code != http.StatusOK {
+		t.Fatalf("config = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "No configuration has been found") {
+		t.Errorf("config page missing empty state:\n%s", body)
+	}
+
+	// The setup form renders with its upload control.
+	code, body, _ = routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/setup", "")
+	if code != http.StatusOK {
+		t.Fatalf("setup form = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "enctype=\"multipart/form-data\"") {
+		t.Errorf("setup form missing upload control:\n%s", body)
+	}
+
+	// Uploading a setup file through the cloud form applies it and
+	// redirects back to the configuration screen.
+	code, loc := uploadSetupFile(t, cm, readGameFile(t))
+	if code != http.StatusSeeOther {
+		t.Fatalf("setup POST = %d, want 303, location %q", code, loc)
+	}
+	if loc != "/ui/mod/game" {
+		t.Fatalf("Location = %q, want /ui/mod/game", loc)
+	}
+
+	if got := countGameRows(t, d, &FieldPosition{}); got != 2 {
+		t.Errorf("positions = %d, want 2", got)
+	}
+	if got := countGameRows(t, d, &GamePhase{}); got != 2 {
+		t.Errorf("phases = %d, want 2", got)
+	}
+	if got := countGameRows(t, d, &GameElement{}); got != 1 {
+		t.Errorf("elements = %d, want 1", got)
+	}
+
+	// The configuration screen now reflects the applied setup.
+	code, body, _ = routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/", "")
+	if code != http.StatusOK {
+		t.Fatalf("config after upload = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "Gameday has been configured with 2 field positions") {
+		t.Errorf("config page missing applied positions:\n%s", body)
+	}
+
+	// Onsite-only routes stay unregistered on the cloud scope.
+	if code, _, _ := routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/import-cloud", ""); code != http.StatusNotFound {
+		t.Errorf("import-cloud on cloud = %d, want 404", code)
+	}
+	if code, _, _ := routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/schedule", ""); code != http.StatusNotFound {
+		t.Errorf("schedule on cloud = %d, want 404", code)
+	}
+}
+
 func TestCloudSetupDataEndpoint(t *testing.T) {
 	srv := fakeCloudGameServer(t, readGameFile(t))
 	defer srv.Close()
@@ -240,8 +352,14 @@ func TestCloudSetupDataEndpoint(t *testing.T) {
 		t.Fatalf("set phase active: %v", err)
 	}
 
-	// The public endpoint needs no profile in context.
-	code, body, hdr := routerReq(t, m, nil, http.MethodGet, "/ui/mod/game/cloud/setup", "")
+	// The public endpoint lives on the cloud-scoped router, so route
+	// it through a cloud instance that shares the same database.  The
+	// public endpoint needs no profile in context.
+	cm := New("cloud", d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+	if cm == nil {
+		t.Fatal("cloud game.New failed")
+	}
+	code, body, hdr := routerReq(t, cm, nil, http.MethodGet, "/ui/mod/game/cloud/setup", "")
 	if code != http.StatusOK {
 		t.Fatalf("cloud setup = %d, want 200: %s", code, body)
 	}

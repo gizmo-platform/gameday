@@ -16,9 +16,9 @@ import (
 // functions after topological sort ensures dependency ordering.
 type ModuleDeps = map[string]Web
 
-// Factory creates a new module given the database, webserver, and
-// already-created dependencies.
-type Factory func(db *db.DB, server *web.Server, deps ModuleDeps) Web
+// Factory creates a new module given the entrypoint scope, the
+// database, webserver, and already-created dependencies.
+type Factory func(scope string, db *db.DB, server *web.Server, deps ModuleDeps) Web
 
 // ModuleInfo declares metadata for a single module registration.
 type ModuleInfo struct {
@@ -39,7 +39,7 @@ type ModuleInfo struct {
 	// may not depend on a non-required module.
 	Required bool
 
-	// Factory creates the module instance.
+	// Factory creates the module instance for the resolved scope.
 	Factory Factory
 }
 
@@ -125,7 +125,7 @@ func ResolveModules(scope string, db *db.DB, server *web.Server) ([]string, Modu
 	deps := make(ModuleDeps)
 	for _, name := range sorted {
 		info := selected[name]
-		mod := info.Factory(db, server, deps)
+		mod := info.Factory(scope, db, server, deps)
 		deps[name] = mod
 		slog.Info("Module resolved", "module", name)
 	}

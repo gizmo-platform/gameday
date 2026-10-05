@@ -12,8 +12,8 @@ func init() {
 		Scopes:       []string{"onsite", "cloud"},
 		Dependencies: []string{"team"},
 		Required:     true,
-		Factory: func(db *db.DB, server *web.Server, deps modules.ModuleDeps) modules.Web {
-			return New(db, server, deps)
+		Factory: func(scope string, db *db.DB, server *web.Server, deps modules.ModuleDeps) modules.Web {
+			return New(scope, db, server, deps)
 		},
 	})
 }

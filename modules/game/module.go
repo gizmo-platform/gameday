@@ -359,6 +359,8 @@ type Module struct {
 	db *db.DB
 	ws *web.Server
 
+	scope string
+
 	tm TeamModule
 
 	cloudClient *cloud.Client
@@ -366,11 +368,13 @@ type Module struct {
 	basePath string
 }
 
-func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
+func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 	m := Module{
 		r:  chi.NewRouter(),
 		db: db,
 		ws: ws,
+
+		scope: scope,
 
 		cloudClient: cloud.New(),
 	}
@@ -393,59 +397,69 @@ func New(db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 	pSchedule := web.Permission{Module: ModuleName, Grant: PermissionSchedule}
 	pReferee := web.Permission{Module: ModuleName, Grant: PermissionReferee}
 	m.r.Route("/", func(r chi.Router) {
+		// The configuration and setup screens are shared by both
+		// scopes: the cloud instance is where the game design is
+		// authored and maintained before it is pulled to the sites.
 		r.Get("/", m.uiViewGame)
 		r.Get("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupForm))
 		r.Post("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupSubmit))
-		r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
-		r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
-		// The cloud setup endpoint is public on purpose: the game file
-		// is game design, not sensitive data, and is pulled by other
-		// Gameday systems.
-		r.Get("/cloud/setup", m.cloudSetupData)
 
-		r.Route("/fields", func(r chi.Router) {
-			r.Use(m.ws.RequirePermission(pSchedule))
+		// Everything else, including the import UI and the live
+		// operations routes (scoreboard, timekeeping, match clock),
+		// is onsite-only.
+		if scope != "cloud" {
+			r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
+			r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
 
-			r.Get("/", m.uiViewFieldList)
-			r.Get("/add", m.uiViewFieldForm)
-			r.Post("/add", m.uiViewFieldSubmit)
+			r.Route("/fields", func(r chi.Router) {
+				r.Use(m.ws.RequirePermission(pSchedule))
 
-			r.Get("/{id}/edit", m.uiViewFieldForm)
-			r.Post("/{id}/edit", m.uiViewFieldSubmit)
-		})
+				r.Get("/", m.uiViewFieldList)
+				r.Get("/add", m.uiViewFieldForm)
+				r.Post("/add", m.uiViewFieldSubmit)
 
-		r.Route("/schedule", func(r chi.Router) {
-			r.Get("/", m.uiViewPhaseList)
-			r.Get("/phases/{id}", m.uiViewPhaseSchedule)
-			r.Post("/phases/{id}/make-active", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeActive))
-			r.Post("/phases/{id}/make-frozen", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeFrozen))
-			r.Post("/phases/{id}/make-scores-hidden", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))
-			r.Post("/phases/{id}/make-scores-visible", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))
-			r.Get("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleSelectTeams))
-			r.Post("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseSchedulePreview))
-			r.Post("/phases/{id}/accept-schedule", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleAccept))
-		})
+				r.Get("/{id}/edit", m.uiViewFieldForm)
+				r.Post("/{id}/edit", m.uiViewFieldSubmit)
+			})
 
-		r.Route("/scorecard", func(r chi.Router) {
-			r.Get("/", m.uiViewScorecardList)
-			r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
-			r.Post("/{phase}/{match}/{field}/{position}", m.ws.GuardRoute(pReferee, m.uiViewScorecardSubmit))
-		})
-		r.Route("/timekeeping", func(r chi.Router) {
-			r.Use(m.ws.RequirePermission(web.Permission{Module: ModuleName, Grant: PermissionTimekeeper}))
+			r.Route("/schedule", func(r chi.Router) {
+				r.Get("/", m.uiViewPhaseList)
+				r.Get("/phases/{id}", m.uiViewPhaseSchedule)
+				r.Post("/phases/{id}/make-active", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeActive))
+				r.Post("/phases/{id}/make-frozen", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeFrozen))
+				r.Post("/phases/{id}/make-scores-hidden", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))
+				r.Post("/phases/{id}/make-scores-visible", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))
+				r.Get("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleSelectTeams))
+				r.Post("/phases/{id}/select-teams", m.ws.GuardRoute(pSchedule, m.uiViewPhaseSchedulePreview))
+				r.Post("/phases/{id}/accept-schedule", m.ws.GuardRoute(pSchedule, m.uiViewPhaseScheduleAccept))
+			})
 
-			r.Get("/", m.uiViewTimekeeping)
-			r.Post("/start", m.uiViewTimekeepingStart)
-			r.Post("/cancel", m.uiViewTimekeepingCancel)
-			r.Post("/transitions", m.uiViewTimekeepingTransitions)
-			r.Post("/next-match", m.uiViewTimekeepingSetNextMatch)
-		})
-		r.Route("/scoreboard", func(r chi.Router) {
-			r.Get("/", m.uiViewScoreboard)
-			r.Get("/data", m.uiViewScoreboardData)
-		})
-		r.Get("/clock", m.uiViewClockDisplay)
-})
+			r.Route("/scorecard", func(r chi.Router) {
+				r.Get("/", m.uiViewScorecardList)
+				r.Get("/{phase}/{match}/{field}/{position}", m.uiViewScorecard)
+				r.Post("/{phase}/{match}/{field}/{position}", m.ws.GuardRoute(pReferee, m.uiViewScorecardSubmit))
+			})
+			r.Route("/timekeeping", func(r chi.Router) {
+				r.Use(m.ws.RequirePermission(web.Permission{Module: ModuleName, Grant: PermissionTimekeeper}))
+
+				r.Get("/", m.uiViewTimekeeping)
+				r.Post("/start", m.uiViewTimekeepingStart)
+				r.Post("/cancel", m.uiViewTimekeepingCancel)
+				r.Post("/transitions", m.uiViewTimekeepingTransitions)
+				r.Post("/next-match", m.uiViewTimekeepingSetNextMatch)
+			})
+			r.Route("/scoreboard", func(r chi.Router) {
+				r.Get("/", m.uiViewScoreboard)
+				r.Get("/data", m.uiViewScoreboardData)
+			})
+			r.Get("/clock", m.uiViewClockDisplay)
+		} else {
+			// The cloud setup endpoint is public on purpose: the game file
+			// is game design, not sensitive data, and is pulled by other
+			// Gameday systems.
+			r.Get("/cloud/setup", m.cloudSetupData)
+		}
+	})
 
 	return &m
 }
@@ -488,41 +502,55 @@ func (m *Module) TemplateLoader() pongo2.TemplateLoader {
 func (m *Module) NavList(prefix string) []web.NavElement {
 	m.basePath = prefix
 
+	children := []web.NavChild{{
+		Text:   "Configuration",
+		Target: prefix,
+	}, {
+		Text:       "Setup",
+		Target:     path.Join(prefix, "/setup"),
+		Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+	}}
+
+	if m.scope != "cloud" {
+		children = append(children,
+			web.NavChild{
+				Text:       "Cloud Import",
+				Target:     path.Join(prefix, "/import-cloud"),
+				Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+			},
+			web.NavChild{
+				Text:       "Fields",
+				Target:     path.Join(prefix, "/fields"),
+				Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+			},
+			web.NavChild{
+				Text:   "Schedule",
+				Target: path.Join(prefix, "/schedule"),
+			},
+			web.NavChild{
+				Text:       "Timekeeping",
+				Target:     path.Join(prefix, "/timekeeping"),
+				Permission: web.Permission{Module: ModuleName, Grant: PermissionTimekeeper},
+			},
+			web.NavChild{
+				Text:   "Scorecards",
+				Target: path.Join(prefix, "/scorecard"),
+			},
+			web.NavChild{
+				Text:   "Scoreboard",
+				Target: path.Join(prefix, "/scoreboard"),
+			},
+			web.NavChild{
+				Text:   "Clock Display",
+				Target: path.Join(prefix, "/clock"),
+				Blank:  true,
+			},
+		)
+	}
+
 	return []web.NavElement{{
-		Text: "Game",
-		Weight: 79,
-		Children: []web.NavChild{{
-			Text:   "Configuration",
-			Target: prefix,
-		}, {
-			Text:       "Setup",
-			Target:     path.Join(prefix, "/setup"),
-			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
-		}, {
-			Text:       "Cloud Import",
-			Target:     path.Join(prefix, "/import-cloud"),
-			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
-		}, {
-			Text:       "Fields",
-			Target:     path.Join(prefix, "/fields"),
-			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
-		}, {
-			Text:   "Schedule",
-			Target: path.Join(prefix, "/schedule"),
-		}, {
-			Text:       "Timekeeping",
-			Target:     path.Join(prefix, "/timekeeping"),
-			Permission: web.Permission{Module: ModuleName, Grant: PermissionTimekeeper},
-		}, {
-			Text:   "Scorecards",
-			Target: path.Join(prefix, "/scorecard"),
-		}, {
-			Text:   "Scoreboard",
-			Target: path.Join(prefix, "/scoreboard"),
-		}, {
-			Text:   "Clock Display",
-			Target: path.Join(prefix, "/clock"),
-			Blank:  true,
-		}},
+		Text:     "Game",
+		Weight:   79,
+		Children: children,
 	}}
 }

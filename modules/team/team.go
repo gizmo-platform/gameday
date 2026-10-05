@@ -41,6 +41,8 @@ type Module struct {
 	db *db.DB
 	ws *web.Server
 
+	scope string
+
 	basePath string
 
 	staticDivisions []Division
@@ -73,11 +75,12 @@ type Team struct {
 	Disabled bool
 }
 
-func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
+func New(scope string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 	m := &Module{
 		r:           chi.NewRouter(),
 		db:          db,
 		ws:          ws,
+		scope:       scope,
 		cloudClient: cloud.New(),
 	}
 
@@ -111,11 +114,15 @@ func New(db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 		r.Post("/regions/{region_id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewUpsertRegion))
 		r.Post("/regions/{region_id}/delete", m.ws.GuardRoute(pAdmin, m.uiViewDeleteRegion))
 
-		r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
-		r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
-
-		r.Get("/cloud/regions", m.cloudRegionsData)
-		r.Get("/cloud/teams", m.cloudTeamsData)
+		// The cloud import UI only exists on onsite instances; the
+		// cloud instance serves the pull endpoints instead.
+		if scope != "cloud" {
+			r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
+			r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
+		} else {
+			r.Get("/cloud/regions", m.cloudRegionsData)
+			r.Get("/cloud/teams", m.cloudTeamsData)
+		}
 	})
 
 	pongo2.RegisterFilter("teamList", filterTeamList)
@@ -215,27 +222,33 @@ func (m *Module) TemplateLoader() pongo2.TemplateLoader {
 
 func (m *Module) NavList(prefix string) []web.NavElement {
 	m.basePath = prefix
-	return []web.NavElement{{
-		Text:   "Team",
-		Weight: 80,
-		Children: []web.NavChild{{
-			Text:   "List",
-			Target: path.Join(prefix, "/"),
-		}, {
-			Text:   "Divisions",
-			Target: path.Join(prefix, "/divisions"),
-		}, {
-			Text:   "Regions",
-			Target: path.Join(prefix, "/regions"),
-		}, {
-			Text:       "Bulk Import",
-			Target:     path.Join(prefix, "/import"),
-			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
-		}, {
+
+	children := []web.NavChild{{
+		Text:   "List",
+		Target: path.Join(prefix, "/"),
+	}, {
+		Text:   "Divisions",
+		Target: path.Join(prefix, "/divisions"),
+	}, {
+		Text:   "Regions",
+		Target: path.Join(prefix, "/regions"),
+	}, {
+		Text:       "Bulk Import",
+		Target:     path.Join(prefix, "/import"),
+		Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+	}}
+	if m.scope != "cloud" {
+		children = append(children, web.NavChild{
 			Text:       "Cloud Import",
 			Target:     path.Join(prefix, "/import-cloud"),
 			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
-		}},
+		})
+	}
+
+	return []web.NavElement{{
+		Text:     "Team",
+		Weight:   80,
+		Children: children,
 	}}
 }
 

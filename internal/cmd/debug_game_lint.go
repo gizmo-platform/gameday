@@ -56,7 +56,7 @@ func debugGameLintCmdRun(c *cobra.Command, args []string) {
 	// tie-breaker.  It is only partially initialized here, but that is
 	// all the linter needs: a complete filter and tie-breaker registry.
 	// It does not touch the database.
-	best.New(nil, nil, nil)
+	best.New("onsite", nil, nil, nil)
 
 	problems := game.LintConfig(cfg)
 	if len(problems) == 0 {

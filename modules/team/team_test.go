@@ -509,7 +509,7 @@ func decodeJSON[T any](t *testing.T, body string) T {
 }
 
 func TestCloudRegionsEndpoint(t *testing.T) {
-	m, d := newTestModule(t)
+	m, d := newTestModuleScope(t, "cloud")
 	seedCloudFixture(t, d)
 
 	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/cloud/regions", "")
@@ -531,7 +531,7 @@ func TestCloudRegionsEndpoint(t *testing.T) {
 }
 
 func TestCloudTeamsEndpoint(t *testing.T) {
-	m, d := newTestModule(t)
+	m, d := newTestModuleScope(t, "cloud")
 	rookie, _, _ := seedCloudFixture(t, d)
 
 	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/team/cloud/teams?region=North", "")

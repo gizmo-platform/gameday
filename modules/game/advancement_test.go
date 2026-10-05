@@ -61,7 +61,7 @@ func newTestModule(t *testing.T, opts ...web.Option) (*Module, *db.DB) {
 		t.Fatalf("web.NewServer: %v", err)
 	}
 
-	tm := team.New(d, ws, nil)
+	tm := team.New("onsite", d, ws, nil)
 	if tm == nil {
 		t.Fatal("team.New failed")
 	}
@@ -70,7 +70,7 @@ func newTestModule(t *testing.T, opts ...web.Option) (*Module, *db.DB) {
 	}
 
 	deps := modules.ModuleDeps{"team": tm}
-	m := New(d, ws, deps)
+	m := New("onsite", d, ws, deps)
 	if m == nil {
 		t.Fatal("game.New failed")
 	}

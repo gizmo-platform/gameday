@@ -39,7 +39,7 @@ func debugBestGenscoresCmdRun(c *cobra.Command, args []string) {
 	// that we have to be careful what we call below since a lot
 	// of things will explode with the module only partially
 	// initialized.
-	b := best.New(d, nil, nil)
+	b := best.New("onsite", d, nil, nil)
 
 	if err := b.Migrate(); err != nil {
 		slog.Error("Error migrating best module", "error", err)

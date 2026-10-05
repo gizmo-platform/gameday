@@ -17,6 +17,11 @@ import (
 
 func newTestModule(t *testing.T) (*Module, *db.DB) {
 	t.Helper()
+	return newTestModuleScope(t, "onsite")
+}
+
+func newTestModuleScope(t *testing.T, scope string) (*Module, *db.DB) {
+	t.Helper()
 
 	t.Setenv("GAMEDAY_DB", filepath.Join(t.TempDir(), "test.db"))
 
@@ -30,7 +35,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		t.Fatalf("web.NewServer: %v", err)
 	}
 
-	m := New(d, ws, nil)
+	m := New(scope, d, ws, nil)
 	if m == nil {
 		t.Fatal("New failed")
 	}

@@ -36,7 +36,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		t.Fatalf("web.NewServer: %v", err)
 	}
 
-	tm := team.New(d, ws, nil)
+	tm := team.New("onsite", d, ws, nil)
 	if tm == nil {
 		t.Fatal("team.New failed")
 	}
@@ -44,7 +44,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		t.Fatalf("team Migrate: %v", err)
 	}
 
-	m := New(d, ws, nil)
+	m := New("onsite", d, ws, nil)
 	if m == nil {
 		t.Fatal("best.New failed")
 	}
