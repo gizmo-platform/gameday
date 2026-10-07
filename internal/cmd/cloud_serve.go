@@ -18,6 +18,7 @@ import (
 	"github.com/gizmo-platform/gameday/pkg/event"
 	"github.com/gizmo-platform/gameday/pkg/web"
 
+	_ "github.com/gizmo-platform/gameday/modules/contest"
 	_ "github.com/gizmo-platform/gameday/modules/game"
 	_ "github.com/gizmo-platform/gameday/modules/team"
 )

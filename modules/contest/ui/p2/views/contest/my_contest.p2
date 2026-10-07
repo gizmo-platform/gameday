@@ -1,0 +1,90 @@
+{% extends "../../base.p2" %}
+
+{% block title %}My Contest{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <p>Select which contest this onsite server is handling from the cloud instance at <code>{{ cloudBase }}</code>. The selected contest's cloud ID becomes this server's local contest ID.</p>
+
+      {% if imported %}
+        <div class="notification is-success">Contest selected.</div>
+      {% endif %}
+
+      {% if error %}
+        <div class="notification is-danger">{{ error }}</div>
+      {% endif %}
+
+      {% if selected.ID %}
+        <div class="notification is-primary">
+          Currently handling contest <strong>{{ selected.Name }}</strong> (ID {{ selected.ID }}{% if selected.Region %}, {{ selected.Region }}{% endif %}).
+        </div>
+      {% endif %}
+
+      {% if not error %}
+        <form method="post" action="{{ pageBase }}">
+          <div class="field">
+            <label class="label" for="contest_id">Contest</label>
+            <div class="control">
+              <select class="input" name="contest_id" id="contest_id">
+                {% for contest in contests %}
+                  <option value="{{ contest.ID }}" {% if selected.ID == contest.ID %}selected{% endif %}>{{ contest.Name }} (ID {{ contest.ID }}{% if contest.Region %}, {{ contest.Region }}{% endif %})</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          {% if profile | hasPermission:"CONTEST:ADMIN" %}
+            <div class="is-flex is-justify-content-center">
+              <button type="button" class="button is-primary" id="change-contest-btn">Change Contest</button>
+            </div>
+          {% endif %}
+        </form>
+
+        {% if profile | hasPermission:"CONTEST:ADMIN" %}
+        <div class="modal" id="change-contest-modal">
+          <div class="modal-background" id="change-contest-modal-bg"></div>
+          <div class="modal-card">
+            <header class="modal-card-head">
+              <p class="modal-card-title">Change this server's contest?</p>
+            </header>
+            <section class="modal-card-body">
+              <p>This changes which cloud contest this onsite server is handling. The local contest ID will be replaced with the ID of the selected contest, and any data tied to the previous contest ID will no longer match this server's contest.</p>
+              <p>Make sure the selected contest is the one this site is running before confirming.</p>
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button" id="change-contest-keep" type="button">Cancel</button>
+              <form method="post" action="{{ pageBase }}">
+                <input type="hidden" name="contest_id" id="change-contest-id" value="">
+                <button class="button is-danger" type="submit">Change Contest</button>
+              </form>
+            </footer>
+          </div>
+        </div>
+        <script>
+          (function () {
+            var modal = document.getElementById("change-contest-modal");
+            var btn = document.getElementById("change-contest-btn");
+            var keep = document.getElementById("change-contest-keep");
+            var bg = document.getElementById("change-contest-modal-bg");
+            var select = document.getElementById("contest_id");
+            var hidden = document.getElementById("change-contest-id");
+
+            function open() {
+              hidden.value = select.value;
+              modal.classList.add("is-active");
+            }
+
+            function close() {
+              modal.classList.remove("is-active");
+            }
+
+            btn.addEventListener("click", open);
+            keep.addEventListener("click", close);
+            bg.addEventListener("click", close);
+          })();
+        </script>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

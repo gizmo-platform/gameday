@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"path"
@@ -138,4 +139,20 @@ func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request)
 	}
 
 	http.Redirect(w, r, path.Join(m.basePath, "/import-cloud")+"?imported=1", http.StatusSeeOther)
+}
+
+// ImportGame pulls the game setup file from the cloud instance and
+// applies it with the same upsert as a local file upload.
+func (m *Module) ImportGame(ctx context.Context) error {
+	b, err := m.cloudClient.GetGameFile(ctx)
+	if err != nil {
+		return err
+	}
+
+	c := Config{}
+	if err := yaml.Unmarshal(b, &c); err != nil {
+		return err
+	}
+
+	return m.applyGameConfig(ctx, c)
 }

@@ -260,3 +260,29 @@ func TestGetRegionTeamsRoundTrip(t *testing.T) {
 		t.Errorf("teams[0] = %+v, want %+v", teams[0], want)
 	}
 }
+
+func TestGetContestsRoundTrip(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != contestContestsPath {
+			t.Errorf("path = %q, want %s", r.URL.Path, contestContestsPath)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]ContestInfo{
+			{ID: 3, Name: "Winter FFA", Region: "North"},
+		})
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	contests, err := c.GetContests(context.Background())
+	if err != nil {
+		t.Fatalf("GetContests: %v", err)
+	}
+	if len(contests) != 1 {
+		t.Fatalf("len(contests) = %d, want 1", len(contests))
+	}
+	want := ContestInfo{ID: 3, Name: "Winter FFA", Region: "North"}
+	if contests[0] != want {
+		t.Errorf("contests[0] = %+v, want %+v", contests[0], want)
+	}
+}

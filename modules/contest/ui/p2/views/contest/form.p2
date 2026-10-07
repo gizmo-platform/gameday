@@ -1,0 +1,33 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Contest Edit{% endblock %}
+
+{% block content %}
+  <div class="box">
+    <form method="POST">
+      <div class="field">
+        <label for="contest_name">Contest Name</label>
+        <div class="control">
+          <input class="input" type="text" name="contest_name" value="{{ contest.Name }}" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="contest_region">Region</label>
+        <div class="control">
+          <select class="select" name="contest_region">
+            {% for region in regions %}
+              <option value="{{ region.ID }}" {% if contest.RegionID == region.ID %}selected{% endif %}>{{ region.Name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="control">
+          <button type="submit" class="button is-primary is-fullwidth">Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
+{% endblock %}

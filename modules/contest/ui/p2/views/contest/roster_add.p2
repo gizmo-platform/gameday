@@ -1,0 +1,40 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Add Team to Roster: {{ contest.Name }}{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+    <p>Add a team to the roster for {{ contest.Name }}.</p>
+    <br />
+    <hr />
+
+    {% if teams | length > 0 %}
+      <form method="POST" action="{{ pageBase }}">
+        <div class="field">
+          <label class="label">Team</label>
+          <div class="control">
+            <div class="select">
+              <select name="roster_team">
+                {% for team in teams %}
+                  <option value="{{ team.ID }}">{{ team.Number }} - {{ team.Name }} ({{ team.Region.Name }})</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <div class="control">
+            <button type="submit" class="button is-primary">Add</button>
+            <a class="button" href="{{ rosterPath }}">Cancel</a>
+          </div>
+        </div>
+      </form>
+    {% else %}
+      <p>Every team is already on the roster.</p>
+      <a class="button" href="{{ rosterPath }}">Back to Roster</a>
+    {% endif %}
+    </div>
+    </div>
+  </div>
+{% endblock %}

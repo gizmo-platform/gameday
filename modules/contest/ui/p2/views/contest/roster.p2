@@ -1,0 +1,57 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Roster: {{ contest.Name }}{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+    <p>Roster for {{ contest.Name }} ({{ contest.Region.Name }}). The roster is
+    independent of the region: start it from the region's teams, then add or
+    remove teams as needed.</p>
+    <br />
+    <hr />
+    {% if profile | hasPermission:"CONTEST:ADMIN" %}
+      <div class="is-flex is-justify-content-center">
+        <form method="POST" action="{{ pageBase }}/init" style="display:inline">
+          <button type="submit" class="button is-primary">Start from Region</button>
+        </form>
+        <a class="button" href="{{ pageBase }}/add">Add Team</a>
+        <a class="button" href="{{ basePath }}">Back to List</a>
+      </div>
+      <hr />
+    {% endif %}
+
+      <table class="table">
+        <tr>
+          <th>Number</th>
+          <th>Name</th>
+          <th>Division</th>
+          <th>Region</th>
+          {% if profile | hasPermission:"CONTEST:ADMIN" %}
+            <th>Actions</th>
+          {% endif %}
+        </tr>
+        {% for row in roster %}
+          <tr>
+            <td>{{ row.Team.Number }}</td>
+            <td>{{ row.Team.Name }}</td>
+            <td>{{ row.Team.Division.Name }}</td>
+            <td>{{ row.Team.Region.Name }}</td>
+            {% if profile | hasPermission:"CONTEST:ADMIN" %}
+              <td>
+                <form method="POST" action="{{ pageBase }}/{{ row.Team.ID }}/delete">
+                  <button type="submit" class="button">Remove</button>
+                </form>
+              </td>
+            {% endif %}
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5">The roster is empty. Start it from the region or add teams manually.</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+    </div>
+  </div>
+{% endblock %}

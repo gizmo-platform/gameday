@@ -59,19 +59,26 @@ Gameday is a robotics competition management system. It provides an on-site web 
 │   │   ├── debug.go        # Module-level debug endpoints
 │   │   ├── util.go
 │   │   └── ui/p2/          # Embedded templates (views/game/* incl. import_cloud, partials/scorecard*)
-│   └── best/
-│       ├── init.go         # Module registration ("best", optional)
-│       ├── module.go       # BEST:ADMIN permission, scores routes
-│       ├── scores.go       # Scores view
-│       ├── type.go         # ExternalScores model + max score constants
-│       ├── debug.go        # DebugGenerateScores
-│       └── ui/p2/views/best/scores.p2
+│   ├── best/
+│   │   ├── init.go         # Module registration ("best", optional)
+│   │   ├── module.go       # BEST:ADMIN permission, scores routes
+│   │   ├── scores.go       # Scores view
+│   │   ├── type.go         # ExternalScores model + max score constants
+│   │   ├── debug.go        # DebugGenerateScores
+│   │   └── ui/p2/views/best/scores.p2
+│   └── contest/
+│       ├── init.go         # Module registration ("contest", cloud+onsite, required)
+│       ├── module.go       # Contest + ContestRoster models, contest CRUD, roster routes, cloud JSON endpoints
+│       ├── cloud.go        # Public cloud JSON endpoints (contest list, per-contest roster)
+│       ├── onsite.go       # OnsiteModule: "My Contest" screen, selection, auto-import of roster + game
+│       └── ui/p2/views/contest/    # list, form, roster, roster_add, my_contest
 ├── pkg/
 │   ├── cloud/              # Client for the cloud instance (base URL, auth seam, per-feature files)
 │   │   ├── client.go       # Client, New, Do/DoBytes, options (WithBaseURL/WithTimeout/WithAuthenticator/WithBasicAuth)
 │   │   ├── auth.go         # Authenticator interface + ready BasicAuth
 │   │   ├── teams.go        # RegionInfo/TeamInfo wire shapes, GetRegions/GetRegionTeams
 │   │   ├── games.go        # GetGameFile (raw YAML bytes from the public game setup endpoint)
+│   │   ├── contests.go     # ContestInfo wire shape, GetContests/GetContestRoster
 │   │   └── client_test.go
 │   ├── db/
 │   │   └── db.go           # GORM wrapper (options, SQLite default, Postgres via DSN), Raw(), InsertOrUpdate[T]
@@ -193,6 +200,7 @@ modules.Register(modules.ModuleInfo{
 | `team` | onsite, cloud | yes | — | `TEAM:ADMIN` |
 | `game` | onsite, cloud | yes | team | `GAME:ADMIN`, `GAME:SCHEDULE`, `GAME:REFEREE`, `GAME:TIMEKEEPER` |
 | `best` | onsite | no | — | `BEST:ADMIN` |
+| `contest` | onsite, cloud | yes | team, game | `CONTEST:ADMIN` |
 
 **Mounting** (`onsite_serve.go`): For each resolved module:
 1. `w.Mount("/ui/mod/<name>", handle.Router())`
@@ -401,6 +409,29 @@ A dedicated per-phase page surfaces the `PhaseScoreStats` values (min, max, aver
 
 Max values: Notebook 300, Marketing 250, Poster 100, Video 100 (constants in `type.go`).
 
+### Contest (`modules/contest/`)
+
+Dual-scope, required module. The cloud side manages contests (named, associated with a region, carrying a roster of teams); the onsite side exposes a "My Contest" screen where the operator picks which cloud contest this onsite server is handling.
+
+| Model | Fields | Purpose |
+|-------|--------|---------|
+| `Contest` | ID, Name, RegionID (→ team.Region) | Contest record (cloud) |
+| `ContestRoster` | ID, ContestID (→ Contest), TeamID (→ team.Team) | Roster row; unique on (ContestID, TeamID) (cloud) |
+| `OnsiteContest` | ID (the cloud contest ID), Name, Region (plain strings) | Local record of the selected contest (onsite) |
+
+**Roster** (`/{id}/roster` routes, read page public, mutations `CONTEST:ADMIN`-guarded):
+- The roster is independent of the region: `POST /{id}/roster/init` seeds it from the contest's region (enabled teams only; idempotent, existing rows are skipped) and afterwards add/remove edits it directly.
+- `GET|POST /{id}/roster/add` adds any team not already on the roster; `POST /{id}/roster/{team_id}/delete` removes one.
+- Deleting a contest cascades to its roster rows.
+
+**Cloud endpoints** (public, served by the cloud `Module`):
+- `GET /ui/mod/contest/cloud/contests` → `[]cloud.ContestInfo` (cloud ID, name, region; ordered by name). The ID is carried on purpose: an onsite server adopts the cloud contest ID as its own local contest ID.
+- `GET /ui/mod/contest/cloud/contests/{id}/roster` → `[]cloud.TeamInfo` (number, name, division, region) for that contest's roster.
+
+**My Contest (onsite)** (`onsite.go`, `CONTEST:ADMIN`-guarded):
+- `GET|POST /ui/mod/contest/` lists the cloud contests (fetched up front so cloud failures surface on the page) and persists the selection: the local `OnsiteContest` row's ID is the chosen cloud contest ID; re-selecting replaces the previous row.
+- **Auto-import on selection** (`importContestData`, best-effort, log-and-continue so a transient cloud failure never blocks the selection): (1) if `ListTeams()` shows the local team list is empty, the selected contest's roster is pulled via `Client.GetContestRoster` and upserted through `team.Module.ImportTeams` (the same upsert the cloud/CSV imports use; blank division defaults to `Open`); (2) if no game is loaded (zero `GamePhase` rows), the cloud game file is pulled via `game.Module.ImportGame` (the same `applyGameConfig` as a local upload). The onsite module reaches team/game through local `TeamModule`/`GameModule` interfaces type-asserted from `deps` (nil-safe, mirroring the game module's `TeamModule` pattern), which is why `init.go` declares `Dependencies: ["team", "game"]`.
+
 ### Schedule Generation (`pkg/schedgen/`)
 
 | Type | Fields | Purpose |
@@ -584,9 +615,9 @@ ldflags="-X github.com/gizmo-platform/gameday/pkg/buildinfo.Version=1.0.0 \
 
 ## Testing
 
-- **Location**: `pkg/cloud/client_test.go`, `pkg/db/db_test.go`, `pkg/schedgen/bid_test.go`, `pkg/schedgen/division_test.go`, `pkg/event/bus_test.go`, `pkg/event/handler_test.go`, `pkg/web/error_templates_test.go`, `pkg/web/tmpl_debug_test.go`, `pkg/web/eventbus_test.go`, `pkg/web/users_test.go`, `modules/game/lint_test.go`, `modules/game/advancement_test.go`, `modules/game/clock_test.go`, `modules/game/clock_match_test.go`, `modules/game/cloud_test.go`, `modules/team/team_test.go`, `modules/team/region_test.go`
+- **Location**: `pkg/cloud/client_test.go`, `pkg/db/db_test.go`, `pkg/schedgen/bid_test.go`, `pkg/schedgen/division_test.go`, `pkg/event/bus_test.go`, `pkg/event/handler_test.go`, `pkg/web/error_templates_test.go`, `pkg/web/tmpl_debug_test.go`, `pkg/web/eventbus_test.go`, `pkg/web/users_test.go`, `modules/game/lint_test.go`, `modules/game/advancement_test.go`, `modules/game/clock_test.go`, `modules/game/clock_match_test.go`, `modules/game/cloud_test.go`, `modules/team/team_test.go`, `modules/team/region_test.go`, `modules/contest/contest_test.go`, `modules/contest/onsite_test.go`
 - **Pattern**: Table-driven / config-driven tests using `schedgen.Config`; in-DB tests build a module via `newTestModule(t, opts...)` (a fresh temp-dir SQLite DB + a `web.Server`, optionally with `web.EventBus`) and exercise handlers or bus events directly
-- **Coverage**: BIBD smoke test (v=7, k=3 Steiner Triple System), larger team test (13 teams), degenerate case (teams < block size), division interleaving, error template rendering, debug template loading, advancement filters (roster/scoreboard sourcing, exclude-then-include, tie-breaking), phase score stats (min/max/avg with the MatchPlacement reported for the extremes, empty-phase zero result, lowest-ID tie-break; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set), phase score stats page (admin render with min/max team names, scores, and source Match/Field cells, GAME:ADMIN guard blocks non-admins, back links resolve), default field seeding (Migrate guarantees a `Field 1` row and is idempotent on re-run), match clock (YAML parse, settings round-trip, start/cancel, auto-stop with hurry/end events, guard against double-start/cancel-when-idle, page rendering), clock-driven match transitions (target selection, start/end/auto-stop/cancel state flow, operator next-match override, flag-off no-op, Scorable-left-alone, stale Running/Queued reset, start rejection paths, transitions panel round-trip), admin team list (pagination, division/region facets, combined filters, filtered pagination, filter state preserved in pager links, no-match empty state), db driver selection (postgres-without-DSN error, unknown-driver error, env-gated Postgres integration test on `GAMEDAY_TEST_PG_DSN`: migrate + upsert round-trip), user deletion (deletes the user, clears the profile's `profile_permissions` join rows, then deletes the profile; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set, where the old profile-first ordering fails with an FK violation), game cloud import Postgres FK (multi-phase `byte2bite.yml` fixture with advancement filters imports cleanly on Postgres, where the `game_phase_id` FK is enforced; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set), cloud client (JSON decode, query encoding, error vs network-failure distinction, env/default base URL, basic-auth header, regions/teams round-trips, raw-bytes game file round-trip), team cloud import (public regions/teams JSON endpoints incl. unknown-region 404, end-to-end region import with division defaulting, idempotent re-import that updates in place without duplicating and preserves `disabled`, cloud-failure path that writes nothing), game cloud import (end-to-end import via shared `applyGameConfig` incl. advancement filter, regenerated scorecard exprs, and clock section, idempotent re-import, cloud-failure path that writes nothing, public YAML export with runtime state stripped and round-trip parse, cloud-scoped configuration/setup screens incl. setup upload round-trip and onsite-only routes staying unregistered)
+- **Coverage**: BIBD smoke test (v=7, k=3 Steiner Triple System), larger team test (13 teams), degenerate case (teams < block size), division interleaving, error template rendering, debug template loading, advancement filters (roster/scoreboard sourcing, exclude-then-include, tie-breaking), phase score stats (min/max/avg with the MatchPlacement reported for the extremes, empty-phase zero result, lowest-ID tie-break; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set), phase score stats page (admin render with min/max team names, scores, and source Match/Field cells, GAME:ADMIN guard blocks non-admins, back links resolve), default field seeding (Migrate guarantees a `Field 1` row and is idempotent on re-run), match clock (YAML parse, settings round-trip, start/cancel, auto-stop with hurry/end events, guard against double-start/cancel-when-idle, page rendering), clock-driven match transitions (target selection, start/end/auto-stop/cancel state flow, operator next-match override, flag-off no-op, Scorable-left-alone, stale Running/Queued reset, start rejection paths, transitions panel round-trip), admin team list (pagination, division/region facets, combined filters, filtered pagination, filter state preserved in pager links, no-match empty state), db driver selection (postgres-without-DSN error, unknown-driver error, env-gated Postgres integration test on `GAMEDAY_TEST_PG_DSN`: migrate + upsert round-trip), user deletion (deletes the user, clears the profile's `profile_permissions` join rows, then deletes the profile; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set, where the old profile-first ordering fails with an FK violation), game cloud import Postgres FK (multi-phase `byte2bite.yml` fixture with advancement filters imports cleanly on Postgres, where the `game_phase_id` FK is enforced; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set), cloud client (JSON decode, query encoding, error vs network-failure distinction, env/default base URL, basic-auth header, regions/teams round-trips, raw-bytes game file round-trip), team cloud import (public regions/teams JSON endpoints incl. unknown-region 404, end-to-end region import with division defaulting, idempotent re-import that updates in place without duplicating and preserves `disabled`, cloud-failure path that writes nothing), game cloud import (end-to-end import via shared `applyGameConfig` incl. advancement filter, regenerated scorecard exprs, and clock section, idempotent re-import, cloud-failure path that writes nothing, public YAML export with runtime state stripped and round-trip parse, cloud-scoped configuration/setup screens incl. setup upload round-trip and onsite-only routes staying unregistered), contest (cloud contest list + per-contest roster JSON endpoints, My Contest selection storing the cloud ID and re-select replacing the row, CONTEST:ADMIN guard, selection auto-import: roster imported when the local team list is empty and skipped when teams exist, cloud game imported when no `GamePhase` rows exist and skipped when a game is loaded, all against a fake cloud server)
 - **Run**: `go test ./...`
 
 ### Test Fixtures

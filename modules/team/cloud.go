@@ -96,6 +96,12 @@ func (m *Module) upsertTeamRows(ctx context.Context, rows []TeamRow) (int, error
 	return applied, nil
 }
 
+// ImportTeams persists a set of roster rows, the same upsert the cloud
+// and CSV imports use. It returns the number of rows applied.
+func (m *Module) ImportTeams(ctx context.Context, rows []TeamRow) (int, error) {
+	return m.upsertTeamRows(ctx, rows)
+}
+
 // cloudRegionsData is the public JSON endpoint listing every region
 // and how many teams it holds, ordered by region name. Counts include
 // disabled teams: the roster as the cloud system holds it.
