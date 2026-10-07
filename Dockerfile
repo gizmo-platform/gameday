@@ -5,6 +5,7 @@ RUN --mount=type=cache,target=/var/lib/apk \
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    go generate ./... && \
     CGO_ENABLED=1 go build -o /gameday -ldflags '-extldflags "-static"' .
 
 FROM scratch
