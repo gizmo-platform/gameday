@@ -469,14 +469,17 @@ func (m *Module) Router() chi.Router {
 }
 
 func (m *Module) Migrate() error {
+	// Parents must precede children: the Postgres dialector emits
+	// foreign keys inline in CREATE TABLE and enforces them at DDL
+	// time, so a child table cannot be created before its parent.
 	return m.db.AutoMigrate(
 		FieldPosition{},
 		Field{},
-		GameElementStateValue{},
-		GameElementState{},
 		GameElement{},
-		GamePhaseAdvancementFilter{},
+		GameElementState{},
+		GameElementStateValue{},
 		GamePhase{},
+		GamePhaseAdvancementFilter{},
 		MatchPlacement{},
 		MatchScore{},
 		ScorecardElement{},

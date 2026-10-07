@@ -200,9 +200,19 @@ func (m *Module) Migrate() error {
 		}
 	}
 
-	// Advance the SQLite auto-increment sequence so dynamic divisions start at 100
-	m.db.Exec("INSERT OR IGNORE INTO divisions (id, name, static) VALUES (?, ?, ?)", DynamicDivisionStartID, "", false)
-	m.db.Exec("DELETE FROM divisions WHERE id = ?", DynamicDivisionStartID)
+	// Advance the auto-increment sequence so dynamic divisions start at 100.
+	// SQLite tracks the sequence in the rowid, so an explicit-ID insert
+	// advances it; Postgres sequences are not advanced by explicit-ID
+	// inserts, so setval is used instead.
+	switch m.db.Dialector.Name() {
+	case "postgres":
+		if err := m.db.Exec("SELECT setval(pg_get_serial_sequence('divisions', 'id'), ?, true)", DynamicDivisionStartID).Error; err != nil {
+			return err
+		}
+	default:
+		m.db.Exec("INSERT OR IGNORE INTO divisions (id, name, static) VALUES (?, ?, ?)", DynamicDivisionStartID, "", false)
+		m.db.Exec("DELETE FROM divisions WHERE id = ?", DynamicDivisionStartID)
+	}
 
 	// Auto-migrate Team
 	if err := m.db.AutoMigrate(Team{}); err != nil {

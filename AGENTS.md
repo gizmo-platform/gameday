@@ -7,7 +7,7 @@ AI agent reference for the Gameday codebase. Covers architecture, patterns, data
 Gameday is a robotics competition management system. It provides an on-site web application for tournament operations (team management, match scheduling, scorekeeping) and an offline CLI for schedule generation.
 
 - **Module**: `github.com/gizmo-platform/gameday`
-- **Go version**: 1.24.4
+- **Go version**: 1.25.0
 - **Primary language**: Go
 
 ## Directory Structure
@@ -74,7 +74,7 @@ Gameday is a robotics competition management system. It provides an on-site web 
 │   │   ├── games.go        # GetGameFile (raw YAML bytes from the public game setup endpoint)
 │   │   └── client_test.go
 │   ├── db/
-│   │   └── db.go           # GORM wrapper (options, SQLite default), Raw(), InsertOrUpdate[T]
+│   │   └── db.go           # GORM wrapper (options, SQLite default, Postgres via DSN), Raw(), InsertOrUpdate[T]
 │   ├── web/
 │   │   ├── server.go       # Server struct, Chi router, Pongo2, Authware, admin routes
 │   │   ├── authz.go        # Permission struct, InstallPermission, RequirePermission, GuardRoute
@@ -284,7 +284,7 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 
 ### Generic DB Helpers
 
-`db.New(opts ...Option)` opens the connection. Options: `db.WithDriver(name)` selects the database type (`db.DriverSQLite` is the default and only supported driver), `db.WithPath(path)` overrides the file path, and `db.WithEnvPath(name)` overrides the path from an env var when set. Without options the default is SQLite at `GAMEDAY_DB` (default `gameday.db`). Entrypoints pick their own default path: `onsite serve` uses `db.WithEnvPath("GAMEDAY_ONSITE_DB")` (falls back to `GAMEDAY_DB`), while `cloud serve` defaults to `gameday_cloud.db`, overridable via `GAMEDAY_CLOUD_DB`.
+`db.New(opts ...Option)` opens the connection. Options: `db.WithDriver(name)` selects the database type (`db.DriverSQLite` is the default; `db.DriverPostgres` is also supported), `db.WithPath(path)` and `db.WithEnvPath(name)` override the SQLite file path, and `db.WithDSN(dsn)` / `db.WithEnvDSN(name)` override the PostgreSQL DSN. Without options the default is SQLite at `GAMEDAY_DB` (default `gameday.db`). The driver is selected centrally by `GAMEDAY_DB_DRIVER` (default `sqlite`); when set to `postgres` the DSN is read from `GAMEDAY_DB_DSN`, so switching backends is a pure env-var change with no entrypoint or code changes (path-based options are ignored under Postgres). Entrypoints pick their own default path: `onsite serve` uses `db.WithEnvPath("GAMEDAY_ONSITE_DB")` (falls back to `GAMEDAY_DB`), while `cloud serve` defaults to `gameday_cloud.db`, overridable via `GAMEDAY_CLOUD_DB`.
 
 `gorm.G[T](db)` used throughout for type-safe queries:
 ```go
@@ -525,7 +525,7 @@ The `game` module exposes one public endpoint: `GET /ui/mod/game/cloud/setup` re
 | `github.com/go-chi/chi/v5` | HTTP router |
 | `github.com/spf13/cobra` | CLI framework |
 | `github.com/flosch/pongo2/v6` | Templating engine |
-| `gorm.io/gorm` + `gorm.io/driver/sqlite` | ORM + SQLite driver |
+| `gorm.io/gorm` + `gorm.io/driver/sqlite` + `gorm.io/driver/postgres` | ORM + SQLite/PostgreSQL drivers |
 | `github.com/the-maldridge/authware` | Authentication framework |
 | `github.com/coder/websocket` | Websocket server (event bus export) |
 | `github.com/jedib0t/go-pretty/v6` | Table rendering (CLI) |
@@ -536,7 +536,7 @@ The `game` module exposes one public endpoint: `GET /ui/mod/game/cloud/setup` re
 
 ### Dockerfile
 
-- **Base**: `golang:1.24-alpine` → `alpine` multi-stage build
+- **Base**: `golang:1.25-alpine` → `alpine` multi-stage build
 - **CGO**: Enabled for SQLite (`CGO_ENABLED=1`)
 - **Static linking**: `-extldflags "-static"`
 - **Entrypoint**: `tini-static` init system
@@ -556,6 +556,8 @@ ldflags="-X github.com/gizmo-platform/gameday/pkg/buildinfo.Version=1.0.0 \
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `GAMEDAY_DB` | `gameday.db` | SQLite database path (fallback default for all entrypoints) |
+| `GAMEDAY_DB_DRIVER` | `sqlite` | Database driver: `sqlite` or `postgres` (see Generic DB Helpers) |
+| `GAMEDAY_DB_DSN` | — | PostgreSQL DSN, used when `GAMEDAY_DB_DRIVER=postgres` (e.g. `postgres://user:pass@host:5432/db?sslmode=...`) |
 | `GAMEDAY_ONSITE_DB` | — | SQLite path for `onsite serve` (overrides `GAMEDAY_DB` when set) |
 | `GAMEDAY_CLOUD_DB` | `gameday_cloud.db` | SQLite path for `cloud serve` (local DB file; distinct from `GAMEDAY_CLOUD`, which is the base URL the `pkg/cloud` client dials) |
 | `GAMEDAY_CLOUD` | `https://gameday.gizmoplatform.org` | Base URL of the cloud instance for the `pkg/cloud` client (see Cloud Client) |
@@ -567,9 +569,9 @@ ldflags="-X github.com/gizmo-platform/gameday/pkg/buildinfo.Version=1.0.0 \
 
 ## Testing
 
-- **Location**: `pkg/cloud/client_test.go`, `pkg/schedgen/bid_test.go`, `pkg/schedgen/division_test.go`, `pkg/event/bus_test.go`, `pkg/event/handler_test.go`, `pkg/web/error_templates_test.go`, `pkg/web/tmpl_debug_test.go`, `pkg/web/eventbus_test.go`, `modules/game/lint_test.go`, `modules/game/advancement_test.go`, `modules/game/clock_test.go`, `modules/game/clock_match_test.go`, `modules/game/cloud_test.go`, `modules/team/team_test.go`, `modules/team/region_test.go`
+- **Location**: `pkg/cloud/client_test.go`, `pkg/db/db_test.go`, `pkg/schedgen/bid_test.go`, `pkg/schedgen/division_test.go`, `pkg/event/bus_test.go`, `pkg/event/handler_test.go`, `pkg/web/error_templates_test.go`, `pkg/web/tmpl_debug_test.go`, `pkg/web/eventbus_test.go`, `modules/game/lint_test.go`, `modules/game/advancement_test.go`, `modules/game/clock_test.go`, `modules/game/clock_match_test.go`, `modules/game/cloud_test.go`, `modules/team/team_test.go`, `modules/team/region_test.go`
 - **Pattern**: Table-driven / config-driven tests using `schedgen.Config`; in-DB tests build a module via `newTestModule(t, opts...)` (a fresh temp-dir SQLite DB + a `web.Server`, optionally with `web.EventBus`) and exercise handlers or bus events directly
-- **Coverage**: BIBD smoke test (v=7, k=3 Steiner Triple System), larger team test (13 teams), degenerate case (teams < block size), division interleaving, error template rendering, debug template loading, advancement filters (roster/scoreboard sourcing, exclude-then-include, tie-breaking), match clock (YAML parse, settings round-trip, start/cancel, auto-stop with hurry/end events, guard against double-start/cancel-when-idle, page rendering), clock-driven match transitions (target selection, start/end/auto-stop/cancel state flow, operator next-match override, flag-off no-op, Scorable-left-alone, stale Running/Queued reset, start rejection paths, transitions panel round-trip), admin team list (pagination, division/region facets, combined filters, filtered pagination, filter state preserved in pager links, no-match empty state), cloud client (JSON decode, query encoding, error vs network-failure distinction, env/default base URL, basic-auth header, regions/teams round-trips, raw-bytes game file round-trip), team cloud import (public regions/teams JSON endpoints incl. unknown-region 404, end-to-end region import with division defaulting, idempotent re-import that updates in place without duplicating and preserves `disabled`, cloud-failure path that writes nothing), game cloud import (end-to-end import via shared `applyGameConfig` incl. advancement filter, regenerated scorecard exprs, and clock section, idempotent re-import, cloud-failure path that writes nothing, public YAML export with runtime state stripped and round-trip parse, cloud-scoped configuration/setup screens incl. setup upload round-trip and onsite-only routes staying unregistered)
+- **Coverage**: BIBD smoke test (v=7, k=3 Steiner Triple System), larger team test (13 teams), degenerate case (teams < block size), division interleaving, error template rendering, debug template loading, advancement filters (roster/scoreboard sourcing, exclude-then-include, tie-breaking), match clock (YAML parse, settings round-trip, start/cancel, auto-stop with hurry/end events, guard against double-start/cancel-when-idle, page rendering), clock-driven match transitions (target selection, start/end/auto-stop/cancel state flow, operator next-match override, flag-off no-op, Scorable-left-alone, stale Running/Queued reset, start rejection paths, transitions panel round-trip), admin team list (pagination, division/region facets, combined filters, filtered pagination, filter state preserved in pager links, no-match empty state), db driver selection (postgres-without-DSN error, unknown-driver error, env-gated Postgres integration test on `GAMEDAY_TEST_PG_DSN`: migrate + upsert round-trip), cloud client (JSON decode, query encoding, error vs network-failure distinction, env/default base URL, basic-auth header, regions/teams round-trips, raw-bytes game file round-trip), team cloud import (public regions/teams JSON endpoints incl. unknown-region 404, end-to-end region import with division defaulting, idempotent re-import that updates in place without duplicating and preserves `disabled`, cloud-failure path that writes nothing), game cloud import (end-to-end import via shared `applyGameConfig` incl. advancement filter, regenerated scorecard exprs, and clock section, idempotent re-import, cloud-failure path that writes nothing, public YAML export with runtime state stripped and round-trip parse, cloud-scoped configuration/setup screens incl. setup upload round-trip and onsite-only routes staying unregistered)
 - **Run**: `go test ./...`
 
 ### Test Fixtures
