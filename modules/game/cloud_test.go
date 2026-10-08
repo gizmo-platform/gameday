@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
+	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/modules"
 	"github.com/gizmo-platform/gameday/pkg/db"
@@ -448,5 +449,31 @@ func TestUiViewPhaseScoreStats(t *testing.T) {
 	}
 	if !strings.Contains(body, "Unauthorized") {
 		t.Errorf("non-admin should see the unauthorized page; body=%s", body)
+	}
+}
+
+// TestMigrateSeedsDefaultField verifies that Migrate guarantees a
+// "Field 1" row exists and is idempotent on re-run.
+func TestMigrateSeedsDefaultField(t *testing.T) {
+	m, d := newTestModuleDSN(t)
+
+	fields, err := gorm.G[Field](d.DB).Where(&Field{Name: "Field 1"}).Find(context.Background())
+	if err != nil {
+		t.Fatalf("find Field 1: %v", err)
+	}
+	if len(fields) != 1 {
+		t.Fatalf("Field 1 count = %d, want 1", len(fields))
+	}
+
+	// Re-running Migrate must not duplicate the row.
+	if err := m.Migrate(); err != nil {
+		t.Fatalf("re-migrate: %v", err)
+	}
+	fields, err = gorm.G[Field](d.DB).Where(&Field{Name: "Field 1"}).Find(context.Background())
+	if err != nil {
+		t.Fatalf("find Field 1 after re-migrate: %v", err)
+	}
+	if len(fields) != 1 {
+		t.Errorf("Field 1 count after re-migrate = %d, want 1", len(fields))
 	}
 }

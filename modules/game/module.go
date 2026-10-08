@@ -478,7 +478,7 @@ func (m *Module) Migrate() error {
 	// Parents must precede children: the Postgres dialector emits
 	// foreign keys inline in CREATE TABLE and enforces them at DDL
 	// time, so a child table cannot be created before its parent.
-	return m.db.AutoMigrate(
+	if err := m.db.AutoMigrate(
 		FieldPosition{},
 		Field{},
 		GameElement{},
@@ -492,7 +492,21 @@ func (m *Module) Migrate() error {
 		ScorecardValue{},
 		ClockSettings{},
 		ActiveClock{},
-	)
+	); err != nil {
+		return err
+	}
+
+	// Ensure the default field always exists.
+	field, err := gorm.G[Field](m.db.DB).Where(&Field{Name: "Field 1"}).First(context.Background())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if field.ID == 0 {
+		if err := m.db.Create(&Field{Name: "Field 1"}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *Module) ListFields(ctx context.Context, filter Field) ([]Field, error) {
