@@ -1,0 +1,49 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Phase Score Stats{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <div class="content"><h2>Phase Score Stats - {{ phase.Name | capfirst }}</h2></div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Statistic</th>
+            <th>Score</th>
+            <th>Team</th>
+            <th>Match</th>
+            <th>Field</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Minimum</td>
+            <td>{% if stats.MinPlacement.Team.ID %}{{ stats.Min }}{% else %}-{% endif %}</td>
+            <td>{% if stats.MinPlacement.Team.ID %}{{ stats.MinPlacement.Team.Number }} - {{ stats.MinPlacement.Team.Name }}{% else %}-{% endif %}</td>
+            <td>{% if stats.MinPlacement.Team.ID %}{{ stats.MinPlacement.Match }}{% else %}-{% endif %}</td>
+            <td>{% if stats.MinPlacement.Team.ID %}{{ stats.MinPlacement.Field.Name }}{% else %}-{% endif %}</td>
+          </tr>
+          <tr>
+            <td>Maximum</td>
+            <td>{% if stats.MaxPlacement.Team.ID %}{{ stats.Max }}{% else %}-{% endif %}</td>
+            <td>{% if stats.MaxPlacement.Team.ID %}{{ stats.MaxPlacement.Team.Number }} - {{ stats.MaxPlacement.Team.Name }}{% else %}-{% endif %}</td>
+            <td>{% if stats.MaxPlacement.Team.ID %}{{ stats.MaxPlacement.Match }}{% else %}-{% endif %}</td>
+            <td>{% if stats.MaxPlacement.Team.ID %}{{ stats.MaxPlacement.Field.Name }}{% else %}-{% endif %}</td>
+          </tr>
+          <tr>
+            <td>Average</td>
+            <td>{% if stats.MinPlacement.Team.ID %}{{ stats.Avg }}{% else %}-{% endif %}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="buttons">
+        <a class="button" href="{{ backSchedule }}">Back to Phase Schedule</a>
+        <a class="button" href="{{ backPhases }}">Back to Phases</a>
+      </div>
+    </div>
+  </div>
+{% endblock %}

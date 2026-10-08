@@ -214,6 +214,35 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (m *Module) uiViewPhaseScoreStats(w http.ResponseWriter, r *http.Request) {
+	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	phase, err := gorm.G[GamePhase](m.db.DB).
+		Where(&GamePhase{ID: gPhase}).
+		First(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving phase", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	stats, err := m.PhaseScoreStats(r.Context(), gPhase)
+	if err != nil {
+		slog.Error("Error computing phase score stats", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	ctx := pongo2.Context{
+		"phase":        phase,
+		"stats":        stats,
+		"backSchedule": path.Join(m.basePath, "schedule", "phases", fmt.Sprint(gPhase)),
+		"backPhases":   path.Join(m.basePath, "schedule"),
+	}
+
+	m.ws.DoTemplate(w, r, "views/game/phase_score_stats.p2", ctx)
+}
+
 func (m *Module) uiViewPhaseMakeActive(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 

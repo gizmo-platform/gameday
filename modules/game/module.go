@@ -430,6 +430,7 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 			r.Route("/schedule", func(r chi.Router) {
 				r.Get("/", m.uiViewPhaseList)
 				r.Get("/phases/{id}", m.uiViewPhaseSchedule)
+				r.Get("/phases/{id}/stats", m.ws.GuardRoute(pAdmin, m.uiViewPhaseScoreStats))
 				r.Post("/phases/{id}/make-active", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeActive))
 				r.Post("/phases/{id}/make-frozen", m.ws.GuardRoute(pSchedule, m.uiViewPhaseMakeFrozen))
 				r.Post("/phases/{id}/make-scores-hidden", m.ws.GuardRoute(pSchedule, m.uiViewPhaseToggleScoresVisibility))

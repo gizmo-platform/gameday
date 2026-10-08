@@ -3,6 +3,7 @@ package game
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -381,5 +382,71 @@ func TestCloudSetupDataEndpoint(t *testing.T) {
 	}
 	if c.Clock == (ClockConfig{}) {
 		t.Error("export missing clock section")
+	}
+}
+
+// TestUiViewPhaseScoreStats verifies the dedicated per-phase stats
+// page: an admin sees the rendered stats, and a profile without
+// GAME:ADMIN is blocked by the guard.
+func TestUiViewPhaseScoreStats(t *testing.T) {
+	m, d := newTestModuleDSN(t)
+
+	teams := seedTeams(t, d, 3)
+	phase := GamePhase{Name: "qualifying", ScoreSummation: "Total"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	for i, tr := range teams {
+		seedPhaseScoreField(t, d, phase.ID, tr, []int{10, 30, 20}[i], fmt.Sprintf("Field%d", i))
+	}
+
+	target := fmt.Sprintf("/ui/mod/game/schedule/phases/%d/stats", phase.ID)
+
+	code, body, _ := routerReq(t, m, adminContext(), http.MethodGet, target, "")
+	if code != http.StatusOK {
+		t.Fatalf("admin GET = %d, want 200; body=%s", code, body)
+	}
+	if !strings.Contains(body, "Phase Score Stats") {
+		t.Errorf("body missing page heading; body=%s", body)
+	}
+	if !strings.Contains(body, teams[0].Name) || !strings.Contains(body, teams[1].Name) {
+		t.Errorf("body missing min/max team names; body=%s", body)
+	}
+	if !strings.Contains(body, "10") || !strings.Contains(body, "30") {
+		t.Errorf("body missing min/max scores; body=%s", body)
+	}
+	// The min (10) and max (30) rows show the field their placement
+	// was seeded on.
+	if !strings.Contains(body, "Field0") {
+		t.Errorf("body missing min placement field; body=%s", body)
+	}
+	if !strings.Contains(body, "Field1") {
+		t.Errorf("body missing max placement field; body=%s", body)
+	}
+
+	// The page's back links are absolute (built from the module base
+	// path); verify the rendered hrefs and that both targets serve.
+	if !strings.Contains(body, fmt.Sprintf("href=\"/ui/mod/game/schedule/phases/%d\"", phase.ID)) {
+		t.Errorf("body missing back link to phase schedule; body=%s", body)
+	}
+	if !strings.Contains(body, "href=\"/ui/mod/game/schedule\"") {
+		t.Errorf("body missing back link to phase list; body=%s", body)
+	}
+	if code, body, _ := routerReq(t, m, adminContext(), http.MethodGet,
+		fmt.Sprintf("/ui/mod/game/schedule/phases/%d", phase.ID), ""); code != http.StatusOK {
+		t.Errorf("back link to phase schedule = %d, want 200; body=%s", code, body)
+	}
+	if code, body, _ := routerReq(t, m, adminContext(), http.MethodGet,
+		"/ui/mod/game/schedule", ""); code != http.StatusOK {
+		t.Errorf("back link to phase list = %d, want 200; body=%s", code, body)
+	}
+
+	noPerm := context.WithValue(context.Background(), web.ProfileKey{}, web.Profile{Username: "nobody"})
+	code, body, _ = routerReq(t, m, noPerm, http.MethodGet, target, "")
+	if code != http.StatusOK {
+		t.Fatalf("non-admin GET = %d, want 200 (unauthorized page); body=%s", code, body)
+	}
+	if !strings.Contains(body, "Unauthorized") {
+		t.Errorf("non-admin should see the unauthorized page; body=%s", body)
 	}
 }

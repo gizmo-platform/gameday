@@ -2,7 +2,9 @@ package game
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -48,11 +50,40 @@ func newTestModule(t *testing.T, opts ...web.Option) (*Module, *db.DB) {
 	t.Helper()
 
 	t.Setenv("GAMEDAY_DB", filepath.Join(t.TempDir(), "test.db"))
-
 	d, err := db.New()
 	if err != nil {
 		t.Fatalf("db.New: %v", err)
 	}
+
+	return newTestModuleWithDB(t, d, opts...)
+}
+
+// newTestModuleDSN is like newTestModule but honors GAMEDAY_TEST_PG_DSN
+// when set, so the tests that use it can run against a shared Postgres
+// database. Tests that use it must be self-contained (they cannot
+// assume a fresh database).
+func newTestModuleDSN(t *testing.T, opts ...web.Option) (*Module, *db.DB) {
+	t.Helper()
+
+	var (
+		d   *db.DB
+		err error
+	)
+	if dsn := os.Getenv("GAMEDAY_TEST_PG_DSN"); dsn != "" {
+		d, err = db.New(db.WithDriver(db.DriverPostgres), db.WithDSN(dsn))
+	} else {
+		t.Setenv("GAMEDAY_DB", filepath.Join(t.TempDir(), "test.db"))
+		d, err = db.New()
+	}
+	if err != nil {
+		t.Fatalf("db.New: %v", err)
+	}
+
+	return newTestModuleWithDB(t, d, opts...)
+}
+
+func newTestModuleWithDB(t *testing.T, d *db.DB, opts ...web.Option) (*Module, *db.DB) {
+	t.Helper()
 
 	defaults := []web.Option{web.WithDB(d)}
 	defaults = append(defaults, opts...)
@@ -83,12 +114,40 @@ func newTestModule(t *testing.T, opts ...web.Option) (*Module, *db.DB) {
 	return m, d
 }
 
+// seedTeams creates n teams with distinct numbers. The number base is
+// derived from the current maximum team number in the database (re-read
+// on every call), so ranges stay contiguous and non-overlapping even on
+// a shared database that already holds teams from earlier runs.
 func seedTeams(t *testing.T, d *db.DB, n int) []team.Team {
 	t.Helper()
 
+	// Teams carry foreign keys to their division and region; Postgres
+	// enforces them, so seed against the "Open" division that
+	// team.Migrate guarantees and a get-or-created test region.
+	open, err := gorm.G[team.Division](d.DB).Where(&team.Division{Name: "Open"}).First(context.Background())
+	if err != nil {
+		t.Fatalf("find Open division: %v", err)
+	}
+	region, err := gorm.G[team.Region](d.DB).Where(&team.Region{Name: "Test"}).First(context.Background())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("find Test region: %v", err)
+	}
+	if region.ID == 0 {
+		region = team.Region{Name: "Test"}
+		if err := d.Create(&region).Error; err != nil {
+			t.Fatalf("create Test region: %v", err)
+		}
+	}
+
+	var maxNum int
+	if err := d.Raw().Raw("SELECT COALESCE(MAX(number), 0) FROM teams").Scan(&maxNum).Error; err != nil {
+		t.Fatalf("max team number: %v", err)
+	}
+	base := maxNum + n
+
 	var teams []team.Team
 	for i := 1; i <= n; i++ {
-		tr := team.Team{Name: fmt.Sprintf("Team %d", i), Number: i * 10}
+		tr := team.Team{Name: fmt.Sprintf("Team %d", i), Number: base - n + i, DivisionID: open.ID, RegionID: region.ID}
 		if err := d.Create(&tr).Error; err != nil {
 			t.Fatalf("create team: %v", err)
 		}
@@ -717,5 +776,151 @@ func TestRunAdvancementFiltersWhenSkippedStillRunsOthers(t *testing.T) {
 		if det.Rule != "PickAll" {
 			t.Errorf("determination rule = %q, want PickAll", det.Rule)
 		}
+	}
+}
+
+// seedPhaseScore creates a completed MatchPlacement for (phase, team)
+// and a matching MatchScore, returning the placement.
+func seedPhaseScore(t *testing.T, d *db.DB, phaseID uint, tr team.Team, score int) MatchPlacement {
+	t.Helper()
+	return seedPhaseScoreField(t, d, phaseID, tr, score, "Test")
+}
+
+// seedPhaseScoreField is like seedPhaseScore but names the field the
+// placement is seeded on.
+func seedPhaseScoreField(t *testing.T, d *db.DB, phaseID uint, tr team.Team, score int, fieldName string) MatchPlacement {
+	t.Helper()
+
+	// MatchPlacement carries foreign keys to a field and a position;
+	// Postgres enforces them, so seed against get-or-created rows.
+	field, err := gorm.G[Field](d.DB).Where(&Field{Name: fieldName}).First(context.Background())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("find %s field: %v", fieldName, err)
+	}
+	if field.ID == 0 {
+		field = Field{Name: fieldName}
+		if err := d.Create(&field).Error; err != nil {
+			t.Fatalf("create %s field: %v", fieldName, err)
+		}
+	}
+	position, err := gorm.G[FieldPosition](d.DB).Where(&FieldPosition{Name: "Test"}).First(context.Background())
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("find Test position: %v", err)
+	}
+	if position.ID == 0 {
+		position = FieldPosition{Name: "Test"}
+		if err := d.Create(&position).Error; err != nil {
+			t.Fatalf("create Test position: %v", err)
+		}
+	}
+
+	mp := MatchPlacement{PhaseID: phaseID, TeamID: tr.ID, FieldID: field.ID, PositionID: position.ID, State: MatchStateComplete}
+	if err := d.Create(&mp).Error; err != nil {
+		t.Fatalf("create placement: %v", err)
+	}
+	ms := MatchScore{ID: mp.ID, MatchPlacementID: mp.ID, GamePhaseID: phaseID, TeamID: tr.ID, Score: score}
+	if err := d.Create(&ms).Error; err != nil {
+		t.Fatalf("create score: %v", err)
+	}
+	return mp
+}
+
+// TestPhaseScoreStats verifies the min, max, and average of a phase's
+// scores, and that the placements (with their teams) reported for the
+// extremes are the ones that produced the values.
+func TestPhaseScoreStats(t *testing.T) {
+	m, d := newTestModuleDSN(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 3)
+	phase := GamePhase{Name: "qualifying", ScoreSummation: "Total"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+
+	scores := []int{10, 30, 20}
+	for i, tr := range teams {
+		seedPhaseScore(t, d, phase.ID, tr, scores[i])
+	}
+
+	stats, err := m.PhaseScoreStats(ctx, phase.ID)
+	if err != nil {
+		t.Fatalf("PhaseScoreStats: %v", err)
+	}
+	if stats.Min != 10 {
+		t.Errorf("Min = %d, want 10", stats.Min)
+	}
+	if stats.Max != 30 {
+		t.Errorf("Max = %d, want 30", stats.Max)
+	}
+	if stats.Avg != 20 {
+		t.Errorf("Avg = %d, want 20", stats.Avg)
+	}
+	if stats.MinPlacement.TeamID != teams[0].ID {
+		t.Errorf("MinPlacement.TeamID = %d, want %d", stats.MinPlacement.TeamID, teams[0].ID)
+	}
+	if stats.MaxPlacement.TeamID != teams[1].ID {
+		t.Errorf("MaxPlacement.TeamID = %d, want %d", stats.MaxPlacement.TeamID, teams[1].ID)
+	}
+	if stats.MinPlacement.Team.Name != teams[0].Name {
+		t.Errorf("MinPlacement.Team.Name = %q, want %q (preload)", stats.MinPlacement.Team.Name, teams[0].Name)
+	}
+	if stats.MinPlacement.Field.Name != "Test" || stats.MaxPlacement.Field.Name != "Test" {
+		t.Errorf("extreme placements missing Field preload: min=%q max=%q", stats.MinPlacement.Field.Name, stats.MaxPlacement.Field.Name)
+	}
+	if stats.MinPlacement.Position.Name != "Test" || stats.MaxPlacement.Position.Name != "Test" {
+		t.Errorf("extreme placements missing Position preload: min=%q max=%q", stats.MinPlacement.Position.Name, stats.MaxPlacement.Position.Name)
+	}
+}
+
+// TestPhaseScoreStatsEmpty verifies that a phase with no scores
+// returns a zero PhaseStats and a nil error.
+func TestPhaseScoreStatsEmpty(t *testing.T) {
+	m, d := newTestModuleDSN(t)
+	ctx := context.Background()
+
+	seedTeams(t, d, 3)
+	phase := GamePhase{Name: "qualifying", ScoreSummation: "Total"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+
+	stats, err := m.PhaseScoreStats(ctx, phase.ID)
+	if err != nil {
+		t.Fatalf("PhaseScoreStats: %v", err)
+	}
+	if stats.Min != 0 || stats.Max != 0 || stats.Avg != 0 {
+		t.Errorf("stats = %+v, want zero PhaseStats", stats)
+	}
+	if stats.MinPlacement.ID != 0 || stats.MaxPlacement.ID != 0 {
+		t.Errorf("stats = %+v, want zero PhaseStats", stats)
+	}
+}
+
+// TestPhaseScoreStatsTie verifies that when several placements share
+// an extreme value, the one with the lowest MatchScore ID is
+// reported.
+func TestPhaseScoreStatsTie(t *testing.T) {
+	m, d := newTestModuleDSN(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 2)
+	phase := GamePhase{Name: "qualifying", ScoreSummation: "Total"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+
+	first := seedPhaseScore(t, d, phase.ID, teams[0], 20)
+	seedPhaseScore(t, d, phase.ID, teams[1], 20)
+
+	stats, err := m.PhaseScoreStats(ctx, phase.ID)
+	if err != nil {
+		t.Fatalf("PhaseScoreStats: %v", err)
+	}
+	if stats.Max != 20 {
+		t.Errorf("Max = %d, want 20", stats.Max)
+	}
+	if stats.MaxPlacement.ID != first.ID {
+		t.Errorf("MaxPlacement.ID = %d, want %d (lowest ID wins the tie)", stats.MaxPlacement.ID, first.ID)
 	}
 }

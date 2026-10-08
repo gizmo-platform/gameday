@@ -121,6 +121,62 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 	return out, nil
 }
 
+// PhaseStats holds the aggregate score statistics for a single game
+// phase.
+type PhaseStats struct {
+	Min int
+	Max int
+	Avg int
+
+	// MinPlacement and MaxPlacement are the placements (with their
+	// team, field, and position) that produced the minimum and maximum
+	// scores. When several placements share an extreme value, the one
+	// with the lowest MatchScore ID is reported.
+	MinPlacement MatchPlacement
+	MaxPlacement MatchPlacement
+}
+
+// PhaseScoreStats returns the minimum, maximum, and average score for
+// the given game phase. For the minimum and maximum, the MatchPlacement
+// (with its team, field, and position) that produced the value is
+// included. A phase with no scores returns a zero PhaseStats and a nil
+// error.
+func (m *Module) PhaseScoreStats(ctx context.Context, phaseID uint) (PhaseStats, error) {
+	var out PhaseStats
+
+	rows, err := gorm.G[MatchScore](m.db.DB).
+		Where(&MatchScore{GamePhaseID: phaseID}).
+		Order("id ASC").
+		Preload("MatchPlacement.Team", nil).
+		Preload("MatchPlacement.Field", nil).
+		Preload("MatchPlacement.Position", nil).
+		Find(ctx)
+	if err != nil {
+		slog.Error("Error fetching phase scores", "error", err)
+		return out, err
+	}
+
+	if len(rows) == 0 {
+		return out, nil
+	}
+
+	sum := 0
+	for i, r := range rows {
+		sum += r.Score
+		if i == 0 || r.Score < out.Min {
+			out.Min = r.Score
+			out.MinPlacement = r.MatchPlacement
+		}
+		if i == 0 || r.Score > out.Max {
+			out.Max = r.Score
+			out.MaxPlacement = r.MatchPlacement
+		}
+	}
+	out.Avg = sum / len(rows)
+
+	return out, nil
+}
+
 // runAdvancementFilters applies every advancement filter configured on
 // a phase for a single division.  The filters run in order against a
 // single shared candidate pool: an include filter adds the teams it
