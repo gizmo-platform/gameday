@@ -18,7 +18,7 @@
       name="{{ field_id }}"
       min="0"
       {% if state.Max>0 %}max="{{ state.Max }}"{% endif %}
-    value="{{ ScorecardData|key:field_id }}"
+    value="{% if ScorecardData %}{{ ScorecardData|key:field_id }}{% else %}0{% endif %}"
     {% if edit_disable %}disabled{% endif %}
     />
     <button

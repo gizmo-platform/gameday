@@ -404,6 +404,11 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 		r.Get("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupForm))
 		r.Post("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupSubmit))
 
+		// The calculator loads a single scorecard with no
+		// submit logic, it just handles the scorecard so that
+		// it can be loaded to demonstrate the scores.
+		r.Get("/calculator", m.uiViewCalculator)
+
 		// Everything else, including the import UI and the live
 		// operations routes (scoreboard, timekeeping, match clock),
 		// is onsite-only.
@@ -512,6 +517,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		Text:       "Setup",
 		Target:     path.Join(prefix, "/setup"),
 		Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+	}, {
+		Text: "Calculator",
+		Target: path.Join(prefix, "calculator"),
 	}}
 
 	if m.scope != "cloud" {

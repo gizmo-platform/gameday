@@ -3,6 +3,7 @@
 </div>
 <br />
 
+{% if MatchInfo %}
 <div id="scorecard_header" class="box is-flex is-justify-content-space-between" style="background-color: #{{ MatchInfo.Position.Color2 }}; color: black;">
   <span></span>
   <span>Phase: {{ MatchInfo.Phase.Name|capfirst }}</span>
@@ -12,6 +13,7 @@
   <span>Team: {{ MatchInfo.Team.Name }}</span>
   <span></span>
 </div>
+{% endif %}
 
 <div>
   <form id="scorecard" method="POST">
@@ -38,7 +40,7 @@
       </fieldset>
     </div>
     {% endfor %}
-    {% if not edit_disable %}
+    {% if not (edit_disable or IsCalculator) %}
     <div class="is-flex is-justify-content-center">
       <div class="buttons noprint">
         <button class="button is-primary is-fullwidth" type="submit">Submit</button>

@@ -10,7 +10,11 @@
            value="{{ value.ID }}"
            data-points="{{ value.Points }}"
            data-present="{{ ScorecardData|key:field_id }}"
+           {% if ScorecardData %}
            data-should-default="{{ (ScorecardData|key:field_id == 0) && value.Default }}"
+           {% else %}
+           data-should-default="{{ value.Default }}"
+           {% endif %}
            {% if (ScorecardData|key:field_id == value.ID) || ((ScorecardData|key:field_id == 0) && value.Default) %}checked{% endif %}
            {% if edit_disable %}disabled{% endif %}
            />

@@ -9,7 +9,7 @@
            id="{{ field_id }}"
            name="{{ field_id }}"
            value="1"
-           {% if ScorecardData|key:field_id > 0 %}checked{% endif %}
+           {% if ScorecardData %}{% if ScorecardData|key:field_id > 0 %}checked{% endif %}{% endif %}
     {% if edit_disable %}disabled{% endif %}
     />
   </div>
