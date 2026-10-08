@@ -3,53 +3,57 @@
 {% block title %}Team List{% endblock %}
 
 {% block content %}
-  <div class="box">
+<div class="box is-flex is-justify-content-center">
+  <div>
     <p>Below is a list of all teams that Gameday knows about.</p>
     <hr />
     {% if profile | hasPermission:"TEAM:ADMIN" %}
-      <a class="button" href="{{ pageBase }}/import">Import Teams</a>
-      <a class="button" href="{{ pageBase }}/add">Add Single</a>
-      <hr />
+    <a class="button" href="{{ pageBase }}/import">Import Teams</a>
+    <a class="button" href="{{ pageBase }}/add">Add Single</a>
+    <hr />
     {% endif %}
 
-    <form method="get" action="{{ pageBase }}" class="mb-4">
-      <div class="field has-addons">
-        <div class="control">
-          <input class="input" type="text" name="q" value="{{ q }}" placeholder="Search name or number..." />
-        </div>
-        <div class="control">
-          <div class="select">
-            <select name="division_id">
-              <option value="">All divisions</option>
-              {% for d in divisions %}
-              <option value="{{ d.ID }}"{% if d.ID == divisionID %} selected{% endif %}>{{ d.Name }}</option>
-              {% endfor %}
-            </select>
+    <div class="is-flex is-justify-content-center">
+      <form method="get" action="{{ pageBase }}" class="mb-4">
+        <div class="field has-addons">
+          <div class="control">
+            <input class="input" type="text" name="q" value="{{ q }}" placeholder="Search name or number..." />
+          </div>
+          <div class="control">
+            <div class="select">
+              <select name="division_id">
+                <option value="">All divisions</option>
+                {% for d in divisions %}
+                <option value="{{ d.ID }}"{% if d.ID == divisionID %} selected{% endif %}>{{ d.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="control">
+            <div class="select">
+              <select name="region_id">
+                <option value="">All regions</option>
+                {% for r in regions %}
+                <option value="{{ r.ID }}"{% if r.ID == regionID %} selected{% endif %}>{{ r.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="control">
+            <button class="button is-dark" type="submit">Filter</button>
           </div>
         </div>
-        <div class="control">
-          <div class="select">
-            <select name="region_id">
-              <option value="">All regions</option>
-              {% for r in regions %}
-              <option value="{{ r.ID }}"{% if r.ID == regionID %} selected{% endif %}>{{ r.Name }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        <div class="control">
-          <button class="button is-dark" type="submit">Filter</button>
-        </div>
-      </div>
-    </form>
+      </form>
+    </div>
 
     <p class="has-text-grey mb-2">
       {% if total == 1 %}1 team{% else %}{{ total }} teams{% endif %}
     </p>
 
     {% if not teams %}
-      <p>No teams match{% if q %} "{{ q }}"{% endif %}.</p>
+    <p>No teams match{% if q %} "{{ q }}"{% endif %}.</p>
     {% else %}
+    <div class="is-flex is-justify-content-center">
       <table class="table">
         <tr>
           <th>Number</th>
@@ -57,25 +61,27 @@
           <th>Division</th>
           <th>Region</th>
           {% if profile | hasPermission:"TEAM:ADMIN" %}
-            <th>Actions</th>
+          <th>Actions</th>
           {% endif %}
         </tr>
         {% for team in teams %}
-          <tr>
-            <td>{{ team.Number }}</td>
-            <td>{{ team.Name }}{% if team.Disabled %} <span class="tag is-dark">Disabled</span>{% endif %}</td>
-            <td>{{ team.Division.Name }}</td>
-            <td>{{ team.Region.Name }}</td>
-            {% if profile | hasPermission:"TEAM:ADMIN" %}
-              <td class="flex-container">
-                <a class="flex-item button" href="{{ pageBase }}/{{ team.ID }}/edit">Edit</a>
-              </td>
-            {% endif %}
-          </tr>
+        <tr>
+          <td>{{ team.Number }}</td>
+          <td>{{ team.Name }}{% if team.Disabled %} <span class="tag is-dark">Disabled</span>{% endif %}</td>
+          <td>{{ team.Division.Name }}</td>
+          <td>{{ team.Region.Name }}</td>
+          {% if profile | hasPermission:"TEAM:ADMIN" %}
+          <td class="flex-container">
+            <a class="flex-item button" href="{{ pageBase }}/{{ team.ID }}/edit">Edit</a>
+          </td>
+          {% endif %}
+        </tr>
         {% endfor %}
       </table>
+    </div>
 
-      {% if pages > 1 %}
+    {% if pages > 1 %}
+    <div class="is-flex is-justify-content-center">
       <nav class="pagination" role="navigation" aria-label="main pagination">
         <ul class="pagination-list">
           {% if page > 1 %}
@@ -84,20 +90,22 @@
           <li><a class="pagination-previous is-disabled" href="#" aria-disabled="true" tabindex="-1">Previous</a></li>
           {% endif %}
           {% for n in pageWindow %}
-            {% if n == page %}
-            <li><a class="pagination-link is-current" href="#" aria-current="page">{{ n }}</a></li>
-            {% else %}
-            <li><a class="pagination-link" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ n }}">{{ n }}</a></li>
-            {% endif %}
+          {% if n == page %}
+          <li><a class="pagination-link is-current" href="#" aria-current="page">{{ n }}</a></li>
+          {% else %}
+          <li><a class="pagination-link" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ n }}">{{ n }}</a></li>
+          {% endif %}
           {% endfor %}
           {% if page < pages %}
-          <li><a class="pagination-next" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ nextPage }}">Next</a></li>
-          {% else %}
+                       <li><a class="pagination-next" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ nextPage }}">Next</a></li>
+                       {% else %}
           <li><a class="pagination-next is-disabled" href="#" aria-disabled="true" tabindex="-1">Next</a></li>
           {% endif %}
         </ul>
       </nav>
-      {% endif %}
+    </div>
+    {% endif %}
     {% endif %}
   </div>
+</div>
 {% endblock %}
