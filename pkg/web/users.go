@@ -148,12 +148,17 @@ func (s *Server) uiViewUserDeleteFormSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if _, err := gorm.G[Profile](s.d).Where(&Profile{ID: u.ProfileID}).Delete(r.Context()); err != nil {
+	if _, err := gorm.G[User](s.d).Where(u).Delete(r.Context()); err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
 
-	if _, err := gorm.G[User](s.d).Where(u).Delete(r.Context()); err != nil {
+	if err := s.d.Model(&Profile{ID: u.ProfileID}).Association("Permissions").Clear(); err != nil {
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		return
+	}
+
+	if _, err := gorm.G[Profile](s.d).Where(&Profile{ID: u.ProfileID}).Delete(r.Context()); err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
