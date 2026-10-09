@@ -282,12 +282,23 @@ func TestCloudSetupScreens(t *testing.T) {
 	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
 
 	// The configuration screen renders the empty state.
-	code, body, _ := routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/", "")
+	code, body, _ := routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/active-configuration", "")
 	if code != http.StatusOK {
 		t.Fatalf("config = %d, want 200: %s", code, body)
 	}
 	if !strings.Contains(body, "No configuration has been found") {
 		t.Errorf("config page missing empty state:\n%s", body)
+	}
+
+	// The configuration screen is GAME:ADMIN-guarded: a profile
+	// without the grant sees the unauthorized page.
+	noPerm := context.WithValue(context.Background(), web.ProfileKey{}, web.Profile{Username: "nobody"})
+	code, body, _ = routerReq(t, cm, noPerm, http.MethodGet, "/ui/mod/game/active-configuration", "")
+	if code != http.StatusOK {
+		t.Fatalf("non-admin config GET = %d, want 200 (unauthorized page); body=%s", code, body)
+	}
+	if !strings.Contains(body, "Unauthorized") {
+		t.Errorf("non-admin should see the unauthorized page; body=%s", body)
 	}
 
 	// The setup form renders with its upload control.
@@ -305,8 +316,8 @@ func TestCloudSetupScreens(t *testing.T) {
 	if code != http.StatusSeeOther {
 		t.Fatalf("setup POST = %d, want 303, location %q", code, loc)
 	}
-	if loc != "/ui/mod/game" {
-		t.Fatalf("Location = %q, want /ui/mod/game", loc)
+	if loc != "/ui/mod/game/active-configuration" {
+		t.Fatalf("Location = %q, want /ui/mod/game/active-configuration", loc)
 	}
 
 	if got := countGameRows(t, d, &FieldPosition{}); got != 2 {
@@ -320,7 +331,7 @@ func TestCloudSetupScreens(t *testing.T) {
 	}
 
 	// The configuration screen now reflects the applied setup.
-	code, body, _ = routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/", "")
+	code, body, _ = routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/active-configuration", "")
 	if code != http.StatusOK {
 		t.Fatalf("config after upload = %d, want 200: %s", code, body)
 	}

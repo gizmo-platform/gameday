@@ -23,7 +23,7 @@
 
       <br />
       <hr />
-      <a href="{{ pageBase }}/">Back to Game Configuration</a>
+      <a href="{{ moduleBase }}/active-configuration">Back to Game Configuration</a>
     </div>
   </div>
 {% endblock %}

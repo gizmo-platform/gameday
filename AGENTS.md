@@ -520,7 +520,7 @@ Also note route registration is scope-exclusive (see Scope-conditional routes ab
 
 ### Game Cloud Screens (served by a cloud instance)
 
-The cloud-scoped `game` module also serves the shared management screens: `GET /ui/mod/game/` (Configuration) is open, and `GET/POST /ui/mod/game/setup` (Setup, `GAME:ADMIN`-guarded) uploads a game setup file through the same `applyGameConfig` as the onsite local upload. The cloud instance is where the game design is authored and maintained before it is pulled to the sites.
+The cloud-scoped `game` module also serves the shared management screens: `GET /ui/mod/game/active-configuration` (Configuration, `GAME:ADMIN`-guarded) displays the active game config, and `GET/POST /ui/mod/game/setup` (Setup, `GAME:ADMIN`-guarded) uploads a game setup file through the same `applyGameConfig` as the onsite local upload. The cloud instance is where the game design is authored and maintained before it is pulled to the sites.
 
 ### Game Cloud Endpoints (served by a cloud instance)
 

@@ -83,7 +83,7 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
+	http.Redirect(w, r, path.Join(m.basePath, "/active-configuration"), http.StatusSeeOther)
 }
 
 // applyGameConfig persists a parsed game setup document: field

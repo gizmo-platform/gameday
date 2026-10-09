@@ -400,7 +400,7 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 		// The configuration and setup screens are shared by both
 		// scopes: the cloud instance is where the game design is
 		// authored and maintained before it is pulled to the sites.
-		r.Get("/", m.uiViewGame)
+		r.Get("/active-configuration", m.ws.GuardRoute(pAdmin, m.uiViewGame))
 		r.Get("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupForm))
 		r.Post("/setup", m.ws.GuardRoute(pAdmin, m.uiViewSetupSubmit))
 
@@ -526,8 +526,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 	m.basePath = prefix
 
 	children := []web.NavChild{{
-		Text:   "Configuration",
-		Target: prefix,
+		Text:       "Configuration",
+		Target:     path.Join(prefix, "/active-configuration"),
+		Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 	}, {
 		Text:       "Setup",
 		Target:     path.Join(prefix, "/setup"),

@@ -95,15 +95,17 @@ func (m *Module) uiViewImportCloud(w http.ResponseWriter, r *http.Request) {
 	if _, err := m.cloudClient.GetGameFile(r.Context()); err != nil {
 		slog.Error("Error fetching cloud game file", "error", err)
 		m.ws.DoTemplate(w, r, "views/game/import_cloud.p2", pongo2.Context{
-			"cloudBase": m.cloudClient.BaseURL(),
-			"error":     err.Error(),
+			"cloudBase":  m.cloudClient.BaseURL(),
+			"error":      err.Error(),
+			"moduleBase": m.basePath,
 		})
 		return
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/import_cloud.p2", pongo2.Context{
-		"cloudBase": m.cloudClient.BaseURL(),
-		"imported":  m.ws.StrToUint(r.URL.Query().Get("imported")),
+		"cloudBase":  m.cloudClient.BaseURL(),
+		"imported":   m.ws.StrToUint(r.URL.Query().Get("imported")),
+		"moduleBase": m.basePath,
 	})
 }
 
@@ -115,8 +117,9 @@ func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		slog.Error("Error fetching cloud game file", "error", err)
 		m.ws.DoTemplate(w, r, "views/game/import_cloud.p2", pongo2.Context{
-			"cloudBase": m.cloudClient.BaseURL(),
-			"error":     err.Error(),
+			"cloudBase":  m.cloudClient.BaseURL(),
+			"error":      err.Error(),
+			"moduleBase": m.basePath,
 		})
 		return
 	}
