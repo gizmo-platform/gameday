@@ -93,7 +93,7 @@ Gameday is a robotics competition management system. It provides an on-site web 
 │   │   └── ui/             # Embedded core web assets
 │   │       ├── p2/         # Core templates: base.p2, fullscreen.p2, login.p2,
 │   │       │               # fragments/nav.p2, view/admin/*, errors/*
-│   │       └── static/     # css/theme.css (print), css/scorecard.css, js/mustache.js, js/eventbus.js
+│   │       └── static/     # css/theme.css (print + theme toggle switch), css/scorecard.css, js/mustache.js, js/eventbus.js, js/theme.js
 │   ├── event/              # Publish/subscribe event bus + websocket export
 │   │   ├── event.go        # Event, Envelope, system type constants
 │   │   ├── bus.go          # Bus, New, Options, Publish/Subscribe/Close, replay ring
@@ -214,8 +214,9 @@ modules.Register(modules.ModuleInfo{
 
 The entire UI was ported to **Bulma CSS 1.0.4** (commit `616d610`):
 
-- `pkg/web/ui/p2/base.p2` loads Bulma from the jsDelivr CDN (`bulma@1.0.4/css/bulma.min.css`) followed by `/static/css/theme.css`, then includes `fragments/nav.p2`.
-- `theme.css` is now minimal (print-only rules); the old hand-rolled theme CSS was removed. Custom layout is done with Bulma utility classes in templates.
+- `pkg/web/ui/p2/base.p2` loads Bulma from the jsDelivr CDN (`bulma@1.0.4/css/bulma.min.css`) followed by `/static/css/theme.css`, then `/static/js/theme.js` (dark-mode toggle, applied before first paint), then includes `fragments/nav.p2`.
+- `theme.css` holds print rules plus the theme-toggle switch styles (Bulma 1.0.4 ships no `.switch` component, so the switch is hand-rolled in `theme.css` using Bulma CSS variables). Custom layout is done with Bulma utility classes in templates.
+- **Dark mode**: the nav bar carries a toggle switch next to the login/logout button (`fragments/nav.p2`, `#theme-toggle`). `js/theme.js` flips Bulma's dark mode by setting `data-theme="light"` or `data-theme="dark"` on `<html>` (per the Bulma dark-mode docs; the attribute is always set, never removed, so the choice overrides the system's `prefers-color-scheme` in both directions) and persists the choice in `localStorage` (`gameday-theme`). The script is portable (no framework, no build step) and is loaded in `<head>` of `base.p2` and `login.p2` so the persisted theme applies before first paint. The switch shows an inline sun SVG (light) or moon SVG (dark).
 - `scorecard.css` remains for scorecard-specific styling (large score total, fieldset layout).
 - The nav fragment uses Bulma's `navbar` components; page layout uses `section` > `#container` > `{% block content %}`.
 - `fullscreen.p2` is an alternate layout used by the scoreboard (no nav).

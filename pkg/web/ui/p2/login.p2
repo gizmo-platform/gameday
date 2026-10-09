@@ -6,6 +6,7 @@
     <title>{% block title %}Login | Gizmo Gameday{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/bulma.min.css">
     <link href="/static/css/theme.css" rel="stylesheet">
+    <script src="/static/js/theme.js"></script>
     {% block head %}
     {% endblock %}
   </head>
