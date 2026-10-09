@@ -101,7 +101,16 @@ func (m *Module) applyGameConfig(ctx context.Context, c Config) error {
 
 	advFilterID := uint(1)
 	for _, phase := range c.Game.Phases {
-		for _, filter := range phase.AdvancementFilters {
+		filters := phase.AdvancementFilters
+		phase.AdvancementFilters = nil
+		// The phase must exist before its advancement filters: Postgres
+		// enforces the game_phase_id foreign key, so inserting a filter
+		// before its phase fails (SQLite does not enforce FKs, which is
+		// why this ordering bug only surfaced on Postgres).
+		if err := db.InsertOrUpdate[GamePhase](ctx, m.db.DB, &phase); err != nil {
+			return err
+		}
+		for _, filter := range filters {
 			filter.GamePhaseID = phase.ID
 			filter.ID = advFilterID
 			slog.Debug("Loading filter", "id", advFilterID, "filter", filter)
@@ -109,10 +118,6 @@ func (m *Module) applyGameConfig(ctx context.Context, c Config) error {
 				return err
 			}
 			advFilterID++
-		}
-		phase.AdvancementFilters = nil
-		if err := db.InsertOrUpdate[GamePhase](ctx, m.db.DB, &phase); err != nil {
-			return err
 		}
 	}
 

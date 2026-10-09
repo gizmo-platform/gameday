@@ -477,3 +477,33 @@ func TestMigrateSeedsDefaultField(t *testing.T) {
 		t.Errorf("Field 1 count after re-migrate = %d, want 1", len(fields))
 	}
 }
+
+// TestImportCloudPostgresFK verifies a multi-phase game file with
+// advancement filters imports cleanly on Postgres, where the
+// game_phase_id foreign key is enforced (it is not on SQLite).
+func TestImportCloudPostgresFK(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "test_data", "byte2bite.yml"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	srv := fakeCloudGameServer(t, b)
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModuleDSN(t)
+
+	code, _ := importCloudGame(t, m)
+	if code != http.StatusSeeOther {
+		t.Fatalf("import = %d, want 303 (import failed, likely FK violation)", code)
+	}
+
+	var filter GamePhaseAdvancementFilter
+	if err := d.Model(&GamePhaseAdvancementFilter{}).
+		Where("game_phase_id = ? AND rule = ?", 2, "TopRemainingNotebooks").
+		First(&filter).Error; err != nil {
+		t.Fatalf("phase 2 TopRemainingNotebooks filter missing: %v", err)
+	}
+	if filter.SelectFrom != 1 {
+		t.Errorf("filter SelectFrom = %d, want 1", filter.SelectFrom)
+	}
+}

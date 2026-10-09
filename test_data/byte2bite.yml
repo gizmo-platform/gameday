@@ -1,0 +1,270 @@
+---
+Field:
+  Positions:
+    - Name: red
+      ID: 1
+      Color1: ec5e5e
+      Color2: f4a2a2
+    - Name: blue
+      ID: 2
+      Color1: 5b7ab6
+      Color2: 9fb1d4
+    - Name: green
+      ID: 3
+      Color1: 8de98d
+      Color2: bef3be
+    - Name: yellow
+      ID: 4
+      Color1: f5f551
+      Color2: fcfcd3
+
+Clock:
+  Duration: 3m
+  Hurry: 30s
+  Transitions: true
+
+Game:
+  Phases:
+    - Name: Seeding
+      ID: 1
+      ScoreSummation: AverageWithMulligan
+      ScheduleType: RandomSeeding
+      TieBreaker: BESTUnifiedTieBreaker
+      AdvancementFilters:
+        - Rule: PickAll
+          Filter: Roster
+          Mode: include
+          SelectFrom: 0
+    - Name: Wildcard
+      ID: 2
+      ScoreSummation: Total
+      ScheduleType: OneShot
+      TieBreaker: BESTUnifiedTieBreaker
+      AdvancementFilters:
+        - Rule: IgnoreSemifinalAdvancement
+          Filter: ScoreboardRanking
+          Mode: exclude
+          SelectFrom: 1
+          SliceExpr: "len(Roster)>32 ? 14 : 7"
+        - Rule: TopRemainingNotebooks
+          Filter: BESTNotebook
+          SelectFrom: 1
+          SliceExpr: "len(Roster)>32 ? 8 : 4"
+    - Name: Semifinals
+      ID: 3
+      ScoreSummation: Total
+      ScheduleType: BESTSemifinal
+      TieBreaker: BESTUnifiedTieBreaker
+      AdvancementFilters:
+        - Rule: TopSeeding
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 1
+          SliceExpr: "len(Roster)>32 ? 14 : 7"
+        - Rule: WildcardWinner
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 2
+          SliceExpr: "len(Roster)>32 ? 2 : 1"
+    - Name: Finals
+      ID: 4
+      ScoreSummation: Total
+      ScheduleType: BESTFinals
+      TieBreaker: BESTUnifiedTieBreaker
+      AdvancementFilters:
+        - Rule: PickTop4
+          Filter: ScoreboardRanking
+          Mode: include
+          SelectFrom: 3
+          SliceExpr: 4
+
+  Elements:
+    - ID: 1
+      EID: drone
+      Name: Drone Deployed
+      Type: boolean
+      States:
+        - ID: 1
+          SID: deployed
+          Name: Drone Deployed
+          Desc: Drone is at least partially beyond the marked line.
+          Each: 8
+    - ID: 2
+      EID: water
+      Name: Water Valve Opened
+      Type: boolean
+      States:
+        - ID: 2
+          SID: opened
+          Name: Valve Opened
+          Desc: At least one water ball has been released.
+          Each: 4
+    - ID: 3
+      EID: vegetables
+      Name: Vegetables Harvested
+      Type: boolean
+      States:
+        - ID: 3
+          SID: harvested
+          Name: Vegetables Harvested
+          Desc: All vegetables have been removed from the Vegetable flood tray
+          Each: 4
+    - ID: 4
+      EID: fruit
+      Name: Fruit Harvested
+      Type: boolean
+      States:
+        - ID: 4
+          SID: harvested
+          Name: Fruit Harvested
+          Desc: All Fruit has been picked off of the fruit vine
+          Each: 4
+    - ID: 5
+      EID: cold
+      Name: Cold Ingredients Harvested
+      Type: boolean
+      States:
+        - ID: 5
+          SID: harvested
+          Name: Cold Harvested
+          Desc: All cold ingredients (protein and dairy) have been removed from the Cold Food Storage Fridge
+          Each: 8
+    - ID: 6
+      EID: grain
+      Name: Grains Harvested
+      Type: boolean
+      States:
+        - ID: 6
+          SID: harvested
+          Name: Grains Harvested
+          Desc: All Grain has been removed from (and off the top of) the Breadbox
+          Each: 8
+
+    - ID: 7
+      EID: salad
+      Name: Salad
+      Type: count
+      States:
+        - ID: 7
+          SID: field
+          Name: On Field
+          Desc: On Field or On Robot
+          Each: 10
+          Max: 8
+        - ID: 8
+          SID: quality
+          Name: Quality Check
+          Desc: Assembled in the Quality Check Area
+          Each: 5
+          Max: 8
+        - ID: 9
+          SID: warming
+          Name: Warming Shelf
+          Desc: The completed meal is resting on the warming shelf
+          Each: 15
+        - ID: 10
+          SID: balance
+          Name: Balance Buffet
+          Desc: The completed meal is resting on the Balance buffet, and the Balance buffet is in balance.
+          Each: 25
+        - ID: 11
+          SID: auto
+          Name: Autonomous Dining Area
+          Desc: The meal completely covers the 4.25" white square.
+          Each: 60
+
+    - ID: 8
+      EID: pizza
+      Name: Pizza
+      Type: count
+      States:
+        - ID: 12
+          SID: field
+          Name: On Field
+          Desc: On Field or On Robot
+          Each: 30
+          Max: 8
+        - ID: 13
+          SID: quality
+          Name: Quality Check
+          Desc: Assembled in the Quality Check Area
+          Each: 15
+          Max: 8
+        - ID: 14
+          SID: warming
+          Name: Warming Shelf
+          Desc: The completed meal is resting on the warming shelf
+          Each: 35
+        - ID: 15
+          SID: balance
+          Name: Balance Buffet
+          Desc: The completed meal is resting on the Balance buffet, and the Balance buffet is in balance.
+          Each: 45
+        - ID: 16
+          SID: auto
+          Name: Autonomous Dining Area
+          Desc: The meal completely covers the 4.25" white square.
+          Each: 80
+
+    - ID: 9
+      EID: sandwich
+      Name: Sandwich
+      Type: count
+      States:
+        - ID: 17
+          SID: field
+          Name: On Field
+          Desc: On Field or On Robot
+          Each: 50
+          Max: 8
+        - ID: 18
+          SID: quality
+          Name: Quality Check
+          Desc: Assembled in the Quality Check Area
+          Each: 25
+          Max: 8
+        - ID: 19
+          SID: warming
+          Name: Warming Shelf
+          Desc: The completed meal is resting on the warming shelf
+          Each: 55
+        - ID: 20
+          SID: balance
+          Name: Balance Buffet
+          Desc: The completed meal is resting on the Balance buffet, and the Balance buffet is in balance.
+          Each: 65
+        - ID: 21
+          SID: auto
+          Name: Autonomous Dining Area
+          Desc: The meal completely covers the 4.25" white square.
+          Each: 100
+
+    - ID: 10
+      EID: drink
+      Name: Drink
+      Type: count
+      States:
+        - ID: 22
+          SID: standalone
+          Name: On Field
+          Desc: On Field or On Robot
+          Each: 4
+          Max: 8
+        - ID: 23
+          SID: quality
+          Name: Quality Check
+          Desc: Assembled in the Quality Check Area
+          Each: 2
+          Max: 8
+        - ID: 24
+          SID: mealdeal
+          Name: With Meal
+          Desc: A drink with a meal on the field
+          Each: 12
+          Max: 8
+        - ID: 25
+          SID: qmealdeal
+          Name: With Meal (Quality Check)
+          Desc: A drink with a meal in the QCA
+          Each: 6
+          Max: 8
