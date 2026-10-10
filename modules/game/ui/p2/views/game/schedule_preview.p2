@@ -6,8 +6,8 @@
 <div class="foreground box flex-container flex-row flex-center">
   <div>
     <div class="content">
-    <h2>Preview Schedule</h2>
-    <p>You may preview the schedule below.  The schedule is not yet finalized until you select to accept it at the bottom of this page.</p>
+      <h2>Preview Schedule</h2>
+      <p>You may preview the schedule below.  The schedule is not yet finalized until you select to accept it at the bottom of this page.</p>
     </div>
     <div class="is-flex is-justify-content-center">
       <table class="table">
@@ -60,44 +60,46 @@
     </div>
     <div class="is-flex is-justify-content-center">
       <div>
-      <table class="table">
-        <tr>
-          <td colspan="2"></td>
-          {% for field in fields %}
-          <th colspan="{{ positions | length }}">{{ field.Name }}</th>
+        <table class="table">
+          <tr>
+            <td colspan="2"></td>
+            {% for field in fields %}
+            <th colspan="{{ positions | length }}">{{ field.Name }}</th>
+            {% endfor %}
+          </tr>
+          <tr>
+            <th>R</th>
+            <th>M</th>
+            {% for field in fields %}
+            {% for position in positions %}
+            <th>{{ position.Name | capfirst }}</th>
+            {% endfor %}
+            {% endfor %}
+          </tr>
+          {% for round in schedule.Rounds %}
+          {% for match in round.Matches %}
+          <tr>
+            <td>{{ forloop.Parentloop.Counter }}</td>
+            {% set matchNum = forloop.Counter + (forloop.Parentloop.Counter0 * round.Matches|length) %}
+            <td>{{ matchNum }}</td>
+            {% for field in fields %}
+            {% for position in positions %}
+            {% if match.Team(forloop.Parentloop.Counter0, forloop.Counter0) > -1 %}
+            <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ teams | teamList:match.Team(forloop.Parentloop.Counter0, forloop.Counter0) }}</td>
+            {% else %}
+            <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+          </tr>
           {% endfor %}
-        </tr>
-        <tr>
-          <th>R</th>
-          <th>M</th>
-          {% for field in fields %}
-          {% for position in positions %}
-          <th>{{ position.Name | capfirst }}</th>
           {% endfor %}
-          {% endfor %}
-        </tr>
-        {% for round in schedule.Rounds %}
-        {% for match in round.Matches %}
-        <tr>
-          <td>{{ forloop.Parentloop.Counter }}</td>
-          {% set matchNum = forloop.Counter + (forloop.Parentloop.Counter0 * round.Matches|length) %}
-          <td>{{ matchNum }}</td>
-          {% for field in fields %}
-          {% for position in positions %}
-          {% if match.Team(forloop.Parentloop.Counter0, forloop.Counter0) > -1 %}
-          <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ teams | teamList:match.Team(forloop.Parentloop.Counter0, forloop.Counter0) }}</td>
-          {% else %}
-          <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
-          {% endif %}
-          {% endfor %}
-          {% endfor %}
-        </tr>
-        {% endfor %}
-        {% endfor %}
-      </table>
-      <form method="post" action="accept-schedule">
-        <button class="button is-primary" type="submit">Accept Schedule</button>
-      </form>
+        </table>
+        <div class="is-flex is-justify-content-center">
+          <form method="post" action="accept-schedule">
+            <button class="button is-primary" type="submit">Accept Schedule</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>
