@@ -113,6 +113,7 @@ func (m *Module) DebugGenerateScores(phaseID uint) error {
 				GamePhaseID:      placement.PhaseID,
 				TeamID:           placement.TeamID,
 				Score:            score.(int),
+				ContestID:        placement.ContestID,
 			})
 			if err != nil {
 				slog.Error("Error saving match score", "error", err)

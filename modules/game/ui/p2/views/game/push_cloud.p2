@@ -1,0 +1,33 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Cloud Game Push{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <p>Push this site's schedule and scorecard data for contest <code>{{ contestID }}</code> to the cloud instance at <code>{{ cloudBase }}</code>. Pushing replaces the stored data for that contest; re-pushing updates it in place.</p>
+
+      {% if pushed %}
+        <div class="notification is-success">Contest data pushed.</div>
+      {% endif %}
+
+      {% if error %}
+        <div class="notification is-danger">{{ error }}</div>
+      {% endif %}
+
+      {% if not contestID %}
+        <div class="notification is-warning">No contest is selected on this server. Select a contest before pushing.</div>
+      {% endif %}
+
+      {% if contestID and not error %}
+        <form method="post" action="{{ pageBase }}">
+          <button type="submit" class="button is-primary">Push Contest Data</button>
+        </form>
+      {% endif %}
+
+      <br />
+      <hr />
+      <a href="{{ moduleBase }}/active-configuration">Back to Game Configuration</a>
+    </div>
+  </div>
+{% endblock %}

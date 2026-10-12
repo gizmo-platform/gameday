@@ -1,0 +1,104 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Scorecards{% endblock %}
+
+{% block content %}
+<div class="box is-flex is-justify-content-center">
+  <div>
+    <p>Below is a list of all scorecards that have been pushed to the cloud.</p>
+    <hr />
+
+    <div class="is-flex is-justify-content-center">
+      <form method="get" action="{{ pageBase }}" class="mb-4">
+        <div class="field has-addons">
+          <div class="control">
+            <input class="input" type="text" name="q" value="{{ q }}" placeholder="Search team name or number..." />
+          </div>
+          <div class="control">
+            <div class="select">
+              <select name="contest_id">
+                <option value="">All contests</option>
+                {% for c in contests %}
+                <option value="{{ c.ID }}"{% if c.ID == contestID %} selected{% endif %}>{{ c.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="control">
+            <div class="select">
+              <select name="state">
+                <option value="">All states</option>
+                {% for s in states %}
+                <option value="{{ s.Value }}"{% if s.Value == state %} selected{% endif %}>{{ s.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="control">
+            <button class="button is-dark" type="submit">Filter</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <p class="has-text-grey mb-2">
+      {% if total == 1 %}1 scorecard{% else %}{{ total }} scorecards{% endif %}
+    </p>
+
+    {% if not rows %}
+    <p>No scorecards match{% if q %} "{{ q }}"{% endif %}.</p>
+    {% else %}
+    <div class="is-flex is-justify-content-center">
+      <table class="table">
+        <tr>
+          <th>Team</th>
+          <th>Contest</th>
+          <th>Round</th>
+          <th>Match</th>
+          <th>State</th>
+          <th>Score</th>
+          <th></th>
+        </tr>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.Placement.TeamName }}</td>
+          <td>{{ row.ContestName }}</td>
+          <td>{{ row.Placement.Round|add:1 }}</td>
+          <td>{{ row.Placement.Match }}</td>
+          <td>{{ row.StateName }}</td>
+          <td>{{ row.Placement.Score }}</td>
+          <td><a class="button is-small is-dark" href="{{ pageBase }}/{{ row.Placement.ID }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    {% if pages > 1 %}
+    <div class="is-flex is-justify-content-center">
+      <nav class="pagination" role="navigation" aria-label="main pagination">
+        <ul class="pagination-list">
+          {% if page > 1 %}
+          <li><a class="pagination-previous" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ prevPage }}">Previous</a></li>
+          {% else %}
+          <li><a class="pagination-previous is-disabled" href="#" aria-disabled="true" tabindex="-1">Previous</a></li>
+          {% endif %}
+          {% for n in pageWindow %}
+          {% if n == page %}
+          <li><a class="pagination-link is-current" href="#" aria-current="page">{{ n }}</a></li>
+          {% else %}
+          <li><a class="pagination-link" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ n }}">{{ n }}</a></li>
+          {% endif %}
+          {% endfor %}
+          {% if page < pages %}
+          <li><a class="pagination-next" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ nextPage }}">Next</a></li>
+          {% else %}
+          <li><a class="pagination-next is-disabled" href="#" aria-disabled="true" tabindex="-1">Next</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -490,6 +490,8 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		slog.Error("Error clearing candidate match", "error", err)
 	}
 
+	cid := m.selectedContestID(r.Context())
+
 	for rNum, round := range s.Rounds {
 		for mNum, match := range round.Matches {
 			for fNum, field := range fields {
@@ -507,6 +509,7 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 						FieldID:    field.ID,
 						PositionID: position.ID,
 						State:      MatchStateScheduled,
+						ContestID:  cid,
 					}
 
 					if err := gorm.G[MatchPlacement](m.db.DB).Create(r.Context(), &mp); err != nil {

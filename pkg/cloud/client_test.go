@@ -261,6 +261,101 @@ func TestGetRegionTeamsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDoJSONRoundTrip(t *testing.T) {
+	var gotPath, gotMethod, gotContentType string
+	var gotBody []ContestPlacement
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotContentType = r.Header.Get("Content-Type")
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"stored": 1})
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	body := []ContestPlacement{{
+		Round: 1, Match: 1, PhaseID: 1, TeamID: 1, TeamName: "Team 1",
+		FieldID: 1, PositionID: 1, State: 4, Score: 42,
+		Values: []ContestScorecardValue{{Element: "widgets_fabricated", Value: 5}},
+	}}
+	var out struct {
+		Stored int `json:"stored"`
+	}
+	if err := c.DoJSON(context.Background(), http.MethodPost, "/x", nil, body, &out); err != nil {
+		t.Fatalf("DoJSON: %v", err)
+	}
+	if gotPath != "/x" || gotMethod != http.MethodPost {
+		t.Errorf("request = %s %s, want POST /x", gotMethod, gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", gotContentType)
+	}
+	if len(gotBody) != 1 {
+		t.Fatalf("request body = %d placements, want 1", len(gotBody))
+	}
+	got := gotBody[0]
+	want := body[0]
+	if got.Round != want.Round || got.Match != want.Match || got.PhaseID != want.PhaseID ||
+		got.TeamID != want.TeamID || got.TeamName != want.TeamName || got.FieldID != want.FieldID ||
+		got.PositionID != want.PositionID || got.State != want.State || got.Score != want.Score {
+		t.Errorf("request body = %+v, want %+v", got, want)
+	}
+	if len(got.Values) != 1 || got.Values[0] != want.Values[0] {
+		t.Errorf("request values = %+v, want %+v", got.Values, want.Values)
+	}
+	if out.Stored != 1 {
+		t.Errorf("decoded = %+v, want stored=1", out)
+	}
+}
+
+func TestDoJSONNilBodySendsNoContentType(t *testing.T) {
+	var gotContentType string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		_, _ = w.Write([]byte("null"))
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	if err := c.DoJSON(context.Background(), http.MethodPost, "/x", nil, nil, nil); err != nil {
+		t.Fatalf("DoJSON: %v", err)
+	}
+	if gotContentType != "" {
+		t.Errorf("Content-Type = %q, want empty", gotContentType)
+	}
+}
+
+func TestPushContestDataRoundTrip(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != contestScoresPath(7) {
+			t.Errorf("path = %q, want %s", r.URL.Path, contestScoresPath(7))
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		var placements []ContestPlacement
+		if err := json.NewDecoder(r.Body).Decode(&placements); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		if len(placements) != 1 || placements[0].TeamName != "Team 1" {
+			t.Errorf("placements = %+v, want one Team 1", placements)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"stored": 1})
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	err := c.PushContestData(context.Background(), 7, []ContestPlacement{{TeamName: "Team 1", Score: 42}})
+	if err != nil {
+		t.Fatalf("PushContestData: %v", err)
+	}
+}
+
 func TestGetContestsRoundTrip(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != contestContestsPath {

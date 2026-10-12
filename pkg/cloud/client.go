@@ -7,6 +7,7 @@
 package cloud
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -141,19 +142,59 @@ func (c *Client) DoBytes(ctx context.Context, method, path string, query url.Val
 	return io.ReadAll(resp.Body)
 }
 
+// DoJSON issues a request against the cloud instance with a JSON
+// request body and, when out is non-nil, decodes the JSON response
+// body into it. A nil body sends no request body and no
+// Content-Type header, matching Do. Non-2xx statuses return a
+// *Error; transport and context failures return the underlying error
+// unchanged.
+func (c *Client) DoJSON(ctx context.Context, method, path string, query url.Values, body any, out any) error {
+	resp, err := c.doWithBody(ctx, method, path, query, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if out == nil {
+		io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
 // do builds, authorizes, and executes a request, returning the
 // open response for 2xx statuses. The caller owns resp.Body.
 func (c *Client) do(ctx context.Context, method, path string, query url.Values) (*http.Response, error) {
+	return c.doWithBody(ctx, method, path, query, nil)
+}
+
+// doWithBody builds, authorizes, and executes a request, returning
+// the open response for 2xx statuses. When body is non-nil it is
+// marshaled to JSON and sent with a Content-Type header. The caller
+// owns resp.Body.
+func (c *Client) doWithBody(ctx context.Context, method, path string, query url.Values, body any) (*http.Response, error) {
 	u := c.base + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, u, nil)
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u, reader)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	if c.auth != nil {
 		if err := c.auth.Apply(ctx, req); err != nil {

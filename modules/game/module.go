@@ -332,6 +332,10 @@ type MatchPlacement struct {
 	PositionID uint
 
 	State MatchState
+
+	// ContestID keys this placement to the contest it belongs to
+	// (0 when no contest is selected on the onsite server).
+	ContestID uint `gorm:"index"`
 }
 
 // MatchScore is used to store the actual numeric score as finalized
@@ -348,6 +352,43 @@ type MatchScore struct {
 
 	Team   team.Team
 	TeamID uint
+
+	// ContestID mirrors the ContestID of the placement this score
+	// belongs to (0 when no contest is selected).
+	ContestID uint `gorm:"index"`
+}
+
+// CloudMatchPlacement is the cloud-side storage of a single match
+// placement pushed from an onsite server, keyed by the contest ID.
+// It mirrors the pkg/cloud wire shape: the cloud stores what the site
+// sent, including the site's own IDs (phase, team, field, position),
+// which are meaningful only within that contest.
+type CloudMatchPlacement struct {
+	ID uint
+
+	ContestID uint `gorm:"index"`
+
+	Round      int
+	Match      int
+	PhaseID    uint
+	TeamID     uint
+	TeamName   string
+	FieldID    uint
+	PositionID uint
+	State      uint
+	Score      int
+}
+
+// CloudScorecardValue is the cloud-side storage of a single scorecard
+// element value for a pushed placement.
+type CloudScorecardValue struct {
+	ID uint
+
+	CloudMatchPlacement   CloudMatchPlacement
+	CloudMatchPlacementID uint
+
+	Element string
+	Value   int
 }
 
 type TeamModule interface {
@@ -415,6 +456,8 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 		if scope != "cloud" {
 			r.Get("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloud))
 			r.Post("/import-cloud", m.ws.GuardRoute(pAdmin, m.uiViewImportCloudSubmit))
+			r.Get("/push-cloud", m.ws.GuardRoute(pAdmin, m.uiViewPushCloud))
+			r.Post("/push-cloud", m.ws.GuardRoute(pAdmin, m.uiViewPushCloudSubmit))
 
 			r.Route("/fields", func(r chi.Router) {
 				r.Use(m.ws.RequirePermission(pSchedule))
@@ -462,8 +505,15 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 		} else {
 			// The cloud setup endpoint is public on purpose: the game file
 			// is game design, not sensitive data, and is pulled by other
-			// Gameday systems.
+			// Gameday systems. The contest scores endpoint is public for
+			// the same reason: it is the push target for onsite servers.
 			r.Get("/cloud/setup", m.cloudSetupData)
+			r.Post("/cloud/contests/{id}/scores", m.cloudContestScoresData)
+
+			// The scorecards lookup page is open to any authenticated
+			// user, like the team list page.
+			r.Get("/scorecards", m.uiViewCloudScorecards)
+			r.Get("/scorecards/{id}", m.uiViewCloudScorecard)
 		}
 	})
 
@@ -490,6 +540,8 @@ func (m *Module) Migrate() error {
 		MatchScore{},
 		ScorecardElement{},
 		ScorecardValue{},
+		CloudMatchPlacement{},
+		CloudScorecardValue{},
 		ClockSettings{},
 		ActiveClock{},
 	); err != nil {
@@ -512,6 +564,30 @@ func (m *Module) Migrate() error {
 func (m *Module) ListFields(ctx context.Context, filter Field) ([]Field, error) {
 	out, err := gorm.G[Field](m.db.DB).Preload("Divisions", nil).Where(filter).Find(ctx)
 	return out, err
+}
+
+// onsiteContestRow is a minimal local view of the contest module's
+// OnsiteContest table. The game module reads it directly by table
+// name rather than importing the contest module, because the contest
+// module already depends on the game module and a reverse import
+// would create a dependency cycle.
+type onsiteContestRow struct {
+	ID uint
+}
+
+func (onsiteContestRow) TableName() string { return "onsite_contests" }
+
+// selectedContestID returns the ID of the contest this onsite server
+// is handling, or 0 when no contest is selected or the table is
+// missing (e.g. a cloud-scope server that never ran the contest
+// module's migration). It is best-effort: a read failure must not
+// block schedule creation or score entry.
+func (m *Module) selectedContestID(ctx context.Context) uint {
+	row, err := gorm.G[onsiteContestRow](m.db.DB).First(ctx)
+	if err != nil {
+		return 0
+	}
+	return row.ID
 }
 
 func (m *Module) TemplateLoader() pongo2.TemplateLoader {
@@ -546,6 +622,11 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 				Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 			},
 			web.NavChild{
+				Text:       "Cloud Push",
+				Target:     path.Join(prefix, "/push-cloud"),
+				Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+			},
+			web.NavChild{
 				Text:       "Fields",
 				Target:     path.Join(prefix, "/fields"),
 				Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
@@ -573,6 +654,13 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 				Blank:  true,
 			},
 		)
+	}
+
+	if m.scope == "cloud" {
+		children = append(children, web.NavChild{
+			Text:   "Scorecards",
+			Target: path.Join(prefix, "/scorecards"),
+		})
 	}
 
 	return []web.NavElement{{

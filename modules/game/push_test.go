@@ -1,0 +1,267 @@
+package game
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"gorm.io/gorm"
+
+	"github.com/gizmo-platform/gameday/modules"
+	"github.com/gizmo-platform/gameday/modules/team"
+	"github.com/gizmo-platform/gameday/pkg/cloud"
+	"github.com/gizmo-platform/gameday/pkg/db"
+)
+
+// capturedPush records what the fake cloud push server received.
+type capturedPush struct {
+	requests   int
+	path       string
+	placements []cloud.ContestPlacement
+}
+
+// fakeCloudPushServer serves the contest scores endpoint and records
+// the path and decoded payload of every request it receives.
+func fakeCloudPushServer(t *testing.T, out *capturedPush) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		out.requests++
+		if r.URL.Path != "/ui/mod/game/cloud/contests/7/scores" {
+			t.Errorf("unexpected cloud path %q", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		out.path = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&out.placements); err != nil {
+			t.Errorf("decode push body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"stored": len(out.placements)})
+	}))
+}
+
+// seedContestData seeds a single contest with one completed placement,
+// a score of 42, and a widgets_fabricated value of 5, and returns the
+// team.
+func seedContestData(t *testing.T, d *db.DB, contestID uint) team.Team {
+	t.Helper()
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 1)
+	seedContest(t, d, contestID)
+
+	phase := GamePhase{Name: "seeding", ScoreSummation: "AverageWithMulligan"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	field, err := gorm.G[Field](d.DB).Where(&Field{Name: "Field 1"}).First(ctx)
+	if err != nil {
+		t.Fatalf("find Field 1: %v", err)
+	}
+	position := seedFieldPosition(t, d, "Test")
+
+	mp := MatchPlacement{
+		Round:      1,
+		Match:      1,
+		PhaseID:    phase.ID,
+		TeamID:     teams[0].ID,
+		FieldID:    field.ID,
+		PositionID: position.ID,
+		State:      MatchStateComplete,
+		ContestID:  contestID,
+	}
+	if err := d.Create(&mp).Error; err != nil {
+		t.Fatalf("create placement: %v", err)
+	}
+	ms := MatchScore{ID: mp.ID, MatchPlacementID: mp.ID, GamePhaseID: phase.ID, TeamID: teams[0].ID, Score: 42, ContestID: contestID}
+	if err := d.Create(&ms).Error; err != nil {
+		t.Fatalf("create score: %v", err)
+	}
+	sv := ScorecardValue{MatchPlacementID: mp.ID, Element: "widgets_fabricated", Value: 5}
+	if err := d.Create(&sv).Error; err != nil {
+		t.Fatalf("create scorecard value: %v", err)
+	}
+	return teams[0]
+}
+
+// TestPushContestDataEndToEnd verifies that the push page renders,
+// that a push POST exports the selected contest's data and sends it to
+// the cloud, and that the success page renders.
+func TestPushContestDataEndToEnd(t *testing.T) {
+	var captured capturedPush
+	srv := fakeCloudPushServer(t, &captured)
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModule(t)
+	team0 := seedContestData(t, d, 7)
+
+	// The push page renders with the push button.
+	code, body, _ := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/game/push-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("push page = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "Push Contest Data") {
+		t.Errorf("push page missing push button:\n%s", body)
+	}
+
+	code, _, hdr := routerReq(t, m, adminContext(), http.MethodPost, "/ui/mod/game/push-cloud", "")
+	if code != http.StatusSeeOther {
+		t.Fatalf("push POST = %d, want 303", code)
+	}
+	if loc := hdr.Get("Location"); loc != "/ui/mod/game/push-cloud?pushed=1" {
+		t.Fatalf("Location = %q, want /ui/mod/game/push-cloud?pushed=1", loc)
+	}
+
+	// The success page renders.
+	code, body, _ = routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/game/push-cloud?pushed=1", "")
+	if code != http.StatusOK {
+		t.Fatalf("push page after = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "notification is-success") {
+		t.Errorf("push page missing success alert:\n%s", body)
+	}
+
+	if captured.requests != 1 {
+		t.Fatalf("cloud received %d requests, want 1", captured.requests)
+	}
+	if captured.path != "/ui/mod/game/cloud/contests/7/scores" {
+		t.Errorf("push path = %q, want /ui/mod/game/cloud/contests/7/scores", captured.path)
+	}
+	if len(captured.placements) != 1 {
+		t.Fatalf("push payload = %d placements, want 1", len(captured.placements))
+	}
+	p := captured.placements[0]
+	if p.TeamName != team0.Name {
+		t.Errorf("TeamName = %q, want %q", p.TeamName, team0.Name)
+	}
+	if p.Score != 42 {
+		t.Errorf("Score = %d, want 42", p.Score)
+	}
+	if p.State != uint(MatchStateComplete) {
+		t.Errorf("State = %d, want %d (MatchStateComplete)", p.State, uint(MatchStateComplete))
+	}
+	if len(p.Values) != 1 || p.Values[0].Element != "widgets_fabricated" || p.Values[0].Value != 5 {
+		t.Errorf("Values = %+v, want [{widgets_fabricated 5}]", p.Values)
+	}
+}
+
+// TestCloudContestScoresDataStores verifies that the cloud endpoint
+// stores a pushed placement and its scorecard values keyed by the
+// contest ID in the URL.
+func TestCloudContestScoresDataStores(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
+	code, resp, _ := routerReq(t, cm, nil, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body)
+	if code != http.StatusOK {
+		t.Fatalf("store = %d, want 200: %s", code, resp)
+	}
+	if !strings.Contains(resp, `"stored":1`) {
+		t.Errorf("response = %q, want stored:1", resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 1 {
+		t.Errorf("placements = %d, want 1", got)
+	}
+	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
+		t.Errorf("values = %d, want 1", got)
+	}
+
+	var row CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ?", 7).First(&row).Error; err != nil {
+		t.Fatalf("find stored placement: %v", err)
+	}
+	if row.TeamName != "Team 1" || row.Score != 42 || row.State != 4 || row.Round != 1 || row.Match != 1 {
+		t.Errorf("stored placement = %+v", row)
+	}
+	var val CloudScorecardValue
+	if err := d.Model(&CloudScorecardValue{}).Where("cloud_match_placement_id = ?", row.ID).First(&val).Error; err != nil {
+		t.Fatalf("find stored value: %v", err)
+	}
+	if val.Element != "widgets_fabricated" || val.Value != 5 {
+		t.Errorf("stored value = %+v", val)
+	}
+}
+
+// TestCloudContestScoresDataIdempotent verifies that re-pushing the
+// same contest replaces the stored data in place without duplicating
+// rows.
+func TestCloudContestScoresDataIdempotent(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
+	for i := 0; i < 2; i++ {
+		if code, resp, _ := routerReq(t, cm, nil, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
+			t.Fatalf("store %d = %d, want 200: %s", i+1, code, resp)
+		}
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 1 {
+		t.Errorf("placements after re-push = %d, want 1 (no duplicates)", got)
+	}
+	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
+		t.Errorf("values after re-push = %d, want 1 (no duplicates)", got)
+	}
+}
+
+// TestPushContestDataNoContest verifies that a push with no contest
+// selected reports the error on the page and never reaches the cloud.
+func TestPushContestDataNoContest(t *testing.T) {
+	var captured capturedPush
+	srv := fakeCloudPushServer(t, &captured)
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, _ := newTestModule(t)
+
+	// The page shows the no-contest warning.
+	code, body, _ := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/game/push-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("push page = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "notification is-warning") {
+		t.Errorf("push page missing no-contest warning:\n%s", body)
+	}
+
+	// A push with no contest selected reports the error and never
+	// reaches the cloud.
+	code, body, _ = routerReq(t, m, adminContext(), http.MethodPost, "/ui/mod/game/push-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("push POST = %d, want 200 (error page)", code)
+	}
+	if !strings.Contains(body, "notification is-danger") {
+		t.Errorf("push page missing error alert:\n%s", body)
+	}
+	if captured.requests != 0 {
+		t.Errorf("cloud received %d requests, want 0", captured.requests)
+	}
+}
+
+// TestPushContestDataCloudFailure verifies that a push against a
+// failing cloud reports the error on the page.
+func TestPushContestDataCloudFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "cloud is on fire", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d := newTestModule(t)
+	seedContestData(t, d, 7)
+
+	code, body, _ := routerReq(t, m, adminContext(), http.MethodPost, "/ui/mod/game/push-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("push POST = %d, want 200 (error page)", code)
+	}
+	if !strings.Contains(body, "notification is-danger") {
+		t.Errorf("push page missing error alert:\n%s", body)
+	}
+}
