@@ -91,7 +91,7 @@ func NewServer(opts ...Option) (*Server, error) {
 	pongo2.RegisterFilter("hasPermission", x.filterHasPermission)
 	pongo2.RegisterFilter("hasPermissionExact", x.filterHasPermissionExact)
 
-	if err := x.d.AutoMigrate(Permission{}, Profile{}, User{}); err != nil {
+	if err := x.d.AutoMigrate(Permission{}, Profile{}, User{}, APIToken{}); err != nil {
 		slog.Error("Error migrating web core table", "error", err)
 		return nil, err
 	}
@@ -120,9 +120,13 @@ func NewServer(opts ...Option) (*Server, error) {
 	})
 
 	authware.RegisterFactory("gameday", newAuthwareBackend(x.d))
+	authware.RegisterTokenFactory("gameday", newAuthwareTokenBackend(x.d))
 
 	if mechs := os.Getenv("AUTHWARE_BASIC_MECHS"); mechs == "" {
 		os.Setenv("AUTHWARE_BASIC_MECHS", "gameday")
+	}
+	if mechs := os.Getenv("AUTHWARE_TOKEN_MECHS"); mechs == "" {
+		os.Setenv("AUTHWARE_TOKEN_MECHS", "gameday")
 	}
 	basic, err := authware.NewAuth()
 	if err != nil {
@@ -131,7 +135,7 @@ func NewServer(opts ...Option) (*Server, error) {
 	}
 
 	x.r.Use(middleware.Heartbeat("/-/alive"))
-	x.r.Use(basic.SessionHandler())
+	x.r.Use(basic.OptionalAuthHandler())
 	x.r.Use(x.profileMiddleware)
 
 	sfs, _ := fs.Sub(uifs, "ui")
@@ -152,6 +156,10 @@ func NewServer(opts ...Option) (*Server, error) {
 
 			r.Get("/{id}/delete", x.uiViewUserDeleteForm)
 			r.Post("/{id}/delete", x.uiViewUserDeleteFormSubmit)
+
+			r.Get("/{id}/tokens", x.uiViewUserTokens)
+			r.Post("/{id}/tokens", x.uiViewUserTokenCreate)
+			r.Post("/{id}/tokens/{tid}/delete", x.uiViewUserTokenDelete)
 		})
 		r.Route("/profile", func(r chi.Router) {
 			r.Get("/", x.uiViewAdminProfileList)

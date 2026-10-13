@@ -61,6 +61,8 @@ github.com/tg123/go-htpasswd v1.2.4 h1:HgH8KKCjdmo7jjXWN9k1nefPBd7Be3tFCTjc2jPra
 github.com/tg123/go-htpasswd v1.2.4/go.mod h1:EKThQok9xHkun6NBMynNv6Jmu24A33XdZzzl4Q7H1+0=
 github.com/the-maldridge/authware v0.1.7-0.20260719221803-694b633dd032 h1:4WvGeyIhurC8dOAH7E4Ybj/oXAmBwCVrVCF3o2bZ0As=
 github.com/the-maldridge/authware v0.1.7-0.20260719221803-694b633dd032/go.mod h1:lqmVd8Jbr+8mF9yCShdM04D7QvpZR971iI6HedlZn0Q=
+github.com/the-maldridge/authware v0.1.7-0.20261013191319-d7308a3fecde h1:4wf1MSAG4gMyJwwQUR2e2WmI1mosD3e8enMfY4DpQ8U=
+github.com/the-maldridge/authware v0.1.7-0.20261013191319-d7308a3fecde/go.mod h1:lqmVd8Jbr+8mF9yCShdM04D7QvpZR971iI6HedlZn0Q=
 golang.org/x/crypto v0.37.0 h1:kJNSjF/Xp7kU0iB2Z+9viTPMW4EqqsrywMXLJOOsXSE=
 golang.org/x/crypto v0.37.0/go.mod h1:vg+k43peMZ0pUMhYmVAWysMK35e6ioLh3wB8ZCAfbVc=
 golang.org/x/sync v0.21.0 h1:HLII4xRRTtCRkxYp4HNFF0Js/Og6q2i++KXbg0gHCwM=

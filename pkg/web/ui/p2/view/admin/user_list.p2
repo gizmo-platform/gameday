@@ -26,6 +26,7 @@
             <td class="flex-container flex-row">
               <a class="button" href="/admin/user/{{ user.ID }}/reset-password">Reset Password</a>
               <a class="button" href="/admin/profile/{{ user.Profile.ID }}/permissions">Permissions</a>
+              <a class="button" href="/admin/user/{{ user.ID }}/tokens">Tokens</a>
               <a class="button is-danger" href="/admin/user/{{ user.ID }}/delete">Delete User</a>
             </td>
           </tr>

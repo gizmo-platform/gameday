@@ -148,6 +148,11 @@ func (s *Server) uiViewUserDeleteFormSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if _, err := gorm.G[APIToken](s.d).Where(&APIToken{UserID: u.ID}).Delete(r.Context()); err != nil {
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		return
+	}
+
 	if _, err := gorm.G[User](s.d).Where(u).Delete(r.Context()); err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return

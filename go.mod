@@ -10,7 +10,7 @@ require (
 	github.com/goccy/go-yaml v1.18.0
 	github.com/jedib0t/go-pretty/v6 v6.6.8
 	github.com/spf13/cobra v1.10.1
-	github.com/the-maldridge/authware v0.1.7-0.20260719221803-694b633dd032
+	github.com/the-maldridge/authware v0.1.7-0.20261013191319-d7308a3fecde
 	golang.org/x/crypto v0.37.0
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/driver/sqlite v1.6.0
