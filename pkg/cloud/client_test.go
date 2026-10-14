@@ -138,6 +138,23 @@ func TestBasicAuthSetsHeader(t *testing.T) {
 	}
 }
 
+func TestBearerTokenSetsHeader(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte("null"))
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL), WithBearerToken("tok-123"))
+	if err := c.Do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if gotAuth != "Bearer tok-123" {
+		t.Errorf("Authorization = %q, want Bearer tok-123", gotAuth)
+	}
+}
+
 func TestUnauthenticatedClientSendsNoAuthHeader(t *testing.T) {
 	var gotAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

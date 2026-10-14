@@ -85,6 +85,12 @@ func WithBasicAuth(username, password string) Option {
 	return WithAuthenticator(BasicAuth{Username: username, Password: password})
 }
 
+// WithBearerToken installs a bearer token authenticator, a
+// convenience for WithAuthenticator(BearerAuth{...}).
+func WithBearerToken(token string) Option {
+	return WithAuthenticator(BearerAuth{Token: token})
+}
+
 // New creates a Client for the cloud instance named by the
 // GAMEDAY_CLOUD environment variable, or DefaultBaseURL when unset.
 // Options may override the base URL, timeout, and authenticator.
