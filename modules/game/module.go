@@ -367,15 +367,14 @@ type MatchScore struct {
 type CloudMatchPlacement struct {
 	ID uint
 
-	ContestID uint `gorm:"index"`
-
-	Round      int
-	Match      int
-	PhaseID    uint
+	ContestID  uint `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
+	Round      int  `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
+	Match      int  `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
+	PhaseID    uint `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
 	TeamID     uint
 	TeamName   string
-	FieldID    uint
-	PositionID uint
+	FieldID    uint `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
+	PositionID uint `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
 	State      uint
 	Score      int
 }
@@ -528,6 +527,12 @@ func (m *Module) Router() chi.Router {
 }
 
 func (m *Module) Migrate() error {
+	// Collapse any duplicate cloud placement rows before the unique
+	// index on the natural key is created.
+	if err := m.dedupeCloudPlacements(); err != nil {
+		return err
+	}
+
 	// Parents must precede children: the Postgres dialector emits
 	// foreign keys inline in CREATE TABLE and enforces them at DDL
 	// time, so a child table cannot be created before its parent.
@@ -558,6 +563,66 @@ func (m *Module) Migrate() error {
 	}
 	if field.ID == 0 {
 		if err := m.db.Create(&Field{Name: "Field 1"}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dedupeCloudPlacements collapses duplicate cloud placement rows that
+// share the same natural key, keeping the lowest ID in each group and
+// re-pointing the scorecard values of the removed rows at the kept
+// row. This is a one-time defensive step so the unique index on the
+// natural key can be created on a live database.
+func (m *Module) dedupeCloudPlacements() error {
+	if !m.db.Migrator().HasTable(&CloudMatchPlacement{}) {
+		return nil
+	}
+	type keyRow struct {
+		ContestID  uint
+		Round      int
+		Match      int
+		PhaseID    uint
+		FieldID    uint
+		PositionID uint
+		MinID      uint
+	}
+	var keys []keyRow
+	if err := m.db.DB.Raw(`
+		SELECT contest_id, round, match, phase_id, field_id, position_id, MIN(id) AS min_id
+		FROM cloud_match_placements
+		GROUP BY contest_id, round, match, phase_id, field_id, position_id
+		HAVING COUNT(*) > 1
+	`).Scan(&keys).Error; err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+
+	dupIDs := make([]uint, 0, len(keys))
+	for _, k := range keys {
+		var ids []uint
+		if err := m.db.DB.Raw(`
+			SELECT id FROM cloud_match_placements
+			WHERE contest_id = ? AND round = ? AND match = ? AND phase_id = ?
+			  AND field_id = ? AND position_id = ? AND id <> ?
+		`, k.ContestID, k.Round, k.Match, k.PhaseID, k.FieldID, k.PositionID, k.MinID).
+			Scan(&ids).Error; err != nil {
+			return err
+		}
+		for _, id := range ids {
+			dupIDs = append(dupIDs, id)
+			if err := m.db.Model(&CloudScorecardValue{}).
+				Where("cloud_match_placement_id = ?", id).
+				Update("cloud_match_placement_id", k.MinID).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(dupIDs) > 0 {
+		if err := m.db.Where("id IN ?", dupIDs).Delete(&CloudMatchPlacement{}).Error; err != nil {
 			return err
 		}
 	}

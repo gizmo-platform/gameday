@@ -100,7 +100,7 @@ func (m *Module) uiViewCloudScorecards(w http.ResponseWriter, r *http.Request) {
 
 	page, pageSize := web.PageParams(r)
 	placements, err := base.
-		Order("contest_id, round, match, field_id, position_id").
+		Order("contest_id, phase_id, round, match, field_id, position_id").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(ctx)

@@ -11,15 +11,31 @@ import (
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/gizmo-platform/gameday/pkg/cloud"
+	"github.com/gizmo-platform/gameday/pkg/db"
 )
+
+// placementKey is the natural key of a cloud placement: the contest
+// plus the schedule slot. Match numbers repeat across phases, so the
+// phase is part of the key.
+type placementKey struct {
+	ContestID  uint
+	PhaseID    uint
+	Round      int
+	Match      int
+	FieldID    uint
+	PositionID uint
+}
 
 // cloudContestScoresData is the public endpoint that stores a site's
 // schedule and scorecard data for one contest. The contest ID in the
 // URL is authoritative; the body is a bare array of placement rows.
-// Storing is delete-then-create in a transaction, so a re-push
-// replaces the stored data for that contest in place.
+// Storing is an upsert on the placement's natural key in a
+// transaction, so a re-push updates matching placements in place
+// (keeping their IDs stable) and removes placements that are no
+// longer in the schedule.
 func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -41,44 +57,97 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Dedupe the payload on the natural key; the last row wins.
+	incoming := make(map[placementKey]cloud.ContestPlacement, len(placements))
+	for _, p := range placements {
+		incoming[placementKey{
+			ContestID:  contestID,
+			PhaseID:    p.PhaseID,
+			Round:      p.Round,
+			Match:      p.Match,
+			FieldID:    p.FieldID,
+			PositionID: p.PositionID,
+		}] = p
+	}
+
 	err := m.db.Transaction(func(tx *gorm.DB) error {
+		// Prune placements for this contest that are no longer in
+		// the schedule, along with their scorecard values.
 		old, err := gorm.G[CloudMatchPlacement](tx).
 			Where(&CloudMatchPlacement{ContestID: contestID}).
 			Find(ctx)
 		if err != nil {
 			return err
 		}
-		ids := make([]uint, 0, len(old))
 		for _, p := range old {
-			ids = append(ids, p.ID)
-		}
-		if len(ids) > 0 {
+			if _, ok := incoming[placementKey{
+				ContestID:  contestID,
+				PhaseID:    p.PhaseID,
+				Round:      p.Round,
+				Match:      p.Match,
+				FieldID:    p.FieldID,
+				PositionID: p.PositionID,
+			}]; ok {
+				continue
+			}
 			if _, err := gorm.G[CloudScorecardValue](tx).
-				Where("cloud_match_placement_id IN ?", ids).
+				Where("cloud_match_placement_id = ?", p.ID).
+				Delete(ctx); err != nil {
+				return err
+			}
+			if _, err := gorm.G[CloudMatchPlacement](tx).
+				Where("id = ?", p.ID).
 				Delete(ctx); err != nil {
 				return err
 			}
 		}
-		if _, err := gorm.G[CloudMatchPlacement](tx).
-			Where(&CloudMatchPlacement{ContestID: contestID}).
-			Delete(ctx); err != nil {
-			return err
-		}
 
-		for _, p := range placements {
+		for key, p := range incoming {
 			row := CloudMatchPlacement{
-				ContestID:  contestID,
-				Round:      p.Round,
-				Match:      p.Match,
-				PhaseID:    p.PhaseID,
+				ContestID:  key.ContestID,
+				Round:      key.Round,
+				Match:      key.Match,
+				PhaseID:    key.PhaseID,
 				TeamID:     p.TeamID,
 				TeamName:   p.TeamName,
-				FieldID:    p.FieldID,
-				PositionID: p.PositionID,
+				FieldID:    key.FieldID,
+				PositionID: key.PositionID,
 				State:      p.State,
 				Score:      p.Score,
 			}
-			if err := gorm.G[CloudMatchPlacement](tx).Create(ctx, &row); err != nil {
+			if err := db.InsertOrUpdate(ctx, tx, &row, clause.OnConflict{
+				Columns: []clause.Column{
+					{Name: "contest_id"},
+					{Name: "phase_id"},
+					{Name: "round"},
+					{Name: "match"},
+					{Name: "field_id"},
+					{Name: "position_id"},
+				},
+				DoUpdates: clause.AssignmentColumns([]string{"team_id", "team_name", "state", "score"}),
+			}); err != nil {
+				return err
+			}
+			if row.ID == 0 {
+				found, err := gorm.G[CloudMatchPlacement](tx).
+					Where(&CloudMatchPlacement{
+						ContestID:  key.ContestID,
+						PhaseID:    key.PhaseID,
+						Round:      key.Round,
+						Match:      key.Match,
+						FieldID:    key.FieldID,
+						PositionID: key.PositionID,
+					}).
+					First(ctx)
+				if err != nil {
+					return err
+				}
+				row.ID = found.ID
+			}
+
+			if _, err := gorm.G[CloudScorecardValue](tx).
+				Where("cloud_match_placement_id = ?", row.ID).
+				Delete(ctx); err != nil {
 				return err
 			}
 			for _, v := range p.Values {
@@ -103,7 +172,7 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]int{"stored": len(placements)}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]int{"stored": len(incoming)}); err != nil {
 		slog.Error("Error writing contest scores response", "error", err)
 	}
 }

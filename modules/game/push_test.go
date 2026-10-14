@@ -192,16 +192,26 @@ func TestCloudContestScoresDataStores(t *testing.T) {
 
 // TestCloudContestScoresDataIdempotent verifies that re-pushing the
 // same contest replaces the stored data in place without duplicating
-// rows.
+// rows and keeps the placement ID stable.
 func TestCloudContestScoresDataIdempotent(t *testing.T) {
 	m, d := newTestModule(t)
 
 	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
 
 	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
+	var firstID uint
 	for i := 0; i < 2; i++ {
 		if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
 			t.Fatalf("store %d = %d, want 200: %s", i+1, code, resp)
+		}
+		var row CloudMatchPlacement
+		if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ?", 7).First(&row).Error; err != nil {
+			t.Fatalf("find stored placement after push %d: %v", i+1, err)
+		}
+		if i == 0 {
+			firstID = row.ID
+		} else if row.ID != firstID {
+			t.Errorf("placement ID = %d after re-push, want %d (stable)", row.ID, firstID)
 		}
 	}
 
@@ -210,6 +220,134 @@ func TestCloudContestScoresDataIdempotent(t *testing.T) {
 	}
 	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
 		t.Errorf("values after re-push = %d, want 1 (no duplicates)", got)
+	}
+}
+
+// TestCloudContestScoresDataUpdatesInPlace verifies that re-pushing a
+// placement with the same natural key but a different score and state
+// updates the stored row in place, keeping its ID.
+func TestCloudContestScoresDataUpdatesInPlace(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
+		t.Fatalf("store = %d, want 200: %s", code, resp)
+	}
+	var first CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ?", 7).First(&first).Error; err != nil {
+		t.Fatalf("find stored placement: %v", err)
+	}
+
+	updated := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":5,"score":99,"values":[{"element":"widgets_fabricated","value":7}]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", updated); code != http.StatusOK {
+		t.Fatalf("re-store = %d, want 200: %s", code, resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 1 {
+		t.Fatalf("placements = %d, want 1", got)
+	}
+	var row CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ?", 7).First(&row).Error; err != nil {
+		t.Fatalf("find updated placement: %v", err)
+	}
+	if row.ID != first.ID {
+		t.Errorf("placement ID = %d, want %d (stable)", row.ID, first.ID)
+	}
+	if row.Score != 99 || row.State != 5 {
+		t.Errorf("updated placement = %+v, want score 99 state 5", row)
+	}
+	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
+		t.Errorf("values = %d, want 1", got)
+	}
+	var val CloudScorecardValue
+	if err := d.Model(&CloudScorecardValue{}).Where("cloud_match_placement_id = ?", row.ID).First(&val).Error; err != nil {
+		t.Fatalf("find updated value: %v", err)
+	}
+	if val.Value != 7 {
+		t.Errorf("value = %d, want 7", val.Value)
+	}
+}
+
+// TestCloudContestScoresDataPrunesRemoved verifies that re-pushing a
+// schedule that dropped a placement removes the stored row and its
+// values while keeping the surviving row's ID.
+func TestCloudContestScoresDataPrunesRemoved(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	two := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]},{"round":1,"match":2,"phase_id":1,"team_id":2,"team_name":"Team 2","field_id":1,"position_id":1,"state":4,"score":10,"values":[]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", two); code != http.StatusOK {
+		t.Fatalf("store = %d, want 200: %s", code, resp)
+	}
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 2 {
+		t.Fatalf("placements = %d, want 2", got)
+	}
+	var kept CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ? AND match = ?", 7, 1).First(&kept).Error; err != nil {
+		t.Fatalf("find kept placement: %v", err)
+	}
+
+	one := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", one); code != http.StatusOK {
+		t.Fatalf("re-store = %d, want 200: %s", code, resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 1 {
+		t.Errorf("placements after prune = %d, want 1", got)
+	}
+	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
+		t.Errorf("values after prune = %d, want 1 (removed placement's values gone)", got)
+	}
+	var row CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ?", 7).First(&row).Error; err != nil {
+		t.Fatalf("find surviving placement: %v", err)
+	}
+	if row.ID != kept.ID {
+		t.Errorf("placement ID = %d, want %d (stable)", row.ID, kept.ID)
+	}
+}
+
+// TestCloudContestScoresDataPreservesAdded verifies that re-pushing a
+// schedule that gained a placement keeps the existing row's ID and
+// stores the new row with a distinct ID.
+func TestCloudContestScoresDataPreservesAdded(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	one := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", one); code != http.StatusOK {
+		t.Fatalf("store = %d, want 200: %s", code, resp)
+	}
+	var first CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ?", 7).First(&first).Error; err != nil {
+		t.Fatalf("find stored placement: %v", err)
+	}
+
+	two := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[]},{"round":1,"match":2,"phase_id":1,"team_id":2,"team_name":"Team 2","field_id":1,"position_id":1,"state":4,"score":10,"values":[]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", two); code != http.StatusOK {
+		t.Fatalf("re-store = %d, want 200: %s", code, resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 2 {
+		t.Fatalf("placements = %d, want 2", got)
+	}
+	var row CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ? AND match = ?", 7, 1).First(&row).Error; err != nil {
+		t.Fatalf("find original placement: %v", err)
+	}
+	if row.ID != first.ID {
+		t.Errorf("placement ID = %d, want %d (stable)", row.ID, first.ID)
+	}
+	var added CloudMatchPlacement
+	if err := d.Model(&CloudMatchPlacement{}).Where("contest_id = ? AND match = ?", 7, 2).First(&added).Error; err != nil {
+		t.Fatalf("find added placement: %v", err)
+	}
+	if added.ID == first.ID {
+		t.Errorf("added placement ID = %d, want a distinct ID", added.ID)
 	}
 }
 
