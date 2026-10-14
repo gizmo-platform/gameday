@@ -39,10 +39,19 @@ func (e *Error) Error() string {
 }
 
 // NewErrorFromBody builds an Error from a non-2xx response body.
+// When the body is a JSON object carrying an "error" field (the
+// convention used by Gameday cloud endpoints), that field becomes the
+// message; otherwise the trimmed raw body is used.
 func NewErrorFromBody(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 512))
 	if err != nil {
 		body = []byte("unreadable response body")
+	}
+	var parsed struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &parsed) == nil && parsed.Error != "" {
+		return &Error{Status: resp.StatusCode, Message: parsed.Error}
 	}
 	return &Error{Status: resp.StatusCode, Message: strings.TrimSpace(string(body))}
 }
@@ -93,7 +102,10 @@ func WithBearerToken(token string) Option {
 
 // New creates a Client for the cloud instance named by the
 // GAMEDAY_CLOUD environment variable, or DefaultBaseURL when unset.
-// Options may override the base URL, timeout, and authenticator.
+// When GAMEDAY_CLOUD_TOKEN is set and no authenticator option is
+// given, the client authenticates every request with that bearer
+// token. Options may override the base URL, timeout, and
+// authenticator.
 func New(opts ...Option) *Client {
 	base := os.Getenv("GAMEDAY_CLOUD")
 	if base == "" {
@@ -105,6 +117,11 @@ func New(opts ...Option) *Client {
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+	if c.auth == nil {
+		if token := os.Getenv("GAMEDAY_CLOUD_TOKEN"); token != "" {
+			c.auth = BearerAuth{Token: token}
+		}
 	}
 	return c
 }

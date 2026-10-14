@@ -2,12 +2,14 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/flosch/pongo2/v6"
+	"github.com/the-maldridge/authware"
 	"gorm.io/gorm"
 )
 
@@ -45,12 +47,44 @@ func (s *Server) InstallPermission(ctx context.Context, module, grant string) er
 	return nil
 }
 
+// denialStatus returns 401 when the request has no authenticated user and
+// 403 when a user is present but lacks the permission.
+func denialStatus(r *http.Request) int {
+	if _, ok := r.Context().Value(authware.UserKey{}).(authware.User); !ok {
+		return http.StatusUnauthorized
+	}
+	return http.StatusForbidden
+}
+
+// wantsJSON reports whether the request prefers a JSON response, so
+// that API endpoints can be denied with a machine-readable body
+// instead of the HTML unauthorized page.
+func wantsJSON(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "application/json")
+}
+
+func (s *Server) renderUnauthorized(w http.ResponseWriter, r *http.Request, p Permission) {
+	status := denialStatus(r)
+	if wantsJSON(r) {
+		msg := "You do not have permission to access this resource."
+		if status == http.StatusUnauthorized {
+			msg = "Please log in to access this resource."
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+		return
+	}
+	w.WriteHeader(status)
+	s.DoTemplate(w, r, "errors/unauthorized.p2", pongo2.Context{"perm": p})
+}
+
 func (s *Server) RequirePermission(p Permission) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			profile, _ := r.Context().Value(ProfileKey{}).(Profile)
 			if !profile.HasPermission(p) {
-				s.DoTemplate(w, r, "errors/unauthorized.p2", pongo2.Context{"perm": p})
+				s.renderUnauthorized(w, r, p)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -62,7 +96,7 @@ func (s *Server) GuardRoute(p Permission, handler http.HandlerFunc) http.Handler
 	return func(w http.ResponseWriter, r *http.Request) {
 		profile, _ := r.Context().Value(ProfileKey{}).(Profile)
 		if !profile.HasPermission(p) {
-			s.DoTemplate(w, r, "errors/unauthorized.p2", pongo2.Context{"perm": p})
+			s.renderUnauthorized(w, r, p)
 			return
 		}
 		handler(w, r)

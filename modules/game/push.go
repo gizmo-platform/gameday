@@ -25,14 +25,19 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 
 	contestID := m.ws.StrToUint(chi.URLParam(r, "id"))
 	if contestID == 0 {
+		slog.Error("Error storing contest scores", "error", errors.New("invalid contest id"))
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid contest id"})
 		return
 	}
 
 	var placements []cloud.ContestPlacement
 	if err := json.NewDecoder(r.Body).Decode(&placements); err != nil {
 		slog.Error("Error decoding contest scores payload", "error", err)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -90,8 +95,10 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 		return nil
 	})
 	if err != nil {
-		slog.Error("Error storing contest scores", "error", err)
+		slog.Error("Error storing contest scores", "error", err, "contest_id", contestID)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -150,11 +157,12 @@ func (m *Module) uiViewPushCloud(w http.ResponseWriter, r *http.Request) {
 // uiViewPushCloudSubmit pushes the selected contest's schedule and
 // scorecard data to the cloud instance.
 func (m *Module) uiViewPushCloudSubmit(w http.ResponseWriter, r *http.Request) {
+	contestID := m.selectedContestID(r.Context())
 	if err := m.PushContestData(r.Context()); err != nil {
-		slog.Error("Error pushing contest data to cloud", "error", err)
+		slog.Error("Error pushing contest data to cloud", "error", err, "contest_id", contestID)
 		m.ws.DoTemplate(w, r, "views/game/push_cloud.p2", pongo2.Context{
 			"cloudBase":  m.cloudClient.BaseURL(),
-			"contestID":  m.selectedContestID(r.Context()),
+			"contestID":  contestID,
 			"error":      err.Error(),
 			"moduleBase": m.basePath,
 		})

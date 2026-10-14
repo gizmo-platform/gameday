@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/modules"
@@ -158,7 +159,7 @@ func TestCloudContestScoresDataStores(t *testing.T) {
 	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
 
 	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
-	code, resp, _ := routerReq(t, cm, nil, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body)
+	code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body)
 	if code != http.StatusOK {
 		t.Fatalf("store = %d, want 200: %s", code, resp)
 	}
@@ -199,7 +200,7 @@ func TestCloudContestScoresDataIdempotent(t *testing.T) {
 
 	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
 	for i := 0; i < 2; i++ {
-		if code, resp, _ := routerReq(t, cm, nil, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
+		if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
 			t.Fatalf("store %d = %d, want 200: %s", i+1, code, resp)
 		}
 	}
@@ -209,6 +210,57 @@ func TestCloudContestScoresDataIdempotent(t *testing.T) {
 	}
 	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
 		t.Errorf("values after re-push = %d, want 1 (no duplicates)", got)
+	}
+}
+
+// TestCloudContestScoresDataGuarded verifies that the cloud endpoint
+// rejects profiles without the GAME:SYNCHRONIZE grant (or a module
+// admin) and writes nothing.
+func TestCloudContestScoresDataGuarded(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[]}]`
+
+	// A profile without the grant is rejected with 403 and a JSON
+	// error body (the client sends Accept: application/json).
+	noPerm := noPermContext()
+	code, resp, hdr := routerReq(t, cm, noPerm, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body, "Accept", "application/json")
+	if code != http.StatusForbidden {
+		t.Fatalf("store = %d, want 403: %s", code, resp)
+	}
+	if ct := hdr.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(resp, `"error":"You do not have permission to access this resource."`) {
+		t.Errorf("expected a JSON permission error; body=%s", resp)
+	}
+
+	// No profile at all is rejected with 401 and a JSON error body.
+	code, resp, hdr = routerReq(t, cm, nil, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body, "Accept", "application/json")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("store = %d, want 401: %s", code, resp)
+	}
+	if ct := hdr.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(resp, `"error":"Please log in to access this resource."`) {
+		t.Errorf("expected a JSON login error; body=%s", resp)
+	}
+
+	// A request that does not prefer JSON still gets the HTML
+	// unauthorized page.
+	code, resp, _ = routerReq(t, cm, nil, http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("store = %d, want 401: %s", code, resp)
+	}
+	if !strings.Contains(resp, "Unauthorized") {
+		t.Errorf("expected the unauthorized page; body=%s", resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 0 {
+		t.Errorf("placements = %d, want 0 (nothing stored)", got)
 	}
 }
 
@@ -246,10 +298,12 @@ func TestPushContestDataNoContest(t *testing.T) {
 }
 
 // TestPushContestDataCloudFailure verifies that a push against a
-// failing cloud reports the error on the page.
+// failing cloud reports the error message on the page.
 func TestPushContestDataCloudFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "cloud is on fire", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "cloud is on fire"})
 	}))
 	defer srv.Close()
 	t.Setenv("GAMEDAY_CLOUD", srv.URL)
@@ -263,5 +317,83 @@ func TestPushContestDataCloudFailure(t *testing.T) {
 	}
 	if !strings.Contains(body, "notification is-danger") {
 		t.Errorf("push page missing error alert:\n%s", body)
+	}
+	if !strings.Contains(body, "cloud is on fire") {
+		t.Errorf("push page missing cloud error message:\n%s", body)
+	}
+}
+
+// TestCloudContestScoresDataErrors verifies that the cloud endpoint
+// writes a JSON error body on each failure path so the message
+// round-trips to the pushing site.
+func TestCloudContestScoresDataErrors(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	// A non-numeric contest ID is a 400 with an error body.
+	code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/not-a-number/scores", "[]")
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad id = %d, want 400: %s", code, resp)
+	}
+	if !strings.Contains(resp, `"error":"invalid contest id"`) {
+		t.Errorf("bad id body = %q, want invalid contest id error", resp)
+	}
+
+	// A malformed body is a 400 with an error body.
+	code, resp, _ = routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", "{not json")
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad body = %d, want 400: %s", code, resp)
+	}
+	if !strings.Contains(resp, `"error":`) {
+		t.Errorf("bad body response = %q, want an error field", resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 0 {
+		t.Errorf("placements = %d, want 0 (nothing stored)", got)
+	}
+}
+
+// TestPushContestDataUnauthenticatedCloud verifies that a push against
+// a real cloud instance with no token set is a genuine failure: the
+// cloud guard rejects the unauthenticated request with 401, the cloud
+// client surfaces the error, and the push page reports it instead of
+// claiming success.
+func TestPushContestDataUnauthenticatedCloud(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+	mux := chi.NewRouter()
+	mux.Mount("/ui/mod/game", cm.Router())
+	cloudSrv := httptest.NewServer(mux)
+	defer cloudSrv.Close()
+
+	t.Setenv("GAMEDAY_CLOUD", cloudSrv.URL)
+	t.Setenv("GAMEDAY_CLOUD_TOKEN", "")
+
+	om, od := newTestModule(t)
+	seedContestData(t, od, 7)
+
+	code, body, _ := routerReq(t, om, adminContext(), http.MethodPost, "/ui/mod/game/push-cloud", "")
+	if code != http.StatusOK {
+		t.Fatalf("push POST = %d, want 200 (error page)", code)
+	}
+	if !strings.Contains(body, "notification is-danger") {
+		t.Errorf("push page missing error alert:\n%s", body)
+	}
+	if strings.Contains(body, "Contest data pushed") {
+		t.Errorf("push page reported success for an unauthenticated push:\n%s", body)
+	}
+	// The danger alert carries the parsed JSON error message, not a
+	// block of HTML from the cloud's denial page.
+	if !strings.Contains(body, "Please log in to access this resource.") {
+		t.Errorf("push page missing clean cloud error message:\n%s", body)
+	}
+	if strings.Contains(body, "<h1>Unauthorized</h1>") {
+		t.Errorf("push page rendered the cloud's HTML denial page:\n%s", body)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 0 {
+		t.Errorf("cloud placements = %d, want 0 (nothing stored)", got)
 	}
 }

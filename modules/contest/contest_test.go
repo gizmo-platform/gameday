@@ -275,15 +275,15 @@ func TestContestRosterRequiresPermission(t *testing.T) {
 		t.Fatalf("roster page without permission = %d, want 200: %s", code, body)
 	}
 
-	// Mutations are guarded: the unauthorized template is rendered and
-	// nothing is written.
+	// Mutations are guarded: the unauthorized template is rendered
+	// with 401 (no authenticated user) and nothing is written.
 	for _, target := range []string{
 		"/ui/mod/contest/1/roster/init",
 		"/ui/mod/contest/1/roster/add",
 	} {
 		code, body = routerReq(t, m, noPerm, http.MethodPost, target, nil)
-		if code != http.StatusOK {
-			t.Fatalf("%s without permission = %d, want 200: %s", target, code, body)
+		if code != http.StatusUnauthorized {
+			t.Fatalf("%s without permission = %d, want 401: %s", target, code, body)
 		}
 		if !strings.Contains(body, "Unauthorized") {
 			t.Errorf("%s without permission did not render unauthorized: %s", target, body)

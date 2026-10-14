@@ -25,10 +25,11 @@ const (
 
 	ModuleName = "GAME"
 
-	PermissionAdmin      = "ADMIN"
-	PermissionSchedule   = "SCHEDULE"
-	PermissionReferee    = "REFEREE"
-	PermissionTimekeeper = "TIMEKEEPER"
+	PermissionAdmin       = "ADMIN"
+	PermissionSchedule    = "SCHEDULE"
+	PermissionReferee     = "REFEREE"
+	PermissionTimekeeper  = "TIMEKEEPER"
+	PermissionSynchronize = "SYNCHRONIZE"
 )
 
 // MatchState is an enum of states that a match can be in, used for
@@ -425,7 +426,7 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 	}
 
 	if m.ws != nil {
-		for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee, PermissionTimekeeper} {
+		for _, p := range []string{PermissionAdmin, PermissionSchedule, PermissionReferee, PermissionTimekeeper, PermissionSynchronize} {
 			if err := m.ws.InstallPermission(context.Background(), ModuleName, p); err != nil {
 				return nil
 			}
@@ -437,6 +438,7 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 	pAdmin := web.Permission{Module: ModuleName, Grant: PermissionAdmin}
 	pSchedule := web.Permission{Module: ModuleName, Grant: PermissionSchedule}
 	pReferee := web.Permission{Module: ModuleName, Grant: PermissionReferee}
+	pSynchronize := web.Permission{Module: ModuleName, Grant: PermissionSynchronize}
 	m.r.Route("/", func(r chi.Router) {
 		// The configuration and setup screens are shared by both
 		// scopes: the cloud instance is where the game design is
@@ -505,10 +507,11 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 		} else {
 			// The cloud setup endpoint is public on purpose: the game file
 			// is game design, not sensitive data, and is pulled by other
-			// Gameday systems. The contest scores endpoint is public for
-			// the same reason: it is the push target for onsite servers.
+			// Gameday systems. The contest scores endpoint is guarded by
+			// GAME:SYNCHRONIZE: it is the push target for onsite servers
+			// and writes to the cloud's stored data.
 			r.Get("/cloud/setup", m.cloudSetupData)
-			r.Post("/cloud/contests/{id}/scores", m.cloudContestScoresData)
+			r.Post("/cloud/contests/{id}/scores", m.ws.GuardRoute(pSynchronize, m.cloudContestScoresData))
 
 			// The scorecards lookup page is open to any authenticated
 			// user, like the team list page.

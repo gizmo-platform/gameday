@@ -77,6 +77,31 @@ func TestDoNon2xxReturnsCloudError(t *testing.T) {
 	}
 }
 
+func TestDoNon2xxJSONErrorBodyIsParsed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "You do not have permission to access this resource."})
+	}))
+	defer server.Close()
+
+	c := New(WithBaseURL(server.URL))
+	err := c.Do(context.Background(), http.MethodGet, "/x", nil, nil)
+	if err == nil {
+		t.Fatal("Do: expected error, got nil")
+	}
+	var ce *Error
+	if !errors.As(err, &ce) {
+		t.Fatalf("err = %T (%v), want *cloud.Error", err, err)
+	}
+	if ce.Status != http.StatusForbidden {
+		t.Errorf("Status = %d, want 403", ce.Status)
+	}
+	if ce.Message != "You do not have permission to access this resource." {
+		t.Errorf("Message = %q, want the parsed JSON error field", ce.Message)
+	}
+}
+
 func TestDoNetworkFailureIsNotCloudError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	server.Close()
@@ -155,6 +180,42 @@ func TestBearerTokenSetsHeader(t *testing.T) {
 	}
 }
 
+func TestNewUsesEnvBearerToken(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte("null"))
+	}))
+	defer server.Close()
+
+	t.Setenv("GAMEDAY_CLOUD_TOKEN", "env-tok")
+	c := New(WithBaseURL(server.URL))
+	if err := c.Do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if gotAuth != "Bearer env-tok" {
+		t.Errorf("Authorization = %q, want Bearer env-tok", gotAuth)
+	}
+}
+
+func TestExplicitAuthenticatorOverridesEnvToken(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte("null"))
+	}))
+	defer server.Close()
+
+	t.Setenv("GAMEDAY_CLOUD_TOKEN", "env-tok")
+	c := New(WithBaseURL(server.URL), WithBearerToken("opt-tok"))
+	if err := c.Do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if gotAuth != "Bearer opt-tok" {
+		t.Errorf("Authorization = %q, want Bearer opt-tok", gotAuth)
+	}
+}
+
 func TestUnauthenticatedClientSendsNoAuthHeader(t *testing.T) {
 	var gotAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +224,7 @@ func TestUnauthenticatedClientSendsNoAuthHeader(t *testing.T) {
 	}))
 	defer server.Close()
 
+	t.Setenv("GAMEDAY_CLOUD_TOKEN", "")
 	c := New(WithBaseURL(server.URL))
 	if err := c.Do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
 		t.Fatalf("Do: %v", err)

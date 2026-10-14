@@ -228,10 +228,10 @@ func TestBearerTokenEndToEnd(t *testing.T) {
 	}
 
 	// No credentials at all: the permission guard renders the
-	// unauthorized page, not the user list.
+	// unauthorized page with 401, not the user list.
 	w = do("")
-	if w.Code != http.StatusOK {
-		t.Fatalf("no auth: status = %d, want %d", w.Code, http.StatusOK)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("no auth: status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 	if strings.Contains(w.Body.String(), "Create User") {
 		t.Error("no auth: body contains the user list, want the unauthorized page")

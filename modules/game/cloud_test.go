@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/goccy/go-yaml"
+	"github.com/the-maldridge/authware"
 	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/modules"
@@ -32,10 +33,29 @@ func adminContext() context.Context {
 	return context.WithValue(context.Background(), web.ProfileKey{}, prof)
 }
 
+// syncContext builds a request context carrying a profile with the
+// GAME:SYNCHRONIZE grant, for the guarded cloud push endpoint.
+func syncContext() context.Context {
+	prof := web.Profile{
+		Username:    "syncer",
+		Permissions: []web.Permission{{Module: ModuleName, Grant: PermissionSynchronize}},
+	}
+	return context.WithValue(context.Background(), web.ProfileKey{}, prof)
+}
+
+// noPermContext builds a request context for a logged-in user with no
+// permissions: it carries both an authware.User (so the guard returns
+// 403 rather than 401) and an empty profile.
+func noPermContext() context.Context {
+	ctx := context.WithValue(context.Background(), authware.UserKey{}, authware.User{Identity: "nobody"})
+	return context.WithValue(ctx, web.ProfileKey{}, web.Profile{Username: "nobody"})
+}
+
 // routerReq runs a request through the module's chi router so URL
 // params, guards, and templates behave exactly as they do in
-// production.
-func routerReq(t *testing.T, m *Module, ctx context.Context, method, target, body string) (int, string, http.Header) {
+// production. Optional key/value header pairs are applied to the
+// request.
+func routerReq(t *testing.T, m *Module, ctx context.Context, method, target, body string, headers ...string) (int, string, http.Header) {
 	t.Helper()
 	mux := chi.NewRouter()
 	mux.Mount("/ui/mod/game", m.Router())
@@ -46,6 +66,9 @@ func routerReq(t *testing.T, m *Module, ctx context.Context, method, target, bod
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	} else {
 		req = httptest.NewRequest(method, target, nil)
+	}
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
 	}
 	if ctx != nil {
 		req = req.WithContext(ctx)
@@ -291,11 +314,11 @@ func TestCloudSetupScreens(t *testing.T) {
 	}
 
 	// The configuration screen is GAME:ADMIN-guarded: a profile
-	// without the grant sees the unauthorized page.
-	noPerm := context.WithValue(context.Background(), web.ProfileKey{}, web.Profile{Username: "nobody"})
+	// without the grant sees the unauthorized page with 403.
+	noPerm := noPermContext()
 	code, body, _ = routerReq(t, cm, noPerm, http.MethodGet, "/ui/mod/game/active-configuration", "")
-	if code != http.StatusOK {
-		t.Fatalf("non-admin config GET = %d, want 200 (unauthorized page); body=%s", code, body)
+	if code != http.StatusForbidden {
+		t.Fatalf("non-admin config GET = %d, want 403 (unauthorized page); body=%s", code, body)
 	}
 	if !strings.Contains(body, "Unauthorized") {
 		t.Errorf("non-admin should see the unauthorized page; body=%s", body)
@@ -453,10 +476,10 @@ func TestUiViewPhaseScoreStats(t *testing.T) {
 		t.Errorf("back link to phase list = %d, want 200; body=%s", code, body)
 	}
 
-	noPerm := context.WithValue(context.Background(), web.ProfileKey{}, web.Profile{Username: "nobody"})
+	noPerm := noPermContext()
 	code, body, _ = routerReq(t, m, noPerm, http.MethodGet, target, "")
-	if code != http.StatusOK {
-		t.Fatalf("non-admin GET = %d, want 200 (unauthorized page); body=%s", code, body)
+	if code != http.StatusForbidden {
+		t.Fatalf("non-admin GET = %d, want 403 (unauthorized page); body=%s", code, body)
 	}
 	if !strings.Contains(body, "Unauthorized") {
 		t.Errorf("non-admin should see the unauthorized page; body=%s", body)

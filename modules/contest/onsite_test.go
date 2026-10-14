@@ -229,22 +229,23 @@ func TestMyContestRequiresPermission(t *testing.T) {
 
 	m, d, _, _ := newOnsiteTestModule(t)
 
-	// The page is admin-only: the unauthorized template is rendered.
+	// The page is admin-only: the unauthorized template is rendered
+	// with 401 (no authenticated user).
 	code, body := onsiteRouterReq(t, m, context.Background(), http.MethodGet, "/ui/mod/contest/", nil)
-	if code != http.StatusOK {
-		t.Fatalf("my contest page without permission = %d, want 200: %s", code, body)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("my contest page without permission = %d, want 401: %s", code, body)
 	}
 	if !strings.Contains(body, "Unauthorized") {
 		t.Errorf("my contest page without permission did not render unauthorized: %s", body)
 	}
 
-	// Selection is guarded: the unauthorized template is rendered and
-	// nothing is written.
+	// Selection is guarded: the unauthorized template is rendered
+	// with 401 and nothing is written.
 	form := url.Values{}
 	form.Set("contest_id", "7")
 	code, body = onsiteRouterReq(t, m, context.Background(), http.MethodPost, "/ui/mod/contest/", form)
-	if code != http.StatusOK {
-		t.Fatalf("select without permission = %d, want 200: %s", code, body)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("select without permission = %d, want 401: %s", code, body)
 	}
 	if !strings.Contains(body, "Unauthorized") {
 		t.Errorf("select without permission did not render unauthorized: %s", body)
