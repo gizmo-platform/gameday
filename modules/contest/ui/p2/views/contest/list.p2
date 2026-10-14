@@ -3,46 +3,49 @@
 {% block title %}Contests{% endblock %}
 
 {% block content %}
-  <div class="box is-flex is-justify-content-center">
-    <div>
+<div class="box is-flex is-justify-content-center">
+  <div>
     <p>Below is a list of all contests.</p>
     <br />
     <hr />
     {% if profile | hasPermission:"CONTEST:ADMIN" %}
-      <div class="is-flex is-justify-content-center">
-        <a class="button is-primary" href="{{ pageBase }}/add">Add Contest</a>
-      </div>
-      <hr />
+    <div class="is-flex is-justify-content-center">
+      <a class="button is-primary" href="{{ pageBase }}/add">Add Contest</a>
+    </div>
+    <hr />
     {% endif %}
 
-      <table class="table">
-        <tr>
-          <th>ID</th>
-          <th>Name</th>
-          <th>Region</th>
-          <th>Roster</th>
-          {% if profile | hasPermission:"CONTEST:ADMIN" %}
-            <th>Actions</th>
-          {% endif %}
-        </tr>
-        {% for contest in contests %}
-          <tr>
-            <td>{{ contest.ID }}</td>
-            <td>{{ contest.Name }}</td>
-            <td>{{ contest.Region.Name }}</td>
-            <td>
-              <a class="button" href="{{ pageBase }}/{{ contest.ID }}/roster">Roster</a>
-            </td>
-            {% if profile | hasPermission:"CONTEST:ADMIN" %}
-              <td>
-                <a class="button" href="{{ pageBase }}/{{ contest.ID }}/edit">Edit</a>
-                <a class="button" href="{{ pageBase }}/{{ contest.ID }}/delete">Delete</a>
-              </td>
-            {% endif %}
-          </tr>
-        {% endfor %}
-      </table>
-    </div>
-    </div>
+    <table class="table">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Region</th>
+        <th>Roster</th>
+        {% if profile | hasPermission:"CONTEST:ADMIN" %}
+        <th>Actions</th>
+        {% endif %}
+      </tr>
+      {% for contest in contests %}
+      <tr>
+        <td>{{ contest.ID }}</td>
+        <td>{{ contest.Name }}</td>
+        <td>{{ contest.Region.Name }}</td>
+        <td>
+          <a class="button" href="{{ pageBase }}/{{ contest.ID }}/roster">Roster</a>
+        </td>
+        {% if profile | hasPermission:"CONTEST:ADMIN" %}
+        <td>
+          <div class="buttons">
+            <a class="button" href="{{ pageBase }}/{{ contest.ID }}/edit">Edit</a>
+            <form action="{{ pageBase }}/{{ contest.ID }}/delete" method="POST">
+              <button class="button" type="submit">Delete</button>
+            </form>
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </table>
   </div>
+</div>
 {% endblock %}
