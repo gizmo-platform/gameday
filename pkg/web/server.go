@@ -46,6 +46,10 @@ type Server struct {
 
 	debugTemplates bool
 
+	// scope is the entrypoint scope ("onsite" or "cloud"), empty
+	// when not set with WithScope.
+	scope string
+
 	nav []NavElement
 }
 
@@ -54,6 +58,11 @@ type Server struct {
 // publishing.
 func (s *Server) Bus() *event.Bus {
 	return s.bus
+}
+
+// Scope returns the entrypoint scope set with WithScope.
+func (s *Server) Scope() string {
+	return s.scope
 }
 
 // TemplateDebug reports whether template debug mode is enabled.

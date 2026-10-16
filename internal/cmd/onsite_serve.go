@@ -61,7 +61,7 @@ func onsiteServeCmdRun(c *cobra.Command, args []string) {
 		os.Exit(2)
 	}
 
-	w, err := web.NewServer(web.WithDB(d), web.WithTemplateDebug(templateDebug), web.EventBus(event.New()))
+	w, err := web.NewServer(web.WithDB(d), web.WithScope("onsite"), web.WithTemplateDebug(templateDebug), web.EventBus(event.New()))
 	if err != nil {
 		slog.Error("Error initializing webserver", "error", err)
 		os.Exit(2)

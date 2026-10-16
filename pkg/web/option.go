@@ -22,6 +22,16 @@ func EventBus(b *event.Bus) Option {
 	}
 }
 
+// WithScope records the entrypoint scope ("onsite" or "cloud") the
+// server is running in, so core pages such as the landing page can
+// vary by scope.
+func WithScope(scope string) Option {
+	return func(s *Server) error {
+		s.scope = scope
+		return nil
+	}
+}
+
 // WithTemplateDebug enables template debug mode. When enabled, the
 // server's core templates are loaded from the on-disk source tree
 // (pkg/web/ui/p2, relative to the process working directory) with a

@@ -1,0 +1,49 @@
+{% extends "base.p2" %}
+
+{% block content %}
+  {% if onsite %}
+    <div class="box">
+      <h2 class="title is-4">Welcome to Gameday</h2>
+      {% if user.Identity %}
+        <p class="mb-4">Logged in as <strong>{{ user.Identity }}</strong>.</p>
+      {% else %}
+        <p class="mb-4">You need to log in to score matches and run the event.</p>
+        <p class="mb-4"><a class="button is-primary" href="/login">Login</a></p>
+      {% endif %}
+      {% if urls %}
+        <p>Other computers on this network can open Gameday at:</p>
+        <ul>
+          {% for url in urls %}
+            <li><a href="{{ url }}"><code>{{ url }}</code></a></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>
+          The address other computers can use to reach this server could not
+          be determined. Set <code>GAMEDAY_ADVERTISE_ADDR</code> to this
+          machine's address on the event network (for example when running
+          in a container).
+        </p>
+      {% endif %}
+    </div>
+  {% elif cloud %}
+    <div class="box">
+      {% if welcomeMsg %}
+        {% comment %}
+          Escape the operator's text, keep its line breaks, then mark the
+          result safe so autoescape does not escape the <br /> tags.
+        {% endcomment %}
+        <p class="mb-4">{{ welcomeMsg | escape | linebreaksbr | safe }}</p>
+      {% else %}
+        <h2 class="title is-4">Welcome to Gameday</h2>
+      {% endif %}
+      {% if not user.Identity %}
+        <p>
+          You don't need to log in to look up scorecards: open
+          <a href="/ui/mod/game/scorecards"><strong>Game &rarr; Scorecards</strong></a>
+          in the menu above.
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
