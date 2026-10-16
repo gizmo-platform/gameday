@@ -480,3 +480,38 @@ func TestCloudScorecardsPhaseColumn(t *testing.T) {
 		}
 	}
 }
+
+// TestCloudScorecardDetailFieldName verifies the detail page shows the
+// field name the site pushed, falling back to "Field <id>" for a push
+// that carried none, rather than the cloud's own Field row (whose IDs
+// do not correspond to a site's fields).
+func TestCloudScorecardDetailFieldName(t *testing.T) {
+	m, d := newTestModule(t)
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+	seedScorecardElement(t, d.DB)
+
+	named := seedCloudPlacement(t, d.DB, CloudMatchPlacement{
+		ContestID: 1, Round: 0, Match: 1, PhaseID: 1, TeamID: 101, TeamName: "Alpha Robotics",
+		FieldID: 1, FieldName: "North Arena", PositionID: 1, State: uint(MatchStateComplete),
+	})
+	// The cloud's own field 2 is unrelated to the site's field 2.
+	if err := d.Create(&Field{ID: 2, Name: "Cloud Practice Field"}).Error; err != nil {
+		t.Fatalf("create cloud field: %v", err)
+	}
+	unnamed := seedCloudPlacement(t, d.DB, CloudMatchPlacement{
+		ContestID: 1, Round: 0, Match: 2, PhaseID: 1, TeamID: 102, TeamName: "Beta Bots",
+		FieldID: 2, PositionID: 1, State: uint(MatchStateComplete),
+	})
+
+	_, body, _ := routerReq(t, cm, adminContext(), http.MethodGet, fmt.Sprintf("/ui/mod/game/scorecards/%d", named.ID), "")
+	if !strings.Contains(body, "North Arena") {
+		t.Error("pushed field name North Arena missing")
+	}
+	_, body, _ = routerReq(t, cm, adminContext(), http.MethodGet, fmt.Sprintf("/ui/mod/game/scorecards/%d", unnamed.ID), "")
+	if !strings.Contains(body, "Field 2") {
+		t.Error("fallback field label Field 2 missing")
+	}
+	if strings.Contains(body, "Cloud Practice Field") {
+		t.Error("detail page used the cloud's own field 2 instead of the fallback")
+	}
+}

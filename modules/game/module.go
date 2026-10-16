@@ -374,6 +374,7 @@ type CloudMatchPlacement struct {
 	TeamID     uint
 	TeamName   string
 	FieldID    uint `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
+	FieldName  string
 	PositionID uint `gorm:"uniqueIndex:idx_cloud_placement_key,composite"`
 	State      uint
 	Score      int
@@ -517,10 +518,12 @@ func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Modu
 			r.Get("/cloud/setup", m.cloudSetupData)
 			r.Post("/cloud/contests/{id}/scores", m.ws.GuardRoute(pSynchronize, m.cloudContestScoresData))
 
-			// The scorecards lookup page is open to any authenticated
-			// user, like the team list page.
+			// The scorecards and schedules lookup pages are public,
+			// so visitors can follow an event without logging in.
 			r.Get("/scorecards", m.uiViewCloudScorecards)
 			r.Get("/scorecards/{id}", m.uiViewCloudScorecard)
+			r.Get("/schedules", m.uiViewCloudSchedules)
+			r.Get("/schedules/{contest}/{phase}", m.uiViewCloudSchedule)
 		}
 	})
 
@@ -744,6 +747,9 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		children = append(children, web.NavChild{
 			Text:   "Scorecards",
 			Target: path.Join(prefix, "/scorecards"),
+		}, web.NavChild{
+			Text:   "Schedules",
+			Target: path.Join(prefix, "/schedules"),
 		})
 	}
 

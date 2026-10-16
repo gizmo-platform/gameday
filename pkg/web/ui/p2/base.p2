@@ -10,7 +10,7 @@
     {% block head %}
     {% endblock %}
   </head>
-  <body>
+  <body class="has-docked-footer">
     {% include "fragments/nav.p2" %}
     <section class="section">
       <div id="container">
@@ -18,5 +18,10 @@
         {% endblock %}
       </div>
     </section>
+    <footer class="footer gameday-footer noprint">
+      <div class="content has-text-centered">
+        <p>Gameday by Gizmo Mechatronics &middot; {{ buildVersion }}</p>
+      </div>
+    </footer>
   </body>
 </html>

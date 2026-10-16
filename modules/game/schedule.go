@@ -80,6 +80,65 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 	m.ws.DoTemplate(w, r, "views/game/phases.p2", ctx)
 }
 
+// scheduleRow is one match row of the schedule template
+// (views/game/schedule.p2).  Placements is keyed "<fieldID>-<positionID>".
+type scheduleRow struct {
+	Round      int
+	Match      int
+	Placements map[string]team.Team
+	Completed  bool
+}
+
+// scheduleSlot is one team's slot in a match, the input to
+// buildScheduleRows.  Both the onsite schedule (MatchPlacement) and the
+// cloud schedule (CloudMatchPlacement) map their rows to slots so they
+// render identically.
+type scheduleSlot struct {
+	Round      int
+	Match      int
+	FieldID    uint
+	PositionID uint
+	Team       team.Team
+	State      MatchState
+}
+
+// buildScheduleRows groups slots into one row per match, in match
+// order.  Rounds are stored zero-based and displayed one-based.  A
+// match is Completed when every one of its slots is in a terminal
+// state (complete, no show, or disqualified).
+func buildScheduleRows(slots []scheduleSlot) []scheduleRow {
+	sorted := make([]scheduleSlot, len(slots))
+	copy(sorted, slots)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		a, b := sorted[i], sorted[j]
+		if a.Match != b.Match {
+			return a.Match < b.Match
+		}
+		if a.FieldID != b.FieldID {
+			return a.FieldID < b.FieldID
+		}
+		return a.PositionID < b.PositionID
+	})
+
+	rows := []scheduleRow{}
+	for _, s := range sorted {
+		if n := len(rows); n == 0 || rows[n-1].Match != s.Match {
+			rows = append(rows, scheduleRow{
+				Round:      s.Round + 1,
+				Match:      s.Match,
+				Placements: make(map[string]team.Team),
+				Completed:  true,
+			})
+		}
+		row := &rows[len(rows)-1]
+		row.Placements[fmt.Sprintf("%d-%d", s.FieldID, s.PositionID)] = s.Team
+		if s.State != MatchStateComplete && s.State != MatchStateNoShow && s.State != MatchStateDisqualified {
+			row.Completed = false
+		}
+	}
+	return rows
+}
+
 func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 
@@ -115,51 +174,18 @@ func (m *Module) uiViewPhaseSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build a map of match -> whether all placements are complete
-	matchComplete := make(map[int]bool)
+	slots := make([]scheduleSlot, 0, len(placements))
 	for _, p := range placements {
-		if _, ok := matchComplete[p.Match]; !ok {
-			matchComplete[p.Match] = true
-		}
-		if p.State != MatchStateComplete && p.State != MatchStateNoShow && p.State != MatchStateDisqualified {
-			matchComplete[p.Match] = false
-		}
+		slots = append(slots, scheduleSlot{
+			Round:      p.Round,
+			Match:      p.Match,
+			FieldID:    p.FieldID,
+			PositionID: p.PositionID,
+			Team:       p.Team,
+			State:      p.State,
+		})
 	}
-
-	type scheduleRow struct {
-		Round      int
-		Match      int
-		Placements map[string]team.Team
-		Completed  bool
-	}
-
-	schedule := []scheduleRow{}
-
-	round := 1
-	match := 1
-	sr := scheduleRow{
-		Round:      round,
-		Match:      match,
-		Placements: make(map[string]team.Team),
-		Completed:  matchComplete[match],
-	}
-	for _, p := range placements {
-		if p.Match != match {
-			schedule = append(schedule, sr)
-			round = p.Round
-			match = p.Match
-			sr = scheduleRow{
-				Round:      round + 1,
-				Match:      match,
-				Placements: make(map[string]team.Team),
-				Completed:  matchComplete[match],
-			}
-		}
-		sr.Placements[fmt.Sprintf("%d-%d", p.FieldID, p.PositionID)] = p.Team
-	}
-	if len(sr.Placements) > 0 {
-		schedule = append(schedule, sr)
-	}
+	schedule := buildScheduleRows(slots)
 
 	phase, err := gorm.G[GamePhase](m.db.DB).
 		Where(&GamePhase{ID: gPhase}).

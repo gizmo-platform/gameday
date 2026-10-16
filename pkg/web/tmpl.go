@@ -7,6 +7,8 @@ import (
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/the-maldridge/authware"
+
+	"github.com/gizmo-platform/gameday/pkg/buildinfo"
 )
 
 func (s *Server) templateErrorHandler(w http.ResponseWriter, err error) {
@@ -40,8 +42,8 @@ func adaptErrors(ctx pongo2.Context) {
 }
 
 // DoTemplate renders tmpl with the per-request keys user, profile,
-// navElements, and pageBase injected, overwriting any caller-supplied
-// values under those names.  Error values in the context render as
+// navElements, pageBase, and buildVersion (shown in the footer)
+// injected, overwriting any caller-supplied values under those names.  Error values in the context render as
 // their message (see adaptErrors).
 func (s *Server) DoTemplate(w http.ResponseWriter, r *http.Request, tmpl string, ctx pongo2.Context) {
 	if ctx == nil {
@@ -52,6 +54,7 @@ func (s *Server) DoTemplate(w http.ResponseWriter, r *http.Request, tmpl string,
 	ctx["profile"], _ = r.Context().Value(ProfileKey{}).(Profile)
 	ctx["navElements"] = s.accessibleNavElements(r)
 	ctx["pageBase"] = r.URL.Path
+	ctx["buildVersion"] = buildinfo.Version
 	t, err := s.tpl.FromCache(tmpl)
 	if err != nil {
 		s.templateErrorHandler(w, err)

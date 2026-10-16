@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/the-maldridge/authware"
+
+	"github.com/gizmo-platform/gameday/pkg/buildinfo"
 )
 
 func ipNet(cidr string) net.Addr {
@@ -154,4 +156,21 @@ func TestLandingNoScope(t *testing.T) {
 	body := landing(t, "", false)
 	assertContains(t, body, "<html", "</html>")
 	assertNotContains(t, body, "Welcome to Gameday", "scorecards", `class="box"`, "Error while rendering")
+}
+
+// TestFooter verifies every page built on base.p2 carries the docked,
+// non-printing footer with the credit line and the build version.
+func TestFooter(t *testing.T) {
+	orig := buildinfo.Version
+	buildinfo.Version = "9.8.7-test"
+	t.Cleanup(func() { buildinfo.Version = orig })
+
+	for _, scope := range []string{"", "onsite", "cloud"} {
+		body := landing(t, scope, false)
+		assertContains(t, body,
+			`<body class="has-docked-footer">`,
+			`<footer class="footer gameday-footer noprint">`,
+			"Gameday by Gizmo Mechatronics &middot; 9.8.7-test",
+		)
+	}
 }

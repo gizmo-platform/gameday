@@ -3,7 +3,7 @@
 {% block title %}Preview Schedule{% endblock %}
 
 {% block content %}
-<div class="foreground box flex-container flex-row flex-center">
+<div class="foreground box flex-container flex-row flex-center gameday-schedule{% if fields|length > 1 %} schedule-wide{% endif %}">
   <div>
     <div class="content">
       <h2>Preview Schedule</h2>
@@ -60,7 +60,9 @@
     </div>
     <div class="is-flex is-justify-content-center">
       <div>
-        <table class="table">
+        <table class="table schedule-table">
+          <colgroup><col class="schedule-rm" /><col class="schedule-rm" /></colgroup>
+          <thead>
           <tr>
             <td colspan="2"></td>
             {% for field in fields %}
@@ -76,6 +78,8 @@
             {% endfor %}
             {% endfor %}
           </tr>
+          </thead>
+          <tbody>
           {% for round in schedule.Rounds %}
           {% for match in round.Matches %}
           <tr>
@@ -85,17 +89,18 @@
             {% for field in fields %}
             {% for position in positions %}
             {% if match.Team(forloop.Parentloop.Counter0, forloop.Counter0) > -1 %}
-            <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ teams | teamList:match.Team(forloop.Parentloop.Counter0, forloop.Counter0) }}</td>
+            <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %}; color: black;">{{ teams | teamList:match.Team(forloop.Parentloop.Counter0, forloop.Counter0) }}</td>
             {% else %}
-            <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
+            <td style="background: #{% if matchNum%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %}; color: black;"></td>
             {% endif %}
             {% endfor %}
             {% endfor %}
           </tr>
           {% endfor %}
           {% endfor %}
+          </tbody>
         </table>
-        <div class="is-flex is-justify-content-center">
+        <div class="is-flex is-justify-content-center noprint">
           <form method="post" action="accept-schedule">
             <button class="button is-primary" type="submit">Accept Schedule</button>
           </form>

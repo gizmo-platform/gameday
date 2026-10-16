@@ -142,6 +142,9 @@ func TestPushContestDataEndToEnd(t *testing.T) {
 	if p.Score != 42 {
 		t.Errorf("Score = %d, want 42", p.Score)
 	}
+	if p.FieldName != "Field 1" {
+		t.Errorf("FieldName = %q, want %q", p.FieldName, "Field 1")
+	}
 	if p.State != uint(MatchStateComplete) {
 		t.Errorf("State = %d, want %d (MatchStateComplete)", p.State, uint(MatchStateComplete))
 	}
@@ -231,7 +234,7 @@ func TestCloudContestScoresDataUpdatesInPlace(t *testing.T) {
 
 	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
 
-	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"field_name":"North","position_id":1,"state":4,"score":42,"values":[{"element":"widgets_fabricated","value":5}]}]`
 	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
 		t.Fatalf("store = %d, want 200: %s", code, resp)
 	}
@@ -240,7 +243,12 @@ func TestCloudContestScoresDataUpdatesInPlace(t *testing.T) {
 		t.Fatalf("find stored placement: %v", err)
 	}
 
-	updated := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":5,"score":99,"values":[{"element":"widgets_fabricated","value":7}]}]`
+	if first.FieldName != "North" {
+		t.Errorf("stored FieldName = %q, want North", first.FieldName)
+	}
+
+	// The site renamed the field; the re-push updates it in place.
+	updated := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"field_name":"North Arena","position_id":1,"state":5,"score":99,"values":[{"element":"widgets_fabricated","value":7}]}]`
 	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", updated); code != http.StatusOK {
 		t.Fatalf("re-store = %d, want 200: %s", code, resp)
 	}
@@ -255,8 +263,8 @@ func TestCloudContestScoresDataUpdatesInPlace(t *testing.T) {
 	if row.ID != first.ID {
 		t.Errorf("placement ID = %d, want %d (stable)", row.ID, first.ID)
 	}
-	if row.Score != 99 || row.State != 5 {
-		t.Errorf("updated placement = %+v, want score 99 state 5", row)
+	if row.Score != 99 || row.State != 5 || row.FieldName != "North Arena" {
+		t.Errorf("updated placement = %+v, want score 99 state 5 field North Arena", row)
 	}
 	if got := countGameRows(t, d, &CloudScorecardValue{}); got != 1 {
 		t.Errorf("values = %d, want 1", got)

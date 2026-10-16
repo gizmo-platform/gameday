@@ -1,0 +1,87 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Schedules{% endblock %}
+
+{% block content %}
+<div class="box is-flex is-justify-content-center">
+  <div>
+    <p>Below is a list of all schedules that have been pushed to the cloud.</p>
+    <hr />
+
+    <div class="is-flex is-justify-content-center">
+      <form method="get" action="{{ pageBase }}" class="mb-4">
+        <div class="field has-addons">
+          <div class="control">
+            <div class="select">
+              <select name="contest_id">
+                <option value="">All contests</option>
+                {% for c in contests %}
+                <option value="{{ c.ID }}"{% if c.ID == contestID %} selected{% endif %}>{{ c.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="control">
+            <button class="button is-dark" type="submit">Filter</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <p class="has-text-grey mb-2">
+      {% if total == 1 %}1 schedule{% else %}{{ total }} schedules{% endif %}
+    </p>
+
+    {% if not rows %}
+    <p>No schedules have been pushed{% if contestID %} for this contest{% endif %}.</p>
+    {% else %}
+    <div class="is-flex is-justify-content-center">
+      <table class="table">
+        <tr>
+          <th>Contest</th>
+          <th>Phase</th>
+          <th>Matches</th>
+          <th>Teams</th>
+          <th></th>
+        </tr>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.ContestName }}</td>
+          <td>{{ row.PhaseName }}</td>
+          <td>{{ row.Group.Matches }}</td>
+          <td>{{ row.Group.Teams }}</td>
+          <td><a class="button is-small is-dark" href="{{ pageBase }}/{{ row.Group.ContestID }}/{{ row.Group.PhaseID }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    {% if pages > 1 %}
+    <div class="is-flex is-justify-content-center">
+      <nav class="pagination" role="navigation" aria-label="main pagination">
+        <ul class="pagination-list">
+          {% if page > 1 %}
+          <li><a class="pagination-previous" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ prevPage }}">Previous</a></li>
+          {% else %}
+          <li><a class="pagination-previous is-disabled" href="#" aria-disabled="true" tabindex="-1">Previous</a></li>
+          {% endif %}
+          {% for n in pageWindow %}
+          {% if n == page %}
+          <li><a class="pagination-link is-current" href="#" aria-current="page">{{ n }}</a></li>
+          {% else %}
+          <li><a class="pagination-link" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ n }}">{{ n }}</a></li>
+          {% endif %}
+          {% endfor %}
+          {% if page < pages %}
+          <li><a class="pagination-next" href="{{ pageBase }}?{% if filtersQS %}{{ filtersQS }}&{% endif %}page={{ nextPage }}">Next</a></li>
+          {% else %}
+          <li><a class="pagination-next is-disabled" href="#" aria-disabled="true" tabindex="-1">Next</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

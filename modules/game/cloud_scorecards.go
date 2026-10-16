@@ -182,12 +182,7 @@ func (m *Module) uiViewCloudScorecard(w http.ResponseWriter, r *http.Request) {
 			phaseName = phase.Name
 		}
 	}
-	fieldName := fmt.Sprintf("Field %d", p.FieldID)
-	if p.FieldID != 0 {
-		if field, err := gorm.G[Field](m.db.DB).Where(&Field{ID: p.FieldID}).First(ctx); err == nil {
-			fieldName = field.Name
-		}
-	}
+	fieldName := cloudFieldName(p)
 	posName := fmt.Sprintf("Position %d", p.PositionID)
 	posColor2 := "cccccc"
 	if p.PositionID != 0 {
@@ -271,6 +266,18 @@ func phaseName(names map[uint]string, id uint) string {
 		return name
 	}
 	return fmt.Sprintf("Phase %d", id)
+}
+
+// cloudFieldName returns the display name of a pushed placement's
+// field: the name the site pushed, or "Field <id>" for a push from an
+// older site that did not send one.  The cloud's own Field rows are
+// not consulted, because fields are created per site and the cloud's
+// IDs do not correspond to a site's.
+func cloudFieldName(p CloudMatchPlacement) string {
+	if p.FieldName != "" {
+		return p.FieldName
+	}
+	return fmt.Sprintf("Field %d", p.FieldID)
 }
 
 // contestName resolves a contest ID to its display name, falling back

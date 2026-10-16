@@ -39,8 +39,10 @@
       {% endif %}
       {% if not user.Identity %}
         <p>
-          You don't need to log in to look up scorecards: open
+          You don't need to log in to look up scorecards and schedules: open
           <a href="/ui/mod/game/scorecards"><strong>Game &rarr; Scorecards</strong></a>
+          or
+          <a href="/ui/mod/game/schedules"><strong>Game &rarr; Schedules</strong></a>
           in the menu above.
         </p>
       {% endif %}

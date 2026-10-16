@@ -3,10 +3,12 @@
 {% block title %}Phase Schedule{% endblock %}
 
 {% block content %}
-  <div class="box is-flex is-justify-content-center">
+  <div class="box is-flex is-justify-content-center gameday-schedule{% if fields|length > 1 %} schedule-wide{% endif %}">
     <div>
       <div class="content"><h2>Phase Schedule - {{ phase.Name | capfirst }}</h2></div>
-      <table class="table">
+      {% if contestName %}<p class="subtitle">{{ contestName }}</p>{% endif %}
+      <table class="table schedule-table">
+        <colgroup><col class="schedule-rm" /><col class="schedule-rm" /></colgroup>
         <thead>
           <tr>
             <td colspan="2"></td>
@@ -33,10 +35,10 @@
                 {% for position in positions %}
                   {% if row.Placements[field.ID + "-" + position.ID] %}
                     {% with team=row.Placements[field.ID + "-" + position.ID] %}
-                      <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};">{{ team.Name }}</td>
+                      <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %}; color: black;">{{ team.Name }}</td>
                     {% endwith %}
                   {% else %}
-                    <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %};"></td>
+                    <td style="background-color: #{% if row.Match%2 == 0 %}{{ position.Color1 }}{% else %}{{ position.Color2 }}{% endif %}; color: black;"></td>
                   {% endif %}
                 {% endfor %}
               {% endfor %}

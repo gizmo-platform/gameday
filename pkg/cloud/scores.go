@@ -26,7 +26,9 @@ type ContestScorecardValue struct {
 // the unit of the contest data push: everything the cloud stores for
 // a site's schedule and scorecards, keyed by the contest ID. State is
 // a plain uint because the wire type cannot reference the game
-// module's MatchState enum.
+// module's MatchState enum. FieldName carries the site's name for the
+// field, since fields are created per site and the cloud cannot name
+// them from the ID; it is omitted by older senders.
 type ContestPlacement struct {
 	Round      int                     `json:"round"`
 	Match      int                     `json:"match"`
@@ -34,6 +36,7 @@ type ContestPlacement struct {
 	TeamID     uint                    `json:"team_id"`
 	TeamName   string                  `json:"team_name"`
 	FieldID    uint                    `json:"field_id"`
+	FieldName  string                  `json:"field_name,omitempty"`
 	PositionID uint                    `json:"position_id"`
 	State      uint                    `json:"state"`
 	Score      int                     `json:"score"`

@@ -113,6 +113,7 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 				TeamID:     p.TeamID,
 				TeamName:   p.TeamName,
 				FieldID:    key.FieldID,
+				FieldName:  p.FieldName,
 				PositionID: key.PositionID,
 				State:      p.State,
 				Score:      p.Score,
@@ -126,7 +127,7 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 					{Name: "field_id"},
 					{Name: "position_id"},
 				},
-				DoUpdates: clause.AssignmentColumns([]string{"team_id", "team_name", "state", "score"}),
+				DoUpdates: clause.AssignmentColumns([]string{"team_id", "team_name", "field_name", "state", "score"}),
 			}); err != nil {
 				return err
 			}
@@ -205,6 +206,7 @@ func (m *Module) PushContestData(ctx context.Context) error {
 			TeamID:     p.TeamID,
 			TeamName:   p.TeamName,
 			FieldID:    p.FieldID,
+			FieldName:  p.FieldName,
 			PositionID: p.PositionID,
 			State:      uint(p.State),
 			Score:      p.Score,

@@ -25,6 +25,7 @@ type ContestPlacement struct {
 	TeamID     uint                    `json:"team_id"`
 	TeamName   string                  `json:"team_name"`
 	FieldID    uint                    `json:"field_id"`
+	FieldName  string                  `json:"field_name"`
 	PositionID uint                    `json:"position_id"`
 	State      MatchState              `json:"state"`
 	Score      int                     `json:"score"`
@@ -39,6 +40,7 @@ type ContestPlacement struct {
 func (m *Module) ExportContestData(ctx context.Context, contestID uint) ([]ContestPlacement, error) {
 	placements, err := gorm.G[MatchPlacement](m.db.DB).
 		Preload("Team", nil).
+		Preload("Field", nil).
 		Where(&MatchPlacement{ContestID: contestID}).
 		Order("round ASC, match ASC, field_id ASC, position_id ASC").
 		Find(ctx)
@@ -92,6 +94,7 @@ func (m *Module) ExportContestData(ctx context.Context, contestID uint) ([]Conte
 			TeamID:     p.TeamID,
 			TeamName:   p.Team.Name,
 			FieldID:    p.FieldID,
+			FieldName:  p.Field.Name,
 			PositionID: p.PositionID,
 			State:      p.State,
 			Score:      scoreByPlacement[p.ID],
