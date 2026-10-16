@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -212,19 +213,19 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.db.Transaction(func(tx *gorm.DB) error {
+	err = m.db.Transaction(func(tx *gorm.DB) error {
 		_, err := gorm.G[ScorecardValue](tx).
 			Where(&ScorecardValue{MatchPlacementID: placement.ID}).
 			Delete(r.Context())
 		if err != nil {
-			return err
+			return fmt.Errorf("clearing previous scorecard values: %w", err)
 		}
 
 		_, err = gorm.G[MatchScore](tx).
 			Where(&MatchScore{ID: placement.ID}).
 			Delete(r.Context())
 		if err != nil {
-			return err
+			return fmt.Errorf("clearing previous match score: %w", err)
 		}
 
 		vMap := make(map[string]int)
@@ -233,9 +234,7 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 
 			v, err := strconv.Atoi(r.FormValue(key))
 			if err != nil {
-				slog.Error("Error retreiving scorecard", "error", err)
-				m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-				return err
+				return fmt.Errorf("invalid value %q for %s: %w", r.FormValue(key), key, err)
 			}
 			scv := ScorecardValue{
 				MatchPlacementID: placement.ID,
@@ -245,50 +244,62 @@ func (m *Module) uiViewScorecardSubmit(w http.ResponseWriter, r *http.Request) {
 			vMap[key] = v
 
 			if err := gorm.G[ScorecardValue](tx).Create(r.Context(), &scv); err != nil {
-				slog.Error("Error saving scorecard value", "error", err)
-				return err
+				return fmt.Errorf("saving scorecard value %s: %w", key, err)
 			}
 		}
 
 		elements, err := gorm.G[ScorecardElement](tx).Find(r.Context())
 		if err != nil {
-			slog.Error("Error fetching scorecard elements", "error", err)
-			return err
+			return fmt.Errorf("fetching scorecard elements: %w", err)
 		}
 		exprFragments := make([]string, len(elements))
 		for i := range elements {
 			exprFragments[i] = elements[i].Expr
 		}
 
-		score, err := expr.Eval(strings.Join(exprFragments, " + "), vMap)
+		result, err := expr.Eval(strings.Join(exprFragments, " + "), vMap)
 		if err != nil {
-			slog.Error("Error evaluating scorecard", "error", err)
-			return err
+			return fmt.Errorf("evaluating scorecard: %w", err)
+		}
+		score, ok := result.(int)
+		if !ok {
+			return fmt.Errorf("evaluating scorecard: score is %T (%v), want an integer", result, result)
 		}
 		err = gorm.G[MatchScore](tx).Create(r.Context(), &MatchScore{
 			ID:               placement.ID,
 			MatchPlacementID: placement.ID,
 			GamePhaseID:      placement.PhaseID,
 			TeamID:           placement.TeamID,
-			Score:            score.(int),
+			Score:            score,
 			ContestID:        placement.ContestID,
 		})
 		if err != nil {
-			slog.Error("Error saving match score", "error", err)
-			return err
+			return fmt.Errorf("saving match score: %w", err)
 		}
 
 		_, err = gorm.G[MatchPlacement](tx).
 			Where(&MatchPlacement{ID: placement.ID}).
 			Update(r.Context(), "state", MatchStateComplete)
 		if err != nil {
-			slog.Error("Error finalizing match", "error", err)
-			return err
+			return fmt.Errorf("finalizing match: %w", err)
 		}
 
 		slog.Info("Scorecard Evaluated", "score", score)
 		return nil
 	})
+	if err != nil {
+		// The transaction rolled back, so nothing was saved.  Show
+		// the referee the error rather than redirecting as though
+		// the scorecard had been accepted.
+		slog.Error("Error saving scorecard", "placement", placement.ID, "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	// Best effort: the score is saved locally either way, and the
+	// push runs in the background so the referee is not kept
+	// waiting on the cloud.
+	m.scheduleCloudPush()
 
 	http.Redirect(w, r, "../../../../scorecard", http.StatusSeeOther)
 }

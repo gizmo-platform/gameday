@@ -13,22 +13,14 @@ func (s *Server) templateErrorHandler(w http.ResponseWriter, err error) {
 	fmt.Fprintf(w, "Error while rendering template: %s\n", err)
 }
 
-// templateError adapts an error for pongo2.  pongo2 renders a value
-// through fmt.Stringer and otherwise prints a "<T Value>" placeholder,
-// which is what a plain error produces.  The wrapper is a struct, so
-// it is always true in an {% if %} test.
-type templateError struct {
-	err error
-}
-
-func (e templateError) String() string { return e.err.Error() }
-func (e templateError) Error() string  { return e.err.Error() }
-func (e templateError) Unwrap() error  { return e.err }
-
 // adaptErrors replaces every top-level context value that is an error
-// (and not already a fmt.Stringer) with a templateError, so handlers
-// can pass errors to templates directly.  A typed nil error becomes
-// nil rather than panicking when rendered.
+// with its message, so handlers can pass errors to templates directly.
+// pongo2 would otherwise print a plain error as a "<T Value>"
+// placeholder.  The message must be a plain string: pongo2 only
+// autoescapes string values, and error messages often carry user input
+// (form values, cloud response bodies).  An empty message becomes
+// "unknown error" so {% if error %} stays true, and a typed nil error
+// becomes nil rather than panicking when rendered.
 func adaptErrors(ctx pongo2.Context) {
 	for k, v := range ctx {
 		err, ok := v.(error)
@@ -39,10 +31,11 @@ func adaptErrors(ctx pongo2.Context) {
 			ctx[k] = nil
 			continue
 		}
-		if _, ok := v.(fmt.Stringer); ok {
-			continue
+		msg := err.Error()
+		if msg == "" {
+			msg = "unknown error"
 		}
-		ctx[k] = templateError{err: err}
+		ctx[k] = msg
 	}
 }
 

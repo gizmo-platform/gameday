@@ -406,6 +406,10 @@ type Module struct {
 
 	cloudClient *cloud.Client
 
+	// autoPush serializes and coalesces the best-effort cloud
+	// pushes fired by scorecard submits (see scheduleCloudPush).
+	autoPush autoPushState
+
 	basePath string
 }
 

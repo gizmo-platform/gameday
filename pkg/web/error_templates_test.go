@@ -53,8 +53,9 @@ type pathError struct{ path string }
 func (e *pathError) Error() string { return "bad path " + e.path }
 
 // TestDoTemplateRendersErrors verifies an error passed to DoTemplate
-// renders as its message rather than pongo2's "<T Value>" placeholder,
-// including wrapped errors, and that a typed nil error renders empty.
+// renders as its HTML-escaped message rather than pongo2's "<T Value>"
+// placeholder, including wrapped errors, that a typed nil error
+// renders empty, and that an empty message renders "unknown error".
 func TestDoTemplateRendersErrors(t *testing.T) {
 	ws, _ := newTestServer(t)
 
@@ -68,6 +69,8 @@ func TestDoTemplateRendersErrors(t *testing.T) {
 		{"wrapped", fmt.Errorf("loading phase: %w", errors.New("record not found")), "loading phase: record not found"},
 		{"pointer receiver", &pathError{path: "/x"}, "bad path /x"},
 		{"typed nil", nilErr, "<code></code>"},
+		{"escaped", errors.New(`bad value "<script>alert(1)</script>"`), "bad value &quot;&lt;script&gt;alert(1)&lt;/script&gt;&quot;"},
+		{"empty message", errors.New(""), "<code>unknown error</code>"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -80,6 +83,9 @@ func TestDoTemplateRendersErrors(t *testing.T) {
 			}
 			if strings.Contains(body, " Value>") {
 				t.Errorf("body contains pongo2 placeholder:\n%s", body)
+			}
+			if strings.Contains(body, "<script>alert") {
+				t.Errorf("error message rendered without HTML escaping:\n%s", body)
 			}
 		})
 	}

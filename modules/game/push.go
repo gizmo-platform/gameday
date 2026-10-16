@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"sync"
+	"time"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -211,6 +213,76 @@ func (m *Module) PushContestData(ctx context.Context) error {
 	}
 
 	return m.cloudClient.PushContestData(ctx, contestID, wire)
+}
+
+// autoPushTimeout bounds a single best-effort push (export plus
+// upload), so a hung cloud cannot keep the worker alive indefinitely.
+const autoPushTimeout = 30 * time.Second
+
+// autoPushState tracks the background push worker.  At most one push
+// runs at a time; a request that arrives while one is running marks
+// the state pending, and the worker runs exactly one more push when it
+// finishes.  Each push replaces the contest's full data on the cloud,
+// so serializing prevents an older export from landing after a newer
+// one, and the follow-up push carries every change made meanwhile.
+type autoPushState struct {
+	mu      sync.Mutex
+	running bool
+	pending bool
+
+	// wg tracks the worker goroutine so tests can wait for it.
+	wg sync.WaitGroup
+}
+
+// scheduleCloudPush requests a best-effort push of the selected
+// contest's data to the cloud.  It never blocks and never fails the
+// caller: the push runs in the background, a server with no contest
+// selected is skipped, and failures are only logged (the manual Cloud
+// Push page remains the way to retry).
+func (m *Module) scheduleCloudPush() {
+	s := &m.autoPush
+	s.mu.Lock()
+	if s.running {
+		s.pending = true
+		s.mu.Unlock()
+		return
+	}
+	s.running = true
+	s.wg.Add(1)
+	s.mu.Unlock()
+
+	go func() {
+		defer s.wg.Done()
+		for {
+			m.autoPushOnce()
+
+			s.mu.Lock()
+			if !s.pending {
+				s.running = false
+				s.mu.Unlock()
+				return
+			}
+			s.pending = false
+			s.mu.Unlock()
+		}
+	}()
+}
+
+// autoPushOnce performs a single best-effort push.
+func (m *Module) autoPushOnce() {
+	ctx, cancel := context.WithTimeout(context.Background(), autoPushTimeout)
+	defer cancel()
+
+	contestID := m.selectedContestID(ctx)
+	if contestID == 0 {
+		slog.Debug("Skipping automatic cloud push, no contest selected")
+		return
+	}
+	if err := m.PushContestData(ctx); err != nil {
+		slog.Warn("Automatic cloud push failed", "error", err, "contest_id", contestID)
+		return
+	}
+	slog.Debug("Automatic cloud push complete", "contest_id", contestID)
 }
 
 // uiViewPushCloud renders the cloud push page.

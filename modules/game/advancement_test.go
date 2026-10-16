@@ -100,11 +100,21 @@ func newTestModuleWithDB(t *testing.T, d *db.DB, opts ...web.Option) (*Module, *
 		t.Fatalf("team Migrate: %v", err)
 	}
 
+	// Scorecard submits fire a background cloud push.  Unless a test
+	// points GAMEDAY_CLOUD at a fake server, aim the client at an
+	// unreachable local port so tests never dial the real cloud, and
+	// wait for any in-flight push before the test's database is torn
+	// down.
+	if os.Getenv("GAMEDAY_CLOUD") == "" {
+		t.Setenv("GAMEDAY_CLOUD", "http://127.0.0.1:1")
+	}
+
 	deps := modules.ModuleDeps{"team": tm}
 	m := New("onsite", d, ws, deps)
 	if m == nil {
 		t.Fatal("game.New failed")
 	}
+	t.Cleanup(m.autoPush.wg.Wait)
 	if err := m.Migrate(); err != nil {
 		t.Fatalf("game Migrate: %v", err)
 	}
