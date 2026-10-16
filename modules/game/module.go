@@ -629,6 +629,17 @@ func (m *Module) dedupeCloudPlacements() error {
 	return nil
 }
 
+// DivisionAware reports whether any phase in the game is division
+// aware.  A missing or unreadable phase table is treated as not
+// division aware.
+func (m *Module) DivisionAware() bool {
+	count, err := gorm.G[GamePhase](m.db.DB).Where(&GamePhase{DivisionAware: true}).Count(context.Background(), "*")
+	if err != nil {
+		return false
+	}
+	return count > 0
+}
+
 func (m *Module) ListFields(ctx context.Context, filter Field) ([]Field, error) {
 	out, err := gorm.G[Field](m.db.DB).Preload("Divisions", nil).Where(filter).Find(ctx)
 	return out, err

@@ -16,6 +16,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
+	"github.com/gizmo-platform/gameday/modules"
+	"github.com/gizmo-platform/gameday/modules/game"
 	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
@@ -44,7 +46,17 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		t.Fatalf("team Migrate: %v", err)
 	}
 
-	m := New("onsite", d, ws, nil)
+	deps := modules.ModuleDeps{"team": tm}
+	gm := game.New("onsite", d, ws, deps)
+	if gm == nil {
+		t.Fatal("game.New failed")
+	}
+	if err := gm.Migrate(); err != nil {
+		t.Fatalf("game Migrate: %v", err)
+	}
+	deps["game"] = gm
+
+	m := New("onsite", d, ws, deps)
 	if m == nil {
 		t.Fatal("best.New failed")
 	}

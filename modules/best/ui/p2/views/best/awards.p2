@@ -1,0 +1,65 @@
+{% extends "../../base.p2" %}
+
+{% block title %}BEST Awards{% endblock %}
+
+{% block content %}
+  <div class="box">
+    <p>Award rankings by category. Division-aware awards show one ranking per division; the top three ranks are shown, with the full ranking available below. Ties share a rank.</p>
+    <br />
+    <hr />
+
+    {% if not hasWinners %}
+      <p>No scores recorded yet.</p>
+    {% else %}
+      {% for award in awards %}
+        <h3 class="title is-4">{{ award.Award.Name }}</h3>
+        <p class="is-size-7 has-text-grey">{{ award.Award.Description }}</p>
+
+        {% if award.Groups %}
+          {% for group in award.Groups %}
+            <table class="table is-narrow is-fullwidth">
+              <tr>
+                <th>Rank</th>
+                <th>Division</th>
+                <th>Team</th>
+                <th class="has-text-right">Score</th>
+              </tr>
+              {% for entry in group.Podium %}
+              <tr>
+                <td>{{ entry.Rank }}</td>
+                <td>{% if forloop.First %}{{ group.Label }}{% endif %}</td>
+                <td>{{ entry.Team.Number }} &mdash; {{ entry.Team.Name }}</td>
+                <td class="has-text-right">{{ entry.Score|floatformat:2 }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+            {% if group.More %}
+            <details>
+              <summary class="is-size-7 has-text-grey">Full ranking</summary>
+              <table class="table is-narrow is-fullwidth">
+                <tr>
+                  <th>Rank</th>
+                  <th>Division</th>
+                  <th>Team</th>
+                  <th class="has-text-right">Score</th>
+                </tr>
+                {% for entry in group.Complete %}
+                <tr>
+                  <td>{{ entry.Rank }}</td>
+                  <td>{% if forloop.First %}{{ group.Label }}{% endif %}</td>
+                  <td>{{ entry.Team.Number }} &mdash; {{ entry.Team.Name }}</td>
+                  <td class="has-text-right">{{ entry.Score|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+              </table>
+            </details>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <p class="is-size-7 has-text-grey">No scores recorded for this category.</p>
+        {% endif %}
+        {% if not forloop.Last %}<hr />{% endif %}
+      {% endfor %}
+    {% endif %}
+  </div>
+{% endblock %}

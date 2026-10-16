@@ -10,7 +10,7 @@ func init() {
 	modules.Register(modules.ModuleInfo{
 		Name:         "best",
 		Scopes:       []string{"onsite"},
-		Dependencies: []string{},
+		Dependencies: []string{"game"},
 		Required:     false,
 		Factory: func(scope string, db *db.DB, server *web.Server, deps modules.ModuleDeps) modules.Web {
 			return New(scope, db, server, deps)

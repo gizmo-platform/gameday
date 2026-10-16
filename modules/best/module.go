@@ -26,19 +26,32 @@ const (
 //go:embed ui/*
 var efs embed.FS
 
+// GameModule is the subset of the game module the BEST module needs:
+// whether any phase in the game is division aware, which drives
+// whether the awards are ranked per division or overall.
+type GameModule interface {
+	DivisionAware() bool
+}
+
 type Module struct {
 	r  chi.Router
 	db *db.DB
 	ws *web.Server
 
+	gm GameModule
+
 	basePath string
 }
 
-func New(_ string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
+func New(_ string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 	m := &Module{
 		r:  chi.NewRouter(),
 		db: db,
 		ws: ws,
+	}
+
+	if gm, ok := deps["game"].(GameModule); ok {
+		m.gm = gm
 	}
 
 	if m.ws != nil {
@@ -63,6 +76,8 @@ func New(_ string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 			r.Get("/import", m.ws.GuardRoute(pAdmin, m.uiViewImportScores))
 			r.Post("/import", m.ws.GuardRoute(pAdmin, m.uiViewImportScoresSubmit))
 		})
+
+		r.Get("/awards", m.ws.GuardRoute(pAdmin, m.uiViewAwards))
 	})
 
 	return m
@@ -122,6 +137,10 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 		Children: []web.NavChild{{
 			Text:       "Scores",
 			Target:     path.Join(prefix, "/scores"),
+			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
+		}, {
+			Text:       "Awards",
+			Target:     path.Join(prefix, "/awards"),
 			Permission: web.Permission{Module: ModuleName, Grant: PermissionAdmin},
 		}, {
 			Text:       "Bulk Import",
