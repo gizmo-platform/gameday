@@ -430,7 +430,7 @@ func (m *Module) uiViewImportTeamsSubmit(w http.ResponseWriter, r *http.Request)
 	r.ParseForm()
 	f, _, err := r.FormFile("teams_file")
 	if err != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	defer f.Close()
@@ -701,7 +701,7 @@ func (m *Module) uiViewDeleteRegion(w http.ResponseWriter, r *http.Request) {
 	var count int64
 	m.db.Model(&Team{}).Where("region_id = ?", id).Count(&count)
 	if count > 0 {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "cannot delete region with associated teams"})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("cannot delete region with associated teams")})
 		return
 	}
 

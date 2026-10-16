@@ -266,7 +266,7 @@ func (m *Module) uiViewPhaseRankings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !phase.Frozen {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": fmt.Sprintf("phase %q is not frozen", phase.Name)})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": fmt.Errorf("phase %q is not frozen", phase.Name)})
 		return
 	}
 

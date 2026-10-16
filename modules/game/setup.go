@@ -65,7 +65,7 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 	f, _, err := r.FormFile("game_config")
 	if err != nil {
 		slog.Error("Error while extracting file", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	defer f.Close()
@@ -73,13 +73,13 @@ func (m *Module) uiViewSetupSubmit(w http.ResponseWriter, r *http.Request) {
 	c := Config{}
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		slog.Error("Error while unmarshaling game config", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	if err := m.applyGameConfig(r.Context(), c); err != nil {
 		slog.Error("Error applying game config", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 

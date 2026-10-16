@@ -16,7 +16,7 @@ func (s *Server) uiViewAdminLanding(w http.ResponseWriter, r *http.Request) {
 func (s *Server) uiViewAdminProfileList(w http.ResponseWriter, r *http.Request) {
 	profiles, err := gorm.G[Profile](s.d.Scopes(Paginate(r))).Find(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -31,14 +31,14 @@ func (s *Server) uiViewAdminProfilePermissionsForm(w http.ResponseWriter, r *htt
 
 	profile, err := gorm.G[Profile](s.d).Where(&Profile{ID: id}).Preload("Permissions", nil).First(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	slog.Debug("Loaded profile", "profile", profile)
 
 	permissions, err := gorm.G[Permission](s.d).Find(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -60,7 +60,7 @@ func (s *Server) uiViewAdminProfilePermissionsSubmit(w http.ResponseWriter, r *h
 	}
 
 	if err := s.d.Model(&Profile{ID: id}).Association("Permissions").Replace(perms); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	http.Redirect(w, r, "/admin/profile/", http.StatusSeeOther)

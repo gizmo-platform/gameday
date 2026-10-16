@@ -56,7 +56,7 @@ func (ab *authwareBackend) Name() string { return "gameday" }
 func (s *Server) uiViewUserList(w http.ResponseWriter, r *http.Request) {
 	users, err := gorm.G[User](s.d.Scopes(Paginate(r))).Preload("Profile", nil).Find(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -84,7 +84,7 @@ func (s *Server) uiViewUserFormSubmit(w http.ResponseWriter, r *http.Request) {
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(r.FormValue("secret")), bcrypt.DefaultCost)
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -102,7 +102,7 @@ func (s *Server) uiViewUserFormSubmit(w http.ResponseWriter, r *http.Request) {
 
 	u.ProfileID = profile.ID
 	if err := gorm.G[User](s.d).Create(r.Context(), &u); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -118,13 +118,13 @@ func (s *Server) uiViewUserPasswordFormSubmit(w http.ResponseWriter, r *http.Req
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(r.FormValue("secret")), bcrypt.DefaultCost)
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	if _, err := gorm.G[User](s.d).Where(&User{ID: id}).Update(r.Context(), "Secret", bytes); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	http.Redirect(w, r, "/admin/user/", http.StatusSeeOther)
@@ -134,7 +134,7 @@ func (s *Server) uiViewUserDeleteForm(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	u, err := gorm.G[User](s.d).Where(&User{ID: id}).First(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	s.DoTemplate(w, r, "view/admin/user_delete.p2", pongo2.Context{"target": u})
@@ -144,27 +144,27 @@ func (s *Server) uiViewUserDeleteFormSubmit(w http.ResponseWriter, r *http.Reque
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	u, err := gorm.G[User](s.d).Where(&User{ID: id}).First(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	if _, err := gorm.G[APIToken](s.d).Where(&APIToken{UserID: u.ID}).Delete(r.Context()); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	if _, err := gorm.G[User](s.d).Where(u).Delete(r.Context()); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	if err := s.d.Model(&Profile{ID: u.ProfileID}).Association("Permissions").Clear(); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	if _, err := gorm.G[Profile](s.d).Where(&Profile{ID: u.ProfileID}).Delete(r.Context()); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 

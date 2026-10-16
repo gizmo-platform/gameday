@@ -223,7 +223,7 @@ func (m *Module) uiViewImportCloud(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error fetching cloud regions", "error", err)
 		m.ws.DoTemplate(w, r, "views/team/import_cloud.p2", pongo2.Context{
 			"cloudBase": m.cloudClient.BaseURL(),
-			"error":     err.Error(),
+			"error":     err,
 		})
 		return
 	}
@@ -240,7 +240,7 @@ func (m *Module) uiViewImportCloud(w http.ResponseWriter, r *http.Request) {
 // cloud instance and upserts it into the local system.
 func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 	region := r.Form.Get("region")
@@ -250,7 +250,7 @@ func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request)
 		slog.Error("Error fetching cloud region teams", "region", region, "error", err)
 		m.ws.DoTemplate(w, r, "views/team/import_cloud.p2", pongo2.Context{
 			"cloudBase": m.cloudClient.BaseURL(),
-			"error":     err.Error(),
+			"error":     err,
 			"region":    region,
 		})
 		return
@@ -271,7 +271,7 @@ func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request)
 
 	applied, err := m.upsertTeamRows(r.Context(), rows)
 	if err != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 

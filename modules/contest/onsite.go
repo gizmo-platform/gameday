@@ -65,7 +65,7 @@ type OnsiteModule struct {
 
 func NewOnsite(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *OnsiteModule {
 	m := OnsiteModule{
-		r: chi.NewRouter(),
+		r:  chi.NewRouter(),
 		db: db,
 		ws: ws,
 
@@ -151,7 +151,7 @@ func (m *OnsiteModule) uiViewMyContest(w http.ResponseWriter, r *http.Request) {
 		m.ws.DoTemplate(w, r, "views/contest/my_contest.p2", pongo2.Context{
 			"cloudBase":  m.cloudClient.BaseURL(),
 			"moduleBase": m.basePath,
-			"error":      err.Error(),
+			"error":      err,
 		})
 		return
 	}
@@ -172,7 +172,7 @@ func (m *OnsiteModule) uiViewSelectContest(w http.ResponseWriter, r *http.Reques
 
 	id := m.ws.StrToUint(r.FormValue("contest_id"))
 	if id == 0 {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "no contest selected"})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("no contest selected")})
 		return
 	}
 
@@ -190,7 +190,7 @@ func (m *OnsiteModule) uiViewSelectContest(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if info == nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "unknown contest"})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("unknown contest")})
 		return
 	}
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -80,19 +81,19 @@ func (ab *authwareBackend) AuthToken(ctx context.Context, token string) (authwar
 func (s *Server) uiViewUserTokens(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	if id == 0 {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "invalid user id"})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("invalid user id")})
 		return
 	}
 
 	u, err := gorm.G[User](s.d).Where("id = ?", id).First(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	tokens, err := gorm.G[APIToken](s.d).Where("user_id = ?", id).Order("id DESC").Find(r.Context())
 	if err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -107,18 +108,18 @@ func (s *Server) uiViewUserTokenCreate(w http.ResponseWriter, r *http.Request) {
 
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	if id == 0 {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "invalid user id"})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("invalid user id")})
 		return
 	}
 	if _, err := gorm.G[User](s.d).Where("id = ?", id).First(r.Context()); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	plaintext, hash, prefix, err := generateAPIToken()
 	if err != nil {
 		slog.Error("Error generating API token", "error", err)
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -130,7 +131,7 @@ func (s *Server) uiViewUserTokenCreate(w http.ResponseWriter, r *http.Request) {
 		UserID:    id,
 	}
 	if err := gorm.G[APIToken](s.d).Create(r.Context(), &t); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
@@ -146,14 +147,14 @@ func (s *Server) uiViewUserTokenDelete(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	tid := s.StrToUint(chi.URLParam(r, "tid"))
 	if id == 0 || tid == 0 {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "invalid id"})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("invalid id")})
 		return
 	}
 
 	// Scoped to the owning user so a token can only be deleted
 	// through its owner's page.
 	if _, err := gorm.G[APIToken](s.d).Where("id = ? AND user_id = ?", tid, id).Delete(r.Context()); err != nil {
-		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 

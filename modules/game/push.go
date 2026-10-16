@@ -232,7 +232,7 @@ func (m *Module) uiViewPushCloudSubmit(w http.ResponseWriter, r *http.Request) {
 		m.ws.DoTemplate(w, r, "views/game/push_cloud.p2", pongo2.Context{
 			"cloudBase":  m.cloudClient.BaseURL(),
 			"contestID":  contestID,
-			"error":      err.Error(),
+			"error":      err,
 			"moduleBase": m.basePath,
 		})
 		return

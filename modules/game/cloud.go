@@ -97,7 +97,7 @@ func (m *Module) uiViewImportCloud(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error fetching cloud game file", "error", err)
 		m.ws.DoTemplate(w, r, "views/game/import_cloud.p2", pongo2.Context{
 			"cloudBase":  m.cloudClient.BaseURL(),
-			"error":      err.Error(),
+			"error":      err,
 			"moduleBase": m.basePath,
 		})
 		return
@@ -119,7 +119,7 @@ func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request)
 		slog.Error("Error fetching cloud game file", "error", err)
 		m.ws.DoTemplate(w, r, "views/game/import_cloud.p2", pongo2.Context{
 			"cloudBase":  m.cloudClient.BaseURL(),
-			"error":      err.Error(),
+			"error":      err,
 			"moduleBase": m.basePath,
 		})
 		return
@@ -128,13 +128,13 @@ func (m *Module) uiViewImportCloudSubmit(w http.ResponseWriter, r *http.Request)
 	c := Config{}
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		slog.Error("Error while unmarshaling cloud game config", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 
 	if err := m.applyGameConfig(r.Context(), c); err != nil {
 		slog.Error("Error applying cloud game config", "error", err)
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
 	}
 

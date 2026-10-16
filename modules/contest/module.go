@@ -3,6 +3,7 @@ package contest
 import (
 	"context"
 	"embed"
+	"errors"
 	"io/fs"
 	"net/http"
 	"path"
@@ -59,7 +60,7 @@ type Module struct {
 
 func New(scope string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
 	m := Module{
-		r: chi.NewRouter(),
+		r:  chi.NewRouter(),
 		db: db,
 		ws: ws,
 
@@ -376,7 +377,7 @@ func (m *Module) uiViewRosterAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing > 0 {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "team already on roster"})
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": errors.New("team already on roster")})
 		return
 	}
 

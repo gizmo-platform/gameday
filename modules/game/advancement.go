@@ -58,21 +58,21 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 	rowData, err := gorm.G[scoreboardRow](m.db.DB,
 		clause.Select{
 			Expression: clause.CommaExpression{Exprs: []clause.Expression{
-				clause.NamedExpr{"?", []interface{}{clause.Column{Name: "team_id"}}},
-				clause.NamedExpr{"CAST(AVG(?) AS INT) AS avg", []interface{}{clause.Column{Name: "score"}}},
+				clause.NamedExpr{SQL: "?", Vars: []interface{}{clause.Column{Name: "team_id"}}},
+				clause.NamedExpr{SQL: "CAST(AVG(?) AS INT) AS avg", Vars: []interface{}{clause.Column{Name: "score"}}},
 				clause.NamedExpr{
-					"COALESCE((SUM(?) - MIN(?)) / (COUNT(?) - 1), CAST(AVG(?) AS INT)) AS mulligan",
-					[]interface{}{
+					SQL: "COALESCE((SUM(?) - MIN(?)) / (COUNT(?) - 1), CAST(AVG(?) AS INT)) AS mulligan",
+					Vars: []interface{}{
 						clause.Column{Name: "score"},
 						clause.Column{Name: "score"},
 						clause.Column{Name: "score"},
 						clause.Column{Name: "score"},
 					},
 				},
-				clause.NamedExpr{"SUM(?) AS total", []interface{}{clause.Column{Name: "score"}}},
-				clause.NamedExpr{"MIN(?) AS min", []interface{}{clause.Column{Name: "score"}}},
-				clause.NamedExpr{"MAX(?) AS max", []interface{}{clause.Column{Name: "score"}}},
-				clause.NamedExpr{"COUNT(?) AS count", []interface{}{clause.Column{Name: "score"}}},
+				clause.NamedExpr{SQL: "SUM(?) AS total", Vars: []interface{}{clause.Column{Name: "score"}}},
+				clause.NamedExpr{SQL: "MIN(?) AS min", Vars: []interface{}{clause.Column{Name: "score"}}},
+				clause.NamedExpr{SQL: "MAX(?) AS max", Vars: []interface{}{clause.Column{Name: "score"}}},
+				clause.NamedExpr{SQL: "COUNT(?) AS count", Vars: []interface{}{clause.Column{Name: "score"}}},
 			}},
 		},
 		clause.From{Tables: []clause.Table{{Name: "match_scores"}}},
@@ -201,9 +201,9 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 	candidates := make(map[uint]team.Team)
 	excluded := make(map[uint]struct{})
 	wctx := WhenContext{
-		Phases:     phaseStates(phases, phaseComplete),
-		Roster:     makeRoster(teams),
-		Division:   division,
+		Phases:   phaseStates(phases, phaseComplete),
+		Roster:   makeRoster(teams),
+		Division: division,
 	}
 	for _, filter := range phase.AdvancementFilters {
 		var rowData []scoreboardRow

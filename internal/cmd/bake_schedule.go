@@ -15,7 +15,7 @@ var (
 		Use:   "schedule <scheduler> <rounds> <fields> <positions> <teams>",
 		Short: "generate a schedule with the given parameters",
 		Run:   bakeScheduleCmdRun,
-		Args:  cobra.ExactArgs(4),
+		Args:  cobra.ExactArgs(5),
 	}
 )
 
@@ -41,9 +41,9 @@ func bakeScheduleCmdRun(c *cobra.Command, args []string) {
 
 	tw := table.NewWriter()
 	h := []interface{}{"Round", "Match"}
-	for field := range strToInt(args[1]) {
-		for pos := range strToInt(args[2]) {
-			h = append(h, schedgen.Location{field, pos}.String())
+	for field := range cfg.Fields {
+		for pos := range cfg.Positions {
+			h = append(h, schedgen.Location{Field: field, Position: pos}.String())
 		}
 	}
 	tw.AppendHeader(h)
@@ -51,11 +51,14 @@ func bakeScheduleCmdRun(c *cobra.Command, args []string) {
 	for r, round := range s.Rounds {
 		for _, match := range round.Matches {
 			t := []interface{}{r + 1, m}
-			for field := range strToInt(args[1]) {
-				for pos := range strToInt(args[2]) {
-					ft := match.Team(field, pos)
-					if ft >= 0 {
+			for field := range cfg.Fields {
+				for pos := range cfg.Positions {
+					// An empty position prints a blank cell so later
+					// teams stay under their own column.
+					if ft := match.Team(field, pos); ft >= 0 {
 						t = append(t, ft)
+					} else {
+						t = append(t, "")
 					}
 				}
 			}
