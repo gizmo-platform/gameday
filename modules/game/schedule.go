@@ -243,6 +243,64 @@ func (m *Module) uiViewPhaseScoreStats(w http.ResponseWriter, r *http.Request) {
 	m.ws.DoTemplate(w, r, "views/game/phase_score_stats.p2", ctx)
 }
 
+// phaseRankingTable is one ranking table on the phase rankings page:
+// the whole field, or a single division of a division aware phase.
+type phaseRankingTable struct {
+	Division string
+	Rows     []scoreboardRow
+}
+
+// uiViewPhaseRankings shows the final scoreboard rankings of a frozen
+// phase, ranked by the phase's configured score summation and
+// tie-breaker, without pagination.  A division aware phase gets one
+// table per division that has ranked teams.
+func (m *Module) uiViewPhaseRankings(w http.ResponseWriter, r *http.Request) {
+	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	phase, err := gorm.G[GamePhase](m.db.DB).
+		Where(&GamePhase{ID: gPhase}).
+		First(r.Context())
+	if err != nil {
+		slog.Error("Error retreiving phase", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	if !phase.Frozen {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": fmt.Sprintf("phase %q is not frozen", phase.Name)})
+		return
+	}
+
+	divisions, err := m.whenDivisions(r.Context(), phase)
+	if err != nil {
+		slog.Error("Error loading divisions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	tables := []phaseRankingTable{}
+	for _, division := range divisions {
+		rows, err := m.scoreboardRankings(r.Context(), phase.ID, division)
+		if err != nil {
+			slog.Error("Error computing phase rankings", "error", err)
+			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+			return
+		}
+		if phase.DivisionAware && len(rows) == 0 {
+			continue
+		}
+		tables = append(tables, phaseRankingTable{Division: division, Rows: rows})
+	}
+
+	ctx := pongo2.Context{
+		"phase":        phase,
+		"tables":       tables,
+		"backSchedule": path.Join(m.basePath, "schedule", "phases", fmt.Sprint(gPhase)),
+		"backPhases":   path.Join(m.basePath, "schedule"),
+	}
+
+	m.ws.DoTemplate(w, r, "views/game/phase_rankings.p2", ctx)
+}
+
 func (m *Module) uiViewPhaseMakeActive(w http.ResponseWriter, r *http.Request) {
 	gPhase := m.ws.StrToUint(chi.URLParam(r, "id"))
 

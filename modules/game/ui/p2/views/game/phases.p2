@@ -28,6 +28,9 @@
                   {% if profile | hasPermission:"GAME:ADMIN" %}
                     <a class="button" href="schedule/phases/{{ phase.ID }}/stats">Stats</a>
                   {% endif %}
+                  {% if phase.Frozen and user.Identity %}
+                    <a class="button" href="schedule/phases/{{ phase.ID }}/rankings">Rankings</a>
+                  {% endif %}
                   {% if !phase.Active and !phase.Frozen and (profile | hasPermission:"GAME:SCHEDULE") %}
                     <form method="POST" action="schedule/phases/{{ phase.ID }}/make-active">
                       <button type="submit" class="button">Activate</button>

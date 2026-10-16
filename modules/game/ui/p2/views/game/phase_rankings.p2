@@ -1,0 +1,44 @@
+{% extends "../../base.p2" %}
+
+{% block title %}Phase Rankings{% endblock %}
+
+{% block content %}
+  <div class="box is-flex is-justify-content-center">
+    <div>
+      <div class="content"><h2>Phase Rankings - {{ phase.Name | capfirst }}</h2></div>
+      {% for table in tables %}
+        {% if phase.DivisionAware %}
+          <div class="content"><h3>{{ table.Division }}</h3></div>
+        {% endif %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Team</th>
+              <th>Score</th>
+              <th>Matches</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in table.Rows %}
+              <tr>
+                <td>{{ row.Rank }}</td>
+                <td>{{ row.Team.Number }} - {{ row.Team.Name }}</td>
+                <td>{{ row.Score }}</td>
+                <td>{{ row.Count }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4">No scores recorded for this phase.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% empty %}
+        <p>No scores recorded for this phase.</p>
+      {% endfor %}
+      <div class="buttons">
+        <a class="button" href="{{ backSchedule }}">Back to Phase Schedule</a>
+        <a class="button" href="{{ backPhases }}">Back to Phases</a>
+      </div>
+    </div>
+  </div>
+{% endblock %}

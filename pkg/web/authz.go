@@ -103,6 +103,19 @@ func (s *Server) GuardRoute(p Permission, handler http.HandlerFunc) http.Handler
 	}
 }
 
+// GuardLogin wraps a single handler so that it is only reachable by a
+// logged in user, regardless of permissions.  Anonymous requests are
+// denied with 401, using the same HTML or JSON body as GuardRoute.
+func (s *Server) GuardLogin(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.Context().Value(authware.UserKey{}).(authware.User); !ok {
+			s.renderUnauthorized(w, r, Permission{})
+			return
+		}
+		handler(w, r)
+	}
+}
+
 func (s *Server) accessibleNavElements(r *http.Request) []NavElement {
 	profile, _ := r.Context().Value(ProfileKey{}).(Profile)
 

@@ -10,7 +10,7 @@
   {% if user.Identity %}
   <p>You do not have permission to access this page. The required permission is <code>{{ perm }}</code>.</p>
   {% else %}
-  <p>Please log in to access this page. The required permission is <code>{{ perm }}</code>.</p>
+  <p>Please log in to access this page.{% if perm.Module %} The required permission is <code>{{ perm }}</code>.{% endif %}</p>
   <br />
   <div class="flex-container flex-center">
     <a class="flex-item button" href="/login">Login</a>
