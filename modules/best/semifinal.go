@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-schedgen.RegisterGenerator("BESTSemifinal", NewBESTSemifinal)
+	schedgen.RegisterGenerator("BESTSemifinal", NewBESTSemifinal)
 	schedgen.RegisterGeneratorConfig("BESTSemifinal", BESTSemifinalConfig{})
 }
 
@@ -70,7 +70,8 @@ func NewBESTSemifinal(c schedgen.Config) schedgen.Generator {
 // In division-aware scheduling a 16-team division must be pinned
 // to 2 or 3 fields (auto-assignment would request 4), and
 // NoCompact divisions forfeit cross-division compaction during
-// interleave.
+// interleave. Fewer than 8 teams play the 8-team table with the
+// positions of absent seeds left empty.
 type BESTSemifinalSchedule struct {
 	schedgen.Schedule
 }
@@ -106,21 +107,24 @@ func validFieldCounts(table [][4]int) []int {
 }
 
 // Generate looks up the fixed semifinal rotation for the configured
-// team count and returns it as a single round. Team counts other
-// than 8 or 16 are not supported by the rotation tables and return
-// an error. When Config.Fields is greater than one, consecutive
+// team count and returns it as a single round. One to eight teams
+// play the 8-team table and sixteen teams play the 16-team table;
+// any other count returns an error. Seeds above the team count are
+// absent: their positions are left empty and a match with no teams
+// present is not emitted, so every present team still plays all of
+// its table matches. When Config.Fields is greater than one, consecutive
 // table matches are grouped into blocks of that size and each block
 // becomes one concurrent match spanning fields 0..Fields-1; field
 // counts whose blocks are not team-disjoint are rejected.
 func (s *BESTSemifinalSchedule) Generate() (*schedgen.Schedule, error) {
 	var table [][4]int
-	switch s.Config.Teams {
-	case 8:
+	switch {
+	case s.Config.Teams >= 1 && s.Config.Teams <= 8:
 		table = semiFinal8[:]
-	case 16:
+	case s.Config.Teams == 16:
 		table = semiFinal16[:]
 	default:
-		return nil, fmt.Errorf("BESTSemifinal: unsupported team count %d (must be 8 or 16)", s.Config.Teams)
+		return nil, fmt.Errorf("BESTSemifinal: unsupported team count %d (must be 1-8 or 16)", s.Config.Teams)
 	}
 
 	fields := s.Config.Fields
@@ -148,12 +152,18 @@ func (s *BESTSemifinalSchedule) Generate() (*schedgen.Schedule, error) {
 		placements := make(map[schedgen.Location]int)
 		for j := 0; j < fields; j++ {
 			for col, seed := range table[slot+j] {
+				if seed > s.Config.Teams {
+					continue
+				}
 				teamIndex := seed - 1
 				placements[schedgen.Location{Field: j, Position: col}] = teamIndex
 				if _, done := r.TeamAppearances[teamIndex]; !done {
-					r.TeamAppearances[teamIndex] = slot / fields
+					r.TeamAppearances[teamIndex] = len(r.Matches)
 				}
 			}
+		}
+		if len(placements) == 0 {
+			continue
 		}
 		r.Matches = append(r.Matches, schedgen.Match{Placements: placements})
 	}

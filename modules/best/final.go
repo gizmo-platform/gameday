@@ -49,21 +49,25 @@ func NewBESTFinal(c schedgen.Config) schedgen.Generator {
 // single field: each of the four matches spans the four positions and
 // every team plays every match. The winner is decided by total points
 // across the four matches, which is computed by the score layer rather
-// than this generator.
+// than this generator. Fewer than four teams play the same table with
+// the positions of absent ranks left empty.
 type BESTFinalsSchedule struct {
 	schedgen.Schedule
 }
 
 // Generate looks up the fixed finals rotation and returns it as a
 // single round of four single-field matches. The finals rotation
-// requires exactly four teams, a single field, and at least four
+// requires one to four teams, a single field, and at least four
 // positions (Yellow, Blue, Red, Green); anything else returns an error.
+// Ranks above the team count are absent and their positions are left
+// empty. Rank 1 appears in every match, so all four matches are always
+// emitted.
 func (s *BESTFinalsSchedule) Generate() (*schedgen.Schedule, error) {
-	if s.Config.Teams != 4 {
-		return nil, fmt.Errorf("BESTFinals: unsupported team count %d (must be 4)", s.Config.Teams)
+	if s.Config.Teams < 1 || s.Config.Teams > 4 {
+		return nil, fmt.Errorf("BESTFinals: unsupported team count %d (must be 1-4)", s.Config.Teams)
 	}
 	if s.Config.Fields != 1 {
-		return nil, fmt.Errorf("BESTFinals: rotation is single-field (got %d fields); all four teams play every match", s.Config.Fields)
+		return nil, fmt.Errorf("BESTFinals: rotation is single-field (got %d fields); every team plays every match", s.Config.Fields)
 	}
 	if s.Config.Positions < 4 {
 		return nil, fmt.Errorf("BESTFinals: requires 4 positions (got %d)", s.Config.Positions)
@@ -73,6 +77,9 @@ func (s *BESTFinalsSchedule) Generate() (*schedgen.Schedule, error) {
 	for m, row := range finals4 {
 		placements := make(map[schedgen.Location]int, 4)
 		for col, rank := range row {
+			if rank > s.Config.Teams {
+				continue
+			}
 			teamIndex := rank - 1
 			placements[schedgen.Location{Field: 0, Position: col}] = teamIndex
 			if _, done := r.TeamAppearances[teamIndex]; !done {

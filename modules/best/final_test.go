@@ -132,7 +132,7 @@ func TestFinals4(t *testing.T) {
 }
 
 func TestFinalsRejection(t *testing.T) {
-	for _, teams := range []int{0, 3, 5} {
+	for _, teams := range []int{0, 5, 8} {
 		cfg := schedgen.Config{Fields: 1, Positions: 4, Teams: teams, Rounds: 4}
 		gen := NewBESTFinal(cfg)
 		s, err := gen.Generate()
@@ -191,5 +191,20 @@ func TestFinalsRegistration(t *testing.T) {
 	}
 	if cfgProvider.DefaultRounds() != 4 {
 		t.Errorf("registered config DefaultRounds() = %d, want 4", cfgProvider.DefaultRounds())
+	}
+}
+
+// TestFinalsShort runs the finals rotation with fewer than four teams
+// and asserts every present team plays all four matches and no absent
+// rank is placed.
+func TestFinalsShort(t *testing.T) {
+	for teams := 1; teams <= 4; teams++ {
+		cfg := schedgen.Config{Fields: 1, Positions: 4, Teams: teams, Rounds: 4}
+		s, err := NewBESTFinal(cfg).Generate()
+		if err != nil {
+			t.Errorf("teams=%d: unexpected error: %v", teams, err)
+			continue
+		}
+		checkShortSchedule(t, s, teams, 4, 4)
 	}
 }

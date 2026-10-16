@@ -126,7 +126,7 @@ func TestSemifinal16(t *testing.T) {
 }
 
 func TestSemifinalRejection(t *testing.T) {
-	for _, teams := range []int{0, 7, 10, 12} {
+	for _, teams := range []int{0, 9, 10, 12, 15, 17} {
 		cfg := schedgen.Config{Fields: 1, Positions: 4, Teams: teams, Rounds: 3}
 		gen := NewBESTSemifinal(cfg)
 		s, err := gen.Generate()
@@ -291,5 +291,65 @@ func TestSemifinalRegistration(t *testing.T) {
 	}
 	if cfgProvider.DefaultRounds() != 3 {
 		t.Errorf("registered config DefaultRounds() = %d, want 3", cfgProvider.DefaultRounds())
+	}
+}
+
+// TestSemifinalShort runs the 8-team rotation with fewer than eight
+// teams and asserts every present team is placed in exactly 3 matches,
+// no absent seed is placed, and no empty match is emitted.
+func TestSemifinalShort(t *testing.T) {
+	cases := []struct {
+		teams, fields, matches int
+	}{
+		{1, 1, 3}, {2, 1, 4}, {3, 1, 6},
+		{4, 1, 6}, {5, 1, 6}, {6, 1, 6}, {7, 1, 6}, {8, 1, 6},
+		{5, 2, 3}, {6, 2, 3}, {7, 2, 3}, {8, 2, 3},
+	}
+	for _, tc := range cases {
+		cfg := schedgen.Config{Fields: tc.fields, Positions: 4, Teams: tc.teams, Rounds: 3}
+		s, err := NewBESTSemifinal(cfg).Generate()
+		if err != nil {
+			t.Errorf("teams=%d fields=%d: unexpected error: %v", tc.teams, tc.fields, err)
+			continue
+		}
+		checkShortSchedule(t, s, tc.teams, tc.matches, 3)
+	}
+}
+
+// checkShortSchedule asserts every match places at least one team,
+// every placed index is a present team, each team 0..teams-1 plays
+// exactly perTeam matches, and Score/Validate accept the schedule.
+func checkShortSchedule(t *testing.T, s *schedgen.Schedule, teams, matches, perTeam int) {
+	t.Helper()
+
+	if len(s.Rounds) != 1 {
+		t.Fatalf("teams=%d: expected 1 round, got %d", teams, len(s.Rounds))
+	}
+	r := s.Rounds[0]
+	if len(r.Matches) != matches {
+		t.Errorf("teams=%d: expected %d matches, got %d", teams, matches, len(r.Matches))
+	}
+
+	counts := make(map[int]int)
+	for m, match := range r.Matches {
+		if len(match.Placements) == 0 {
+			t.Errorf("teams=%d: match %d is empty", teams, m+1)
+		}
+		for loc, idx := range match.Placements {
+			if idx < 0 || idx >= teams {
+				t.Errorf("teams=%d: match %d %v places absent team index %d", teams, m+1, loc, idx)
+			}
+			counts[idx]++
+		}
+	}
+	for i := 0; i < teams; i++ {
+		if counts[i] != perTeam {
+			t.Errorf("teams=%d: team %d plays %d matches, want %d", teams, i, counts[i], perTeam)
+		}
+	}
+
+	s.Score()
+	if err := s.Validate(); err != nil {
+		t.Errorf("teams=%d: Validate: %v", teams, err)
 	}
 }
