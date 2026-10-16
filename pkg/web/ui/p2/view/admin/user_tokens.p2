@@ -5,12 +5,12 @@
 {% block content %}
 <div class="box">
   <div class="is-flex is-justify-content-center">
-    <h2 class="title is-4">API Tokens for {{ user.Login }}</h2>
+    <h2 class="title is-4">API Tokens for {{ target.Login }}</h2>
   </div>
   <hr />
   <div class="is-flex is-justify-content-center">
     <div>
-      <form method="POST" action="/admin/user/{{ user.ID }}/tokens">
+      <form method="POST" action="/admin/user/{{ target.ID }}/tokens">
         <div class="field">
           <label class="label">Label</label>
           <div class="control">
@@ -42,7 +42,7 @@
             <td><code>{{ token.Prefix }}&hellip;</code></td>
             <td>{{ token.CreatedAt | date:"2006-01-02 15:04" }}</td>
             <td class="flex-container flex-row">
-              <form method="POST" action="/admin/user/{{ user.ID }}/tokens/{{ token.ID }}/delete">
+              <form method="POST" action="/admin/user/{{ target.ID }}/tokens/{{ token.ID }}/delete">
                 <button type="submit" class="button is-danger">Delete</button>
               </form>
             </td>

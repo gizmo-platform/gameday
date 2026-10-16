@@ -79,21 +79,25 @@ func (ab *authwareBackend) AuthToken(ctx context.Context, token string) (authwar
 
 func (s *Server) uiViewUserTokens(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
+	if id == 0 {
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "invalid user id"})
+		return
+	}
 
-	u, err := gorm.G[User](s.d).Where(&User{ID: id}).First(r.Context())
+	u, err := gorm.G[User](s.d).Where("id = ?", id).First(r.Context())
 	if err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
 
-	tokens, err := gorm.G[APIToken](s.d).Where(&APIToken{UserID: id}).Order("id DESC").Find(r.Context())
+	tokens, err := gorm.G[APIToken](s.d).Where("user_id = ?", id).Order("id DESC").Find(r.Context())
 	if err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
 
 	s.DoTemplate(w, r, "view/admin/user_tokens.p2", pongo2.Context{
-		"user":   u,
+		"target": u,
 		"tokens": tokens,
 	})
 }
@@ -102,7 +106,11 @@ func (s *Server) uiViewUserTokenCreate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
 	id := s.StrToUint(chi.URLParam(r, "id"))
-	if _, err := gorm.G[User](s.d).Where(&User{ID: id}).First(r.Context()); err != nil {
+	if id == 0 {
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "invalid user id"})
+		return
+	}
+	if _, err := gorm.G[User](s.d).Where("id = ?", id).First(r.Context()); err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
@@ -129,18 +137,22 @@ func (s *Server) uiViewUserTokenCreate(w http.ResponseWriter, r *http.Request) {
 	// The plaintext is shown exactly once, directly on this page. A
 	// redirect cannot carry the one-time secret.
 	s.DoTemplate(w, r, "view/admin/user_token_created.p2", pongo2.Context{
-		"user":  User{ID: id},
-		"token": plaintext,
+		"target": User{ID: id},
+		"token":  plaintext,
 	})
 }
 
 func (s *Server) uiViewUserTokenDelete(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
 	tid := s.StrToUint(chi.URLParam(r, "tid"))
+	if id == 0 || tid == 0 {
+		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": "invalid id"})
+		return
+	}
 
 	// Scoped to the owning user so a token can only be deleted
 	// through its owner's page.
-	if _, err := gorm.G[APIToken](s.d).Where(&APIToken{ID: tid, UserID: id}).Delete(r.Context()); err != nil {
+	if _, err := gorm.G[APIToken](s.d).Where("id = ? AND user_id = ?", tid, id).Delete(r.Context()); err != nil {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}

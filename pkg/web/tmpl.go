@@ -12,6 +12,9 @@ func (s *Server) templateErrorHandler(w http.ResponseWriter, err error) {
 	fmt.Fprintf(w, "Error while rendering template: %s\n", err)
 }
 
+// DoTemplate renders tmpl with the per-request keys user, profile,
+// navElements, and pageBase injected, overwriting any caller-supplied
+// values under those names.
 func (s *Server) DoTemplate(w http.ResponseWriter, r *http.Request, tmpl string, ctx pongo2.Context) {
 	if ctx == nil {
 		ctx = pongo2.Context{}

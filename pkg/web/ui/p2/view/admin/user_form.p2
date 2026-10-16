@@ -8,7 +8,7 @@
       <div class="field">
         <label class="label" for="login">Login Name</label>
         <div class="control">
-          <input class="input" type="text" name="login" value="{{ user.Login }}" />
+          <input class="input" type="text" name="login" value="{{ target.Login }}" />
         </div>
       </div>
 

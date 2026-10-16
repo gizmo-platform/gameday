@@ -68,11 +68,11 @@ func (s *Server) uiViewUserList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uiViewUserForm(w http.ResponseWriter, r *http.Request) {
 	id := s.StrToUint(chi.URLParam(r, "id"))
-	ctx := pongo2.Context{"user": User{}}
+	ctx := pongo2.Context{"target": User{}}
 
 	user, err := gorm.G[User](s.d).Where(&User{ID: id}).First(r.Context())
 	if err == nil {
-		ctx["user"] = user
+		ctx["target"] = user
 	}
 
 	slog.Debug("user value", "value", ctx)
@@ -137,7 +137,7 @@ func (s *Server) uiViewUserDeleteForm(w http.ResponseWriter, r *http.Request) {
 		s.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err.Error()})
 		return
 	}
-	s.DoTemplate(w, r, "view/admin/user_delete.p2", pongo2.Context{"user": u})
+	s.DoTemplate(w, r, "view/admin/user_delete.p2", pongo2.Context{"target": u})
 }
 
 func (s *Server) uiViewUserDeleteFormSubmit(w http.ResponseWriter, r *http.Request) {

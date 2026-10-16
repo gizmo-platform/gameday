@@ -24,7 +24,13 @@ func TestAuthTokenResolvesUser(t *testing.T) {
 	ws, d := newTestServer(t)
 	ctx := context.Background()
 
-	u := User{Login: "token-user", Secret: []byte("x")}
+	login := fmt.Sprintf("token-user-%d", time.Now().UnixNano())
+	u := User{Login: login, Secret: []byte("x")}
+	p := Profile{Username: login}
+	if err := gorm.G[Profile](d.DB).Create(ctx, &p); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	u.ProfileID = p.ID
 	if err := gorm.G[User](d.DB).Create(ctx, &u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -115,7 +121,13 @@ func TestTokenCreateHandler(t *testing.T) {
 	ws, d := newTestServer(t)
 	ctx := context.Background()
 
-	u := User{Login: "token-creator", Secret: []byte("x")}
+	login := fmt.Sprintf("token-creator-%d", time.Now().UnixNano())
+	u := User{Login: login, Secret: []byte("x")}
+	p := Profile{Username: login}
+	if err := gorm.G[Profile](d.DB).Create(ctx, &p); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	u.ProfileID = p.ID
 	if err := gorm.G[User](d.DB).Create(ctx, &u); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -148,6 +160,63 @@ func TestTokenCreateHandler(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "gd_") {
 		t.Error("response does not contain the plaintext token")
+	}
+}
+
+// TestTokenCreateHandlerFK drives the token-create handler against a
+// database that enforces foreign keys and asserts the insert succeeds.
+func TestTokenCreateHandlerFK(t *testing.T) {
+	ws, d := newTestServer(t)
+	ctx := context.Background()
+
+	login := fmt.Sprintf("token-fk-%d", time.Now().UnixNano())
+	u := User{Login: login, Secret: []byte("x")}
+	p := Profile{Username: login}
+	if err := gorm.G[Profile](d.DB).Create(ctx, &p); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	u.ProfileID = p.ID
+	if err := gorm.G[User](d.DB).Create(ctx, &u); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	id := fmt.Sprintf("%d", u.ID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	req := httptest.NewRequest("POST", "http://test.ui/admin/user/"+id+"/tokens", strings.NewReader("label=fk"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+	ws.uiViewUserTokenCreate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body: %s)", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	tokens, err := gorm.G[APIToken](d.DB).Where(&APIToken{UserID: u.ID}).Find(ctx)
+	if err != nil {
+		t.Fatalf("find tokens: %v", err)
+	}
+	if len(tokens) != 1 {
+		t.Fatalf("token rows = %d, want 1", len(tokens))
+	}
+
+	// A zero/missing user id must be rejected before the insert, not
+	// allowed through to a foreign-key violation.
+	rctx0 := chi.NewRouteContext()
+	rctx0.URLParams.Add("id", "0")
+	req0 := httptest.NewRequest("POST", "http://test.ui/admin/user/0/tokens", strings.NewReader("label=bad"))
+	req0.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req0 = req0.WithContext(context.WithValue(req0.Context(), chi.RouteCtxKey, rctx0))
+	w0 := httptest.NewRecorder()
+	ws.uiViewUserTokenCreate(w0, req0)
+
+	var tokenCount int64
+	if err := d.Model(&APIToken{}).Where("user_id = ?", u.ID).Count(&tokenCount).Error; err != nil {
+		t.Fatalf("count tokens: %v", err)
+	}
+	if tokenCount != 1 {
+		t.Errorf("token rows after zero-id create = %d, want 1 (no row written)", tokenCount)
 	}
 }
 
@@ -235,5 +304,43 @@ func TestBearerTokenEndToEnd(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "Create User") {
 		t.Error("no auth: body contains the user list, want the unauthorized page")
+	}
+}
+
+// TestTokenPageTargetsUser renders the tokens page as a logged-in admin
+// and asserts the create form posts to the viewed user's ID. The
+// per-request "user" key injected by DoTemplate must not clobber the
+// user being managed, or the form posts to /admin/user//tokens.
+func TestTokenPageTargetsUser(t *testing.T) {
+	ws, d := newTestServer(t)
+	ctx := context.Background()
+
+	login := fmt.Sprintf("token-page-%d", time.Now().UnixNano())
+	u := User{Login: login, Secret: []byte("x")}
+	p := Profile{Username: login}
+	if err := gorm.G[Profile](d.DB).Create(ctx, &p); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+	u.ProfileID = p.ID
+	if err := gorm.G[User](d.DB).Create(ctx, &u); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	id := fmt.Sprintf("%d", u.ID)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	req := httptest.NewRequest("GET", "http://test.ui/admin/user/"+id+"/tokens", nil)
+	rc := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	rc = context.WithValue(rc, authware.UserKey{}, authware.User{Identity: "admin"})
+	req = req.WithContext(rc)
+	w := httptest.NewRecorder()
+	ws.uiViewUserTokens(w, req)
+
+	body := w.Body.String()
+	if want := `action="/admin/user/` + id + `/tokens"`; !strings.Contains(body, want) {
+		t.Errorf("body does not contain %q", want)
+	}
+	if !strings.Contains(body, "API Tokens for "+login) {
+		t.Errorf("body does not name the viewed user %q", login)
 	}
 }

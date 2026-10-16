@@ -19,7 +19,7 @@
         </div>
       </div>
       <div class="is-flex is-justify-content-center">
-        <a class="button is-primary" href="/admin/user/{{ user.ID }}/tokens">Back to Tokens</a>
+        <a class="button is-primary" href="/admin/user/{{ target.ID }}/tokens">Back to Tokens</a>
       </div>
     </div>
   </div>
