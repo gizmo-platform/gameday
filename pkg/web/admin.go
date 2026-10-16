@@ -3,6 +3,7 @@ package web
 import (
 	"log/slog"
 	"net/http"
+	"sort"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
@@ -43,10 +44,39 @@ func (s *Server) uiViewAdminProfilePermissionsForm(w http.ResponseWriter, r *htt
 	}
 
 	ctx := pongo2.Context{
-		"pprofile":    profile,
-		"permissions": permissions,
+		"pprofile":   profile,
+		"permGroups": groupPermissions(permissions),
 	}
 	s.DoTemplate(w, r, "view/admin/profile_perms.p2", ctx)
+}
+
+// permissionGroup is one module's fieldset on the profile permissions
+// page.
+type permissionGroup struct {
+	Module      string
+	Permissions []Permission
+}
+
+// groupPermissions groups permissions by module, with modules and the
+// grants within each module in alphabetical order.  Sorting is done
+// here rather than in SQL because "grant" is a reserved word in
+// Postgres.
+func groupPermissions(perms []Permission) []permissionGroup {
+	sort.Slice(perms, func(i, j int) bool {
+		if perms[i].Module != perms[j].Module {
+			return perms[i].Module < perms[j].Module
+		}
+		return perms[i].Grant < perms[j].Grant
+	})
+
+	groups := []permissionGroup{}
+	for _, p := range perms {
+		if n := len(groups); n == 0 || groups[n-1].Module != p.Module {
+			groups = append(groups, permissionGroup{Module: p.Module})
+		}
+		groups[len(groups)-1].Permissions = append(groups[len(groups)-1].Permissions, p)
+	}
+	return groups
 }
 
 func (s *Server) uiViewAdminProfilePermissionsSubmit(w http.ResponseWriter, r *http.Request) {

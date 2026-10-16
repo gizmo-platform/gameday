@@ -5,24 +5,24 @@
 {% block content %}
   <div class="box is-flex is-justify-content-center">
     <div>
-      <p>
+      <p class="mb-4">
         Use this page to modify the permissions for a given profile.
-        Select multiple items by holding Control/Option on your
-        keyboard while clicking on items in the list.
       </p>
       <form method="POST">
-        <div class="field">
-          <div class="control">
-            <span class="select is-multiple">
-              <select name="permissions" multiple>
-                {% for permission in permissions %}
-                  {% set perm = permission.Module + ":" + permission.Grant %}
-                  <option value="{{ permission.ID }}" {% if pprofile | hasPermissionExact:perm %}selected{% endif %}>{{ permission.Module }} | {{ permission.Grant }}</option>
-                {% endfor %}
-              </select>
-            </span>
-          </div>
-        </div>        
+        {% for group in permGroups %}
+          <fieldset class="box">
+            <legend class="label">{{ group.Module | title }}</legend>
+            <div class="checkboxes">
+              {% for permission in group.Permissions %}
+                {% set perm = permission.Module + ":" + permission.Grant %}
+                <label class="checkbox">
+                  <input type="checkbox" name="permissions" value="{{ permission.ID }}" {% if pprofile | hasPermissionExact:perm %}checked{% endif %} />
+                  {{ permission.Grant | title }}
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+        {% endfor %}
         <button type="submit" class="button is-primary">Save Permissions</button>
       </form>
     </div>
