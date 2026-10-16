@@ -924,3 +924,128 @@ func TestPhaseScoreStatsTie(t *testing.T) {
 		t.Errorf("MaxPlacement.ID = %d, want %d (lowest ID wins the tie)", stats.MaxPlacement.ID, first.ID)
 	}
 }
+
+// TestRunAdvancementFiltersSliceExprSeesFullRoster verifies that
+// len(Roster) in a slicing expression is the full roster even after an
+// earlier exclude filter removed teams.  Mirrors the byte2bite Wildcard
+// phase at a 40-team event: the exclude takes 14 and the include must
+// still see more than 32 teams and take 8, not 4.
+func TestRunAdvancementFiltersSliceExprSeesFullRoster(t *testing.T) {
+	m, d := newTestModule(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 40)
+
+	src := GamePhase{Name: "seeding", ScoreSummation: "AverageWithMulligan", ScheduleType: "RandomSeeding"}
+	if err := d.Create(&src).Error; err != nil {
+		t.Fatalf("create source phase: %v", err)
+	}
+	for i, tr := range teams {
+		ms := MatchScore{Score: (len(teams) - i) * 10, GamePhaseID: src.ID, TeamID: tr.ID}
+		if err := d.Create(&ms).Error; err != nil {
+			t.Fatalf("create match score: %v", err)
+		}
+	}
+
+	phase := GamePhase{Name: "wildcard", ScoreSummation: "Total", ScheduleType: "OneShot"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	excl := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "ScoreboardRanking",
+		Rule:        "IgnoreSemifinalAdvancement",
+		Mode:        GamePhaseAdvancementFilterModeExclude,
+		SelectFrom:  src.ID,
+		SliceExpr:   "len(Roster)>32 ? 14 : 7",
+	}
+	incl := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "ScoreboardRanking",
+		Rule:        "TopRemaining",
+		Mode:        GamePhaseAdvancementFilterModeInclude,
+		SelectFrom:  src.ID,
+		SliceExpr:   "len(Roster)>32 ? 8 : 4",
+	}
+	for _, f := range []*GamePhaseAdvancementFilter{&excl, &incl} {
+		if err := d.Create(f).Error; err != nil {
+			t.Fatalf("create filter: %v", err)
+		}
+	}
+	phase.AdvancementFilters = []GamePhaseAdvancementFilter{excl, incl}
+
+	advancing, _, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
+	if err != nil {
+		t.Fatalf("runAdvancementFilters: %v", err)
+	}
+
+	if len(advancing) != 8 {
+		t.Errorf("advancing = %d teams, want 8", len(advancing))
+	}
+	for i := 14; i < 22; i++ {
+		if _, ok := advancing[teams[i].ID]; !ok {
+			t.Errorf("team at scoreboard position %d did not advance", i+1)
+		}
+	}
+}
+
+// TestRunAdvancementFiltersRosterRespectsBlocklist verifies that a
+// Roster include after an exclude filter does not re-advance the
+// teams the exclude blocked.
+func TestRunAdvancementFiltersRosterRespectsBlocklist(t *testing.T) {
+	m, d := newTestModule(t)
+	ctx := context.Background()
+
+	teams := seedTeams(t, d, 6)
+
+	src := GamePhase{Name: "seeding", ScoreSummation: "AverageWithMulligan", ScheduleType: "RandomSeeding"}
+	if err := d.Create(&src).Error; err != nil {
+		t.Fatalf("create source phase: %v", err)
+	}
+	for i, tr := range teams {
+		ms := MatchScore{Score: (len(teams) - i) * 10, GamePhaseID: src.ID, TeamID: tr.ID}
+		if err := d.Create(&ms).Error; err != nil {
+			t.Fatalf("create match score: %v", err)
+		}
+	}
+
+	phase := GamePhase{Name: "rest", ScoreSummation: "Total", ScheduleType: "OneShot"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	excl := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "ScoreboardRanking",
+		Rule:        "DropTop2",
+		Mode:        GamePhaseAdvancementFilterModeExclude,
+		SelectFrom:  src.ID,
+		SliceExpr:   "2",
+	}
+	incl := GamePhaseAdvancementFilter{
+		GamePhaseID: phase.ID,
+		Filter:      "Roster",
+		Rule:        "Everyone",
+		Mode:        GamePhaseAdvancementFilterModeInclude,
+		SelectFrom:  0,
+	}
+	for _, f := range []*GamePhaseAdvancementFilter{&excl, &incl} {
+		if err := d.Create(f).Error; err != nil {
+			t.Fatalf("create filter: %v", err)
+		}
+	}
+	phase.AdvancementFilters = []GamePhaseAdvancementFilter{excl, incl}
+
+	advancing, _, err := m.runAdvancementFilters(ctx, phase, []GamePhase{}, map[uint]bool{}, "", teams)
+	if err != nil {
+		t.Fatalf("runAdvancementFilters: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, ok := advancing[teams[i].ID]; ok {
+			t.Errorf("blocked team at scoreboard position %d re-advanced", i+1)
+		}
+	}
+	if len(advancing) != 4 {
+		t.Errorf("advancing = %d teams, want 4", len(advancing))
+	}
+}

@@ -9,7 +9,8 @@ func init() {
 	RegisterAdvancementFilter(f.Name(), f)
 }
 
-// RosterAdvancement advances every team in the roster.  It is the
+// RosterAdvancement advances every team in the pool (the roster minus
+// any teams blocked by an earlier exclude filter).  It is the
 // start-of-schedule filter: a phase that uses it with a SelectFrom of
 // 0 automatically includes the full roster without relying on a
 // scoreboard or any recorded score.  In exclude mode it removes every
@@ -19,7 +20,7 @@ type RosterAdvancement struct{}
 func (r *RosterAdvancement) Name() string { return "Roster" }
 
 func (r *RosterAdvancement) Apply(sctx *AdvancementFilterContext, rule string, mode GamePhaseAdvancementFilterMode, sExpr string) error {
-	for _, t := range sctx.Roster {
+	for _, t := range sctx.Pool() {
 		switch mode {
 		case GamePhaseAdvancementFilterModeInclude:
 			sctx.Candidates[t.ID] = t

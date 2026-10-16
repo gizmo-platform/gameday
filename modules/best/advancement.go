@@ -215,15 +215,15 @@ func (n *NotebookAdvancement) Apply(sctx *game.AdvancementFilterContext, rule st
 	slog.Debug("Obtained slicing constraint", "constraint", cutoff)
 
 	// Scope the ranking to the teams on the division scoreboard.
-	// When the scoreboard is empty the roster is used instead so the
+	// When the scoreboard is empty the remaining pool is used instead so the
 	// filter still evaluates to a definitive answer.
 	scope := make(map[uint]team.Team, len(sctx.Scoreboard))
 	for _, row := range sctx.Scoreboard {
 		scope[row.Team.ID] = row.Team
 	}
 	if len(scope) == 0 {
-		scope = make(map[uint]team.Team, len(sctx.Roster))
-		maps.Copy(scope, sctx.Roster)
+		scope = make(map[uint]team.Team, len(sctx.Pool()))
+		maps.Copy(scope, sctx.Pool())
 	}
 
 	rows, err := n.notebookRankings(context.Background(), scope)

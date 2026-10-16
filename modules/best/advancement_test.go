@@ -354,3 +354,48 @@ func TestNotebookTieBreaker(t *testing.T) {
 		}
 	}
 }
+
+// TestNotebookAdvancementFullRosterCutoff checks that a slicing
+// expression sees the full roster while the selection is drawn only
+// from the remaining pool.  With 40 teams on the roster and 26
+// remaining, "len(Roster)>32 ? 8 : 4" must take 8 teams, all from the
+// remaining pool, even though the excluded teams hold the best
+// notebook scores.
+func TestNotebookAdvancementFullRosterCutoff(t *testing.T) {
+	_, d := newTestModule(t)
+
+	// Notebook score descends with team number, so teams 1001-1014
+	// hold the 14 best notebooks.
+	specs := make(map[int]map[string]float32, 40)
+	for i := 1; i <= 40; i++ {
+		specs[1000+i] = map[string]float32{"notebook": float32(300 - i)}
+	}
+	roster := seedBestScores(t, d, specs)
+
+	remaining := make(map[uint]team.Team)
+	for id, tm := range roster {
+		if tm.Number > 1014 {
+			remaining[id] = tm
+		}
+	}
+
+	sctx := game.AdvancementFilterContext{
+		Roster:     roster,
+		Remaining:  remaining,
+		Candidates: make(map[uint]team.Team),
+	}
+
+	nb := &NotebookAdvancement{db: d}
+	if err := nb.Apply(&sctx, "TopRemainingNotebooks", game.GamePhaseAdvancementFilterModeInclude, "len(Roster)>32 ? 8 : 4"); err != nil {
+		t.Fatalf("Apply include: %v", err)
+	}
+
+	if len(sctx.Candidates) != 8 {
+		t.Fatalf("expected 8 advancing teams, got %d", len(sctx.Candidates))
+	}
+	for _, tm := range sctx.Candidates {
+		if tm.Number < 1015 || tm.Number > 1022 {
+			t.Errorf("team %d advanced, want only teams 1015-1022", tm.Number)
+		}
+	}
+}

@@ -40,17 +40,30 @@ type AdvancementFilter interface {
 // to a filter that is changed during the course of running
 // advancement.  This structure supplies the roster, the scoreboard,
 // and any filter configuration.  The candidates map is blank until a
-// filter adds a team to the list.  Scoreboard is empty for
+// filter adds a team to the list.  Roster is always the full enabled
+// roster, so len(Roster) in a slicing expression means the same thing
+// as it does in a When or Suppress expression.  Remaining is the
+// roster with any teams blocked by an earlier exclude filter removed,
+// and the Scoreboard is filtered the same way, so a filter's cutoff
+// applies to the teams that remain.  Scoreboard is empty for
 // roster-sourced filters (SelectFrom of 0), which must scope their
-// selection from Roster.  The driver passes a field with any teams
-// blocked by an earlier exclude filter already removed, so a filter's
-// cutoff applies to the teams that remain.
+// selection from Pool.
 type AdvancementFilterContext struct {
 	Roster     map[uint]team.Team
+	Remaining  map[uint]team.Team
 	Candidates map[uint]team.Team
 	Scoreboard []scoreboardRow
 
 	Determinations []AdvancementDeterminationResult
+}
+
+// Pool returns the teams a filter may select from: Remaining when the
+// driver supplied it, otherwise the full Roster.
+func (sctx *AdvancementFilterContext) Pool() map[uint]team.Team {
+	if sctx.Remaining != nil {
+		return sctx.Remaining
+	}
+	return sctx.Roster
 }
 
 // AdvancementDeterminationResult is used to

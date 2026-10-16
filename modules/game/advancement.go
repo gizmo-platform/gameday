@@ -249,7 +249,8 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 			}
 		}
 		sctx := AdvancementFilterContext{
-			Roster:     remaining,
+			Roster:     makeRoster(teams),
+			Remaining:  remaining,
 			Scoreboard: remainingBoard,
 		}
 
