@@ -445,3 +445,38 @@ func TestCloudScorecardsUnguarded(t *testing.T) {
 		t.Errorf("unguarded page missing team row:\n%s", body)
 	}
 }
+
+// TestCloudScorecardsPhaseColumn verifies the list shows each
+// placement's phase name from the cloud's game design, falling back to
+// "Phase <id>" for a phase the cloud does not have.
+func TestCloudScorecardsPhaseColumn(t *testing.T) {
+	m, d := newTestModule(t)
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	phase := GamePhase{Name: "Wildcard", ScoreSummation: "Total", ScheduleType: "OneShot"}
+	if err := d.Create(&phase).Error; err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+	seedCloudPlacement(t, d.DB, CloudMatchPlacement{
+		ContestID: 1, Round: 0, Match: 1, PhaseID: phase.ID,
+		TeamID: 101, TeamName: "Alpha Robotics",
+		FieldID: 1, PositionID: 1,
+		State: uint(MatchStateComplete), Score: 10,
+	})
+	seedCloudPlacement(t, d.DB, CloudMatchPlacement{
+		ContestID: 1, Round: 0, Match: 2, PhaseID: 99,
+		TeamID: 102, TeamName: "Beta Bots",
+		FieldID: 1, PositionID: 1,
+		State: uint(MatchStateComplete), Score: 20,
+	})
+
+	code, body, _ := routerReq(t, cm, adminContext(), http.MethodGet, "/ui/mod/game/scorecards", "")
+	if code != http.StatusOK {
+		t.Fatalf("scorecards = %d, want 200: %s", code, body)
+	}
+	for _, want := range []string{"<th>Phase</th>", "<td>Wildcard</td>", "<td>Phase 99</td>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+}

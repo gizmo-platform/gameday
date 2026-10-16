@@ -28,11 +28,13 @@ type contestOption struct {
 }
 
 // cloudScorecardRow is one table row on the cloud scorecards page: a
-// pushed placement plus its pre-computed state name and contest name.
+// pushed placement plus its pre-computed state, contest, and phase
+// names.
 type cloudScorecardRow struct {
 	Placement   CloudMatchPlacement
 	StateName   string
 	ContestName string
+	PhaseName   string
 }
 
 // contestNameRow is a minimal local view of the contest module's
@@ -110,12 +112,14 @@ func (m *Module) uiViewCloudScorecards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contestNames := m.cloudContestNames(ctx)
+	phaseNames := m.cloudPhaseNames(ctx)
 	out := make([]cloudScorecardRow, 0, len(placements))
 	for _, p := range placements {
 		out = append(out, cloudScorecardRow{
 			Placement:   p,
 			StateName:   MatchState(p.State).String(),
 			ContestName: contestName(contestNames, p.ContestID),
+			PhaseName:   phaseName(phaseNames, p.PhaseID),
 		})
 	}
 
@@ -245,6 +249,28 @@ func (m *Module) cloudContestNames(ctx context.Context) map[uint]string {
 		}
 	}
 	return names
+}
+
+// cloudPhaseNames returns a best-effort map of phase ID to name from
+// the cloud's own game design.  The cloud stores only the site's phase
+// ID, so a phase the cloud does not have falls back to "Phase <id>".
+func (m *Module) cloudPhaseNames(ctx context.Context) map[uint]string {
+	names := make(map[uint]string)
+	if rows, err := gorm.G[GamePhase](m.db.DB).Find(ctx); err == nil {
+		for _, row := range rows {
+			names[row.ID] = row.Name
+		}
+	}
+	return names
+}
+
+// phaseName resolves a phase ID to its display name, falling back to
+// "Phase <id>" when the cloud's game design has no such phase.
+func phaseName(names map[uint]string, id uint) string {
+	if name, ok := names[id]; ok {
+		return name
+	}
+	return fmt.Sprintf("Phase %d", id)
 }
 
 // contestName resolves a contest ID to its display name, falling back

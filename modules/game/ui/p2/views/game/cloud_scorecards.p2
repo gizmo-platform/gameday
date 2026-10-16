@@ -53,6 +53,7 @@
         <tr>
           <th>Team</th>
           <th>Contest</th>
+          <th>Phase</th>
           <th>Round</th>
           <th>Match</th>
           <th>State</th>
@@ -63,6 +64,7 @@
         <tr>
           <td>{{ row.Placement.TeamName }}</td>
           <td>{{ row.ContestName }}</td>
+          <td>{{ row.PhaseName }}</td>
           <td>{{ row.Placement.Round|add:1 }}</td>
           <td>{{ row.Placement.Match }}</td>
           <td>{{ row.StateName }}</td>
