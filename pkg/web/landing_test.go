@@ -174,3 +174,26 @@ func TestFooter(t *testing.T) {
 		)
 	}
 }
+
+// TestNavbarMobileStructure verifies the navbar follows Bulma's
+// collapsible structure: a burger as the last child of navbar-brand
+// whose data-target names the navbar-menu wrapping start and end, with
+// the toggle script loaded.  Without the menu wrapper and burger every
+// item stacks down the page below 1024px.
+func TestNavbarMobileStructure(t *testing.T) {
+	body := landing(t, "cloud", false)
+	assertContains(t, body,
+		`<nav class="navbar noprint" role="navigation" aria-label="main navigation">`,
+		`<button type="button" class="navbar-burger" aria-label="menu" aria-expanded="false" aria-controls="gameday-navbar-menu" data-target="gameday-navbar-menu">`,
+		`<div id="gameday-navbar-menu" class="navbar-menu">`,
+		`<script src="/static/js/navbar.js" defer></script>`,
+	)
+	brand := strings.Index(body, `class="navbar-brand"`)
+	burger := strings.Index(body, `class="navbar-burger"`)
+	menu := strings.Index(body, `class="navbar-menu"`)
+	start := strings.Index(body, `class="navbar-start"`)
+	end := strings.Index(body, `class="navbar-end`)
+	if !(brand < burger && burger < menu && menu < start && start < end) {
+		t.Errorf("navbar order brand=%d burger=%d menu=%d start=%d end=%d", brand, burger, menu, start, end)
+	}
+}

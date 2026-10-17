@@ -1,9 +1,16 @@
-<div class="navbar noprint" role="navigation">
+<nav class="navbar noprint" role="navigation" aria-label="main navigation">
   <div class="navbar-brand">
     <div class="navbar-item">
       <span id="logomark">Gameday</span>
     </div>
+    <button type="button" class="navbar-burger" aria-label="menu" aria-expanded="false" aria-controls="gameday-navbar-menu" data-target="gameday-navbar-menu">
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+    </button>
   </div>
+  <div id="gameday-navbar-menu" class="navbar-menu">
   <div class="navbar-start">
     {% for element in navElements %}
     <div class="navbar-item has-dropdown is-hoverable">
@@ -61,4 +68,5 @@
       {% endif %}
     </div>
   </div>
-</div>
+  </div>
+</nav>
