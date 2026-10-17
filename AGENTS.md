@@ -714,12 +714,27 @@ The wire types live in `pkg/cloud/scores.go` (`ContestPlacement` with `FieldName
 
 ### Dockerfile
 
-- **Base**: `golang:1.25-alpine` → `alpine` multi-stage build
-- **CGO**: Enabled for SQLite (`CGO_ENABLED=1`)
-- **Static linking**: `-extldflags "-static"`
+- **Stages**:
+  1. `busybox` downloads Bulma 1.0.4 (`bulma.min.css`, git-ignored) into `pkg/web/ui/static/css/`.
+  2. `golang:1.25-alpine` builds the binary.
+  3. `scratch` holds the final image.
+- **CGO**: Enabled for SQLite (`CGO_ENABLED=1`; `gorm.io/driver/sqlite` wraps the cgo `mattn/go-sqlite3`)
+- **Static linking**: `-extldflags '-static'` (required for the `scratch` image)
+- **Build info**: build args `VERSION` (default `dev`), `COMMIT` (default `UNKNOWN`) and `BUILD_DATE` (default `UNKNOWN`) are passed to `pkg/buildinfo` via `-X` ldflags. A plain `docker build .` therefore reports `dev`.
 - **Entrypoint**: `tini-static` init system
 - **Data dir**: `ENV GAMEDAY_DB=/data/gameday.db`
 - **Volume**: Expected mount at `/data`
+
+### Releases (`.github/workflows/release.yml`, `.goreleaser.yaml`)
+
+Pushing a `v*` tag runs two jobs:
+- **`goreleaser`** (`release --clean`) builds linux/windows amd64/arm64 archives with the buildinfo ldflags (`{{.Version}}`, `{{.Commit}}`, `{{.Date}}`).
+- **`docker`** builds and pushes `ghcr.io/gizmo-platform/gameday:<tag>`. It passes the build args so the image reports the same values as the goreleaser binaries:
+  - `VERSION` is the tag without its leading `v`;
+  - `COMMIT` is `github.sha` (full SHA);
+  - `BUILD_DATE` is RFC 3339 UTC.
+
+Snapshot builds (`goreleaser build --snapshot`) use `snapshot.version_template: "{{ .ShortCommit }}"`, so their version is the short commit hash.
 
 ### Build Flags
 

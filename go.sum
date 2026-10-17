@@ -59,8 +59,6 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tg123/go-htpasswd v1.2.4 h1:HgH8KKCjdmo7jjXWN9k1nefPBd7Be3tFCTjc2jPraPU=
 github.com/tg123/go-htpasswd v1.2.4/go.mod h1:EKThQok9xHkun6NBMynNv6Jmu24A33XdZzzl4Q7H1+0=
-github.com/the-maldridge/authware v0.1.7-0.20260719221803-694b633dd032 h1:4WvGeyIhurC8dOAH7E4Ybj/oXAmBwCVrVCF3o2bZ0As=
-github.com/the-maldridge/authware v0.1.7-0.20260719221803-694b633dd032/go.mod h1:lqmVd8Jbr+8mF9yCShdM04D7QvpZR971iI6HedlZn0Q=
 github.com/the-maldridge/authware v0.1.7-0.20261013191319-d7308a3fecde h1:4wf1MSAG4gMyJwwQUR2e2WmI1mosD3e8enMfY4DpQ8U=
 github.com/the-maldridge/authware v0.1.7-0.20261013191319-d7308a3fecde/go.mod h1:lqmVd8Jbr+8mF9yCShdM04D7QvpZR971iI6HedlZn0Q=
 golang.org/x/crypto v0.37.0 h1:kJNSjF/Xp7kU0iB2Z+9viTPMW4EqqsrywMXLJOOsXSE=

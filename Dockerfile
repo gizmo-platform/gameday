@@ -8,9 +8,20 @@ RUN --mount=type=cache,target=/var/lib/apk \
 WORKDIR /app
 COPY . .
 COPY --from=css /bulma.min.css pkg/web/ui/static/css/
+
+# Build metadata baked into pkg/buildinfo, matching the goreleaser
+# ldflags.  The release workflow passes these; a plain local build
+# reports "dev".
+ARG VERSION=dev
+ARG COMMIT=UNKNOWN
+ARG BUILD_DATE=UNKNOWN
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -o /gameday -ldflags '-extldflags "-static"' .
+    CGO_ENABLED=1 go build -o /gameday -ldflags "\
+      -extldflags '-static' \
+      -X github.com/gizmo-platform/gameday/pkg/buildinfo.Version=${VERSION} \
+      -X github.com/gizmo-platform/gameday/pkg/buildinfo.Commit=${COMMIT} \
+      -X github.com/gizmo-platform/gameday/pkg/buildinfo.BuildDate=${BUILD_DATE}" .
 
 FROM scratch
 LABEL org.opencontainers.image.source="https://github.com/gizmo-platform/gameday"
