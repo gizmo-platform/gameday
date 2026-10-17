@@ -2,6 +2,7 @@ package best
 
 import (
 	"github.com/gizmo-platform/gameday/modules"
+	"github.com/gizmo-platform/gameday/modules/game"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
 )
@@ -23,4 +24,8 @@ func init() {
 	modules.RegisterTieBreaker(TieBreakerBESTUnified, func(nums []int, mc int) []int {
 		return unifiedTieBreaker(nums, mc)
 	})
+
+	// Register the wildcard phase role with the game module's role
+	// registry so setup files can tag a phase as the wildcard phase.
+	game.RegisterPhaseRole(RoleWildcard)
 }

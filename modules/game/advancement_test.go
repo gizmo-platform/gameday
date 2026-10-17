@@ -294,7 +294,7 @@ func TestResolveTiesEmptyRows(t *testing.T) {
 	})
 
 	phase := &GamePhase{TieBreaker: "testEmptyTB2"}
-	rows := []scoreboardRow{}
+	rows := []RankingRow{}
 	resolveTies(ctx, d, &rows, phase)
 
 	if len(rows) != 0 {

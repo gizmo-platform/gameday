@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"log/slog"
@@ -269,11 +270,45 @@ func (m *Module) uiViewPhaseScoreStats(w http.ResponseWriter, r *http.Request) {
 	m.ws.DoTemplate(w, r, "views/game/phase_score_stats.p2", ctx)
 }
 
-// phaseRankingTable is one ranking table on the phase rankings page:
-// the whole field, or a single division of a division aware phase.
-type phaseRankingTable struct {
-	Division string
-	Rows     []scoreboardRow
+// PhaseRanking is the ranked scoreboard of a single phase for a single
+// division: the whole field for a phase that is not division aware
+// (Division is then the empty string), or one division of a division
+// aware phase.  Ranks restart at 1 in each division.
+type PhaseRanking struct {
+	PhaseID   uint
+	PhaseName string
+	Role      PhaseRole
+	Division  string
+	Rows      []RankingRow
+}
+
+// phaseRankingForPhase computes the ranking tables for one phase: a
+// single table for a phase that is not division aware, or one table
+// per division that has ranked teams for a division aware phase.
+func (m *Module) phaseRankingForPhase(ctx context.Context, phase GamePhase) ([]PhaseRanking, error) {
+	divisions, err := m.whenDivisions(ctx, phase)
+	if err != nil {
+		return nil, err
+	}
+
+	tables := []PhaseRanking{}
+	for _, division := range divisions {
+		rows, err := m.scoreboardRankings(ctx, phase.ID, division)
+		if err != nil {
+			return nil, err
+		}
+		if phase.DivisionAware && len(rows) == 0 {
+			continue
+		}
+		tables = append(tables, PhaseRanking{
+			PhaseID:   phase.ID,
+			PhaseName: phase.Name,
+			Role:      phase.Role,
+			Division:  division,
+			Rows:      rows,
+		})
+	}
+	return tables, nil
 }
 
 // uiViewPhaseRankings shows the final scoreboard rankings of a frozen
@@ -296,25 +331,11 @@ func (m *Module) uiViewPhaseRankings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	divisions, err := m.whenDivisions(r.Context(), phase)
+	tables, err := m.phaseRankingForPhase(r.Context(), phase)
 	if err != nil {
-		slog.Error("Error loading divisions", "error", err)
+		slog.Error("Error computing phase rankings", "error", err)
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 		return
-	}
-
-	tables := []phaseRankingTable{}
-	for _, division := range divisions {
-		rows, err := m.scoreboardRankings(r.Context(), phase.ID, division)
-		if err != nil {
-			slog.Error("Error computing phase rankings", "error", err)
-			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
-			return
-		}
-		if phase.DivisionAware && len(rows) == 0 {
-			continue
-		}
-		tables = append(tables, phaseRankingTable{Division: division, Rows: rows})
 	}
 
 	ctx := pongo2.Context{

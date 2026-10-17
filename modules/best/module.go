@@ -21,6 +21,12 @@ const (
 	ModuleName = "BEST"
 
 	PermissionAdmin = "ADMIN"
+
+	// RoleWildcard is the phase role BEST uses to find the wildcard
+	// phase's rankings.  It is registered with the game module's role
+	// registry from init(), since wildcard semantics belong to BEST,
+	// not to the game module.
+	RoleWildcard game.PhaseRole = "Wildcard"
 )
 
 //go:embed ui/*
@@ -28,9 +34,11 @@ var efs embed.FS
 
 // GameModule is the subset of the game module the BEST module needs:
 // whether any phase in the game is division aware, which drives
-// whether the awards are ranked per division or overall.
+// whether the awards are ranked per division or overall, and the
+// rankings of phases carrying a given role.
 type GameModule interface {
 	DivisionAware() bool
+	PhaseRankings(ctx context.Context, role game.PhaseRole, frozenOnly bool) ([]game.PhaseRanking, error)
 }
 
 type Module struct {

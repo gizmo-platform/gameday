@@ -15,7 +15,12 @@ import (
 	"github.com/gizmo-platform/gameday/pkg/db"
 )
 
-type scoreboardRow struct {
+// RankingRow is a single team's aggregated scoreboard row for one
+// phase (and, for a division aware phase, one division).  Score holds
+// the value the phase's ScoreSummation selected, and Rank is the
+// team's position, resolved through the phase's TieBreaker when one is
+// configured.
+type RankingRow struct {
 	Team     team.Team
 	TeamID   uint
 	Rank     int
@@ -28,7 +33,7 @@ type scoreboardRow struct {
 	Count    int
 }
 
-func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division string) ([]scoreboardRow, error) {
+func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division string) ([]RankingRow, error) {
 	var phase GamePhase
 	var err error
 	if phaseID == 0 {
@@ -55,7 +60,7 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 	// really expected to run against SQLite and PostgreSQL, this
 	// is fine (TM) but if someone decides to run this against
 	// T-SQL, undefined behaviors may happen.
-	rowData, err := gorm.G[scoreboardRow](m.db.DB,
+	rowData, err := gorm.G[RankingRow](m.db.DB,
 		clause.Select{
 			Expression: clause.CommaExpression{Exprs: []clause.Expression{
 				clause.NamedExpr{SQL: "?", Vars: []interface{}{clause.Column{Name: "team_id"}}},
@@ -88,7 +93,7 @@ func (m *Module) scoreboardRankings(ctx context.Context, phaseID uint, division 
 		return nil, err
 	}
 
-	out := []scoreboardRow{}
+	out := []RankingRow{}
 	for _, row := range rowData {
 		if row.Team.Division.Name != division && division != "" {
 			continue
@@ -177,6 +182,43 @@ func (m *Module) PhaseScoreStats(ctx context.Context, phaseID uint) (PhaseStats,
 	return out, nil
 }
 
+// PhaseRankings returns the final rankings of every phase carrying the
+// given role, as one PhaseRanking per phase-and-division pair (a phase
+// that is not division aware yields a single entry with an empty
+// Division; a division aware phase yields one entry per division that
+// has ranked teams).  Ranks use each phase's configured
+// ScoreSummation and TieBreaker and restart at 1 in each division.
+// When frozenOnly is set, phases that are not frozen are silently
+// skipped.  An unknown or unused role yields an empty slice, not an
+// error.  Phases are returned in ID order, which matches tournament
+// order only when phases are authored with monotonically increasing
+// IDs.
+func (m *Module) PhaseRankings(ctx context.Context, role PhaseRole, frozenOnly bool) ([]PhaseRanking, error) {
+	// The string form is deliberate: Where(&GamePhase{Role: ""})
+	// would drop the zero-value condition and match every phase.
+	phases, err := gorm.G[GamePhase](m.db.DB).
+		Where("phase_role = ?", role).
+		Order("id ASC").
+		Find(ctx)
+	if err != nil {
+		slog.Error("Error fetching phases by role", "error", err, "role", role)
+		return nil, err
+	}
+
+	out := []PhaseRanking{}
+	for _, phase := range phases {
+		if frozenOnly && !phase.Frozen {
+			continue
+		}
+		tables, err := m.phaseRankingForPhase(ctx, phase)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, tables...)
+	}
+	return out, nil
+}
+
 // runAdvancementFilters applies every advancement filter configured on
 // a phase for a single division.  The filters run in order against a
 // single shared candidate pool: an include filter adds the teams it
@@ -206,7 +248,7 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 		Division: division,
 	}
 	for _, filter := range phase.AdvancementFilters {
-		var rowData []scoreboardRow
+		var rowData []RankingRow
 		if filter.SelectFrom != 0 {
 			var err error
 			rowData, err = m.scoreboardRankings(ctx, filter.SelectFrom, division)
@@ -242,7 +284,7 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 				remaining[id] = t
 			}
 		}
-		remainingBoard := make([]scoreboardRow, 0, len(rowData))
+		remainingBoard := make([]RankingRow, 0, len(rowData))
 		for _, row := range rowData {
 			if _, blocked := excluded[row.Team.ID]; !blocked {
 				remainingBoard = append(remainingBoard, row)
@@ -297,7 +339,7 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 // context (mirroring runAdvancementFilters).  An empty When expression
 // is always satisfied, i.e. the filter always runs.
 func (m *Module) filterWhenSatisfied(ctx context.Context, phases []GamePhase, phaseComplete map[uint]bool, teams []team.Team, filter GamePhaseAdvancementFilter, division string) (bool, error) {
-	scoreboard := []scoreboardRow{}
+	scoreboard := []RankingRow{}
 	if filter.SelectFrom != 0 {
 		var err error
 		scoreboard, err = m.scoreboardRankings(ctx, filter.SelectFrom, division)
@@ -382,7 +424,7 @@ func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases [
 	return true, nil
 }
 
-func resolveTies(ctx context.Context, dbd *db.DB, rows *[]scoreboardRow, phase *GamePhase) {
+func resolveTies(ctx context.Context, dbd *db.DB, rows *[]RankingRow, phase *GamePhase) {
 	if len(*rows) == 0 {
 		return
 	}

@@ -27,6 +27,7 @@ Game:
   Phases:
     - Name: Seeding
       ID: 1
+      Role: Seeding
       ScoreSummation: AverageWithMulligan
       ScheduleType: RandomSeeding
       TieBreaker: BESTUnifiedTieBreaker
@@ -37,6 +38,7 @@ Game:
           SelectFrom: 0
     - Name: Wildcard
       ID: 2
+      Role: Wildcard
       ScoreSummation: Total
       ScheduleType: OneShot
       TieBreaker: BESTUnifiedTieBreaker
@@ -54,6 +56,7 @@ Game:
           SliceExpr: "len(Roster)>32 ? 8 : 4"
     - Name: Semifinals
       ID: 3
+      Role: Semifinal
       ScoreSummation: Total
       ScheduleType: BESTSemifinal
       TieBreaker: BESTUnifiedTieBreaker
@@ -71,6 +74,7 @@ Game:
           When: "len(Roster) >= 8"
     - Name: Finals
       ID: 4
+      Role: Final
       ScoreSummation: Total
       ScheduleType: BESTFinals
       TieBreaker: BESTUnifiedTieBreaker

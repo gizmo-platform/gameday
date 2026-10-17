@@ -160,3 +160,119 @@ func TestPhaseListRankingsButton(t *testing.T) {
 		t.Errorf("want Stats (%d) before Rankings (%d)", stats, rank)
 	}
 }
+
+// TestPhaseRankingsByRole verifies the role-filtered programmatic
+// lookup: matching phases only, frozen filtering, identity fields, and
+// ID ordering across multiple phases with the same role.
+func TestPhaseRankingsByRole(t *testing.T) {
+	m, d := newTestModule(t)
+	teams := seedTeams(t, d, 4)
+
+	seeding := seedRankedPhase(t, d, GamePhase{Name: "seeding", ScoreSummation: "Total", Role: RoleSeeding, Frozen: true}, teams)
+	semis := seedRankedPhase(t, d, GamePhase{Name: "semis 1", ScoreSummation: "Total", Role: RoleSemifinal}, teams)
+	semis2 := seedRankedPhase(t, d, GamePhase{Name: "semis 2", ScoreSummation: "Total", Role: RoleSemifinal, Frozen: true}, teams)
+	unassigned := seedRankedPhase(t, d, GamePhase{Name: "unassigned", ScoreSummation: "Total"}, teams)
+
+	t.Run("RoleFilter", func(t *testing.T) {
+		got, err := m.PhaseRankings(context.Background(), RoleSeeding, false)
+		if err != nil {
+			t.Fatalf("PhaseRankings: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("entries = %d, want 1: %+v", len(got), got)
+		}
+		if got[0].PhaseID != seeding.ID || got[0].PhaseName != "seeding" || got[0].Role != RoleSeeding {
+			t.Errorf("identity fields wrong: %+v", got[0])
+		}
+		if len(got[0].Rows) != len(teams) {
+			t.Errorf("rows = %d, want %d", len(got[0].Rows), len(teams))
+		}
+		if got[0].Rows[0].Rank != 1 {
+			t.Errorf("top rank = %d, want 1", got[0].Rows[0].Rank)
+		}
+	})
+
+	t.Run("FrozenOnly", func(t *testing.T) {
+		got, err := m.PhaseRankings(context.Background(), RoleSemifinal, true)
+		if err != nil {
+			t.Fatalf("PhaseRankings: %v", err)
+		}
+		if len(got) != 1 || got[0].PhaseID != semis2.ID {
+			t.Fatalf("frozenOnly entries wrong: %+v", got)
+		}
+
+		got, err = m.PhaseRankings(context.Background(), RoleSemifinal, false)
+		if err != nil {
+			t.Fatalf("PhaseRankings: %v", err)
+		}
+		if len(got) != 2 || got[0].PhaseID != semis.ID || got[1].PhaseID != semis2.ID {
+			t.Fatalf("same-role phases not returned in ID order: %+v", got)
+		}
+	})
+
+	t.Run("EmptyRoleOnlyUnassigned", func(t *testing.T) {
+		got, err := m.PhaseRankings(context.Background(), "", false)
+		if err != nil {
+			t.Fatalf("PhaseRankings: %v", err)
+		}
+		if len(got) != 1 || got[0].PhaseID != unassigned.ID {
+			t.Fatalf("empty role must match only unassigned phases: %+v", got)
+		}
+	})
+
+	t.Run("UnknownRoleEmpty", func(t *testing.T) {
+		got, err := m.PhaseRankings(context.Background(), "NoSuchRole", false)
+		if err != nil {
+			t.Fatalf("PhaseRankings: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("unknown role entries = %d, want 0", len(got))
+		}
+	})
+}
+
+// TestPhaseRankingsByRoleDivisionAware verifies a division aware phase yields
+// one entry per division with teams, ranks restarting at 1, and no
+// entry for divisions with no ranked teams.
+func TestPhaseRankingsByRoleDivisionAware(t *testing.T) {
+	m, d := newTestModule(t)
+	teams := seedTeams(t, d, 4)
+
+	junior := team.Division{Name: "Junior"}
+	if err := d.Create(&junior).Error; err != nil {
+		t.Fatalf("create division: %v", err)
+	}
+	if err := d.Create(&team.Division{Name: "Empty"}).Error; err != nil {
+		t.Fatalf("create empty division: %v", err)
+	}
+	for _, tm := range teams[2:] {
+		if err := d.Model(&team.Team{}).Where("id = ?", tm.ID).Update("division_id", junior.ID).Error; err != nil {
+			t.Fatalf("move team: %v", err)
+		}
+	}
+	phase := seedRankedPhase(t, d, GamePhase{Name: "seeding", ScoreSummation: "Total", Role: RoleSeeding, Frozen: true, DivisionAware: true}, teams)
+
+	got, err := m.PhaseRankings(context.Background(), RoleSeeding, true)
+	if err != nil {
+		t.Fatalf("PhaseRankings: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("entries = %d, want 2 (divisions with teams only): %+v", len(got), got)
+	}
+	seen := map[string]int{}
+	for _, e := range got {
+		if e.PhaseID != phase.ID || e.Role != RoleSeeding {
+			t.Errorf("identity fields wrong: %+v", e)
+		}
+		if len(e.Rows) == 0 || e.Rows[0].Rank != 1 {
+			t.Errorf("division %q does not restart ranking at 1: %+v", e.Division, e.Rows)
+		}
+		seen[e.Division] = len(e.Rows)
+	}
+	if seen["Open"] != 2 || seen["Junior"] != 2 {
+		t.Errorf("division row counts wrong: %+v", seen)
+	}
+	if _, ok := seen["Empty"]; ok {
+		t.Error("division with no ranked teams produced an entry")
+	}
+}

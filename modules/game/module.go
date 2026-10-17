@@ -225,6 +225,14 @@ type GamePhase struct {
 	ScoreSummation     string                     `yaml:"ScoreSummation"`
 	HideScores         bool                       `yaml:"HideScores"`
 	TieBreaker         string                     `yaml:"TieBreaker"`
+	// Role declares the competitive purpose of the phase.  Valid
+	// values are the registered phase roles: Exhibition, Seeding,
+	// Semifinal and Final from the game module, plus any role another
+	// module registers (the BEST module registers Wildcard).  Empty
+	// means no role is assigned; LintConfig rejects an unregistered
+	// value.  The column is named phase_role because role is quoted
+	// inconsistently across SQL dialects in raw clauses.
+	Role PhaseRole `gorm:"column:phase_role" yaml:"Role"`
 	// Suppress is an optional boolean suppression condition: when it
 	// evaluates to true the phase is suppressed (its Generate Schedule
 	// button is hidden and schedule actions are rejected server-side).

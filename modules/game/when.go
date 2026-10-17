@@ -34,7 +34,7 @@ type WhenPhaseState struct {
 type WhenContext struct {
 	Phases     []WhenPhaseState
 	Roster     map[uint]team.Team
-	Scoreboard []scoreboardRow
+	Scoreboard []RankingRow
 	Division   string
 }
 
@@ -114,7 +114,7 @@ func (m *Module) whenSuppressed(ctx context.Context, phase GamePhase, phases []G
 		selectFrom = filters[0].SelectFrom
 	}
 
-	scoreboard := []scoreboardRow{}
+	scoreboard := []RankingRow{}
 	if selectFrom != 0 {
 		scoreboard, err = m.scoreboardRankings(ctx, selectFrom, division)
 		if err != nil {

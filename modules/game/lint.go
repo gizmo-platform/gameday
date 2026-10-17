@@ -57,6 +57,10 @@ func LintConfig(c Config) []error {
 			}
 		}
 
+		if !ValidPhaseRole(phase.Role) {
+			report("%s: unknown Role %q", label, phase.Role)
+		}
+
 		switch phase.ScoreSummation {
 		case "", "Total", "AverageWithMulligan":
 		default:

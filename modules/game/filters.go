@@ -52,7 +52,7 @@ type AdvancementFilterContext struct {
 	Roster     map[uint]team.Team
 	Remaining  map[uint]team.Team
 	Candidates map[uint]team.Team
-	Scoreboard []scoreboardRow
+	Scoreboard []RankingRow
 
 	Determinations []AdvancementDeterminationResult
 }

@@ -157,6 +157,26 @@ func TestLintConfigBroken(t *testing.T) {
 		expect(t, problems, `unknown ScoreSummation "BestOf"`)
 	})
 
+	t.Run("UnknownRole", func(t *testing.T) {
+		problems := mutate(t, func(c *game.Config) {
+			c.Game.Phases[0].Role = "Nonsense"
+		})
+		expect(t, problems, `unknown Role "Nonsense"`)
+	})
+
+	t.Run("RegisteredRoles", func(t *testing.T) {
+		// Built-in roles and the BEST module's Wildcard role (this
+		// test's init links the best package) must lint clean.
+		problems := mutate(t, func(c *game.Config) {
+			c.Game.Phases[0].Role = game.RoleSeeding
+			c.Game.Phases[1].Role = best.RoleWildcard
+			c.Game.Phases[2].Role = game.RoleFinal
+		})
+		if len(problems) != 0 {
+			t.Errorf("registered roles reported problems: %v", problems)
+		}
+	})
+
 	t.Run("DuplicatePhaseID", func(t *testing.T) {
 		problems := mutate(t, func(c *game.Config) {
 			c.Game.Phases = append(c.Game.Phases, c.Game.Phases[0])

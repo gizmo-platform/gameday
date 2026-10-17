@@ -118,6 +118,7 @@ A phase is one stage of the tournament. Fields:
 |-----|---------|
 | `Name` | Human-readable phase name. |
 | `ID` | Unique integer id. Other phases' filters reference this via `SelectFrom`. |
+| `Role` | Optional role name declaring the phase's competitive purpose. Registered roles: `Exhibition`, `Seeding`, `Semifinal`, `Final`, plus `Wildcard` when the BEST module is enabled. Unknown non-empty roles are rejected by the linter. Roles let modules (and later tooling) find e.g. "the seeding phase" without hardcoding author-assigned IDs; unregistered in a file simply means no role is assigned. |
 | `ScheduleType` | The scheduler to use. Must be a registered generator name (see §7). |
 | `ScoreSummation` | How each team's phase score is aggregated across its matches. One of `AverageWithMulligan` or `Total` (see below). |
 | `AdvancementFilters` | Optional list of filters that decide which teams enter this phase (see §5). |
