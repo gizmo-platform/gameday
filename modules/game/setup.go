@@ -103,6 +103,26 @@ func (m *Module) applyGameConfig(ctx context.Context, c Config) error {
 	for _, phase := range c.Game.Phases {
 		filters := phase.AdvancementFilters
 		phase.AdvancementFilters = nil
+		// Active, Frozen, and HideScores are runtime operations state,
+		// owned by the schedule page's make-active, make-frozen, and
+		// hide-scores actions — not design state.  The cloud export
+		// deliberately zeroes them, and a plain re-upload of any file
+		// would otherwise silently unfreeze, deactivate, or unhide a
+		// live event's phases, so a re-uploaded phase inherits the
+		// stored flags.  A brand-new phase keeps the file's values.
+		if phase.ID != 0 {
+			cur, err := gorm.G[GamePhase](m.db.DB).
+				Where(&GamePhase{ID: phase.ID}).
+				First(ctx)
+			switch {
+			case err == nil:
+				phase.Active = cur.Active
+				phase.Frozen = cur.Frozen
+				phase.HideScores = cur.HideScores
+			case !errors.Is(err, gorm.ErrRecordNotFound):
+				return err
+			}
+		}
 		// The phase must exist before its advancement filters: Postgres
 		// enforces the game_phase_id foreign key, so inserting a filter
 		// before its phase fails (SQLite does not enforce FKs, which is

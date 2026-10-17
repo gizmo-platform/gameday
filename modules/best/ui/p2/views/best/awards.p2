@@ -56,7 +56,7 @@
             {% endif %}
           {% endfor %}
         {% else %}
-          <p class="is-size-7 has-text-grey">No scores recorded for this category.</p>
+          <p class="is-size-7 has-text-grey">No results recorded for this award.</p>
         {% endif %}
         {% if not forloop.Last %}<hr />{% endif %}
       {% endfor %}
