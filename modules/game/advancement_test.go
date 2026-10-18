@@ -609,12 +609,12 @@ func TestPhaseSchedulable(t *testing.T) {
 					break
 				}
 			}
-			got, err := m.phaseSchedulable(ctx, target, phases, tc.comp, teams)
+			verdict, err := m.phaseSchedulable(ctx, target, phases, tc.comp, teams)
 			if err != nil {
 				t.Fatalf("phaseSchedulable: %v", err)
 			}
-			if got != tc.want {
-				t.Errorf("phaseSchedulable = %v, want %v", got, tc.want)
+			if verdict.CanRun != tc.want {
+				t.Errorf("phaseSchedulable = %v (%v), want %v", verdict.CanRun, verdict.Reasons, tc.want)
 			}
 		})
 	}

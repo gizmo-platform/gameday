@@ -52,8 +52,24 @@
                       <button type="submit" class="button">Freeze</button>
                     </form>
                   {% endif %}
-                {% elif canSchedule[phase.ID] and whenActive[phase.ID] and (profile | hasPermission:"GAME:SCHEDULE") %}
-                  <a class="button" href="schedule/phases/{{ phase.ID }}/select-teams?st={{ phase.ScheduleType }}">Generate Schedule</a>
+                {% elif whenActive[phase.ID] and (profile | hasPermission:"GAME:SCHEDULE") %}
+                  {% if nextPhase[phase.ID] %}
+                    {% if canSchedule[phase.ID] %}
+                      <a class="button" href="schedule/phases/{{ phase.ID }}/select-teams?st={{ phase.ScheduleType }}">Generate Schedule</a>
+                    {% else %}
+                      {% comment %}
+                        A span with no href, not pointer-events:none: a disabled
+                        control cannot show the native title tooltip that carries
+                        the reason.  tabindex keeps it keyboard-reachable and
+                        aria-describedby repeats the reason to assistive tech,
+                        which treats native title inconsistently.
+                      {% endcomment %}
+                      <span class="button is-disabled" role="button" aria-disabled="true" tabindex="0"
+                            title="{{ cannotScheduleMsg[phase.ID] }}"
+                            aria-describedby="blocked-{{ phase.ID }}">Generate Schedule</span>
+                      <p class="help" id="blocked-{{ phase.ID }}">{{ cannotScheduleMsg[phase.ID] }}</p>
+                    {% endif %}
+                  {% endif %}
                 {% endif %}
               </div>
               {% if whenMsg[phase.ID] %}

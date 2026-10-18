@@ -145,12 +145,12 @@ func TestByte2BiteSmallEvent(t *testing.T) {
 		t.Error("Wildcard not suppressed with 6 teams")
 	}
 
-	can, err := m.phaseSchedulable(ctx, semis, phases, complete, teams)
+	verdict, err := m.phaseSchedulable(ctx, semis, phases, complete, teams)
 	if err != nil {
 		t.Fatalf("phaseSchedulable: %v", err)
 	}
-	if !can {
-		t.Error("Semifinals not schedulable with 6 teams and no Wildcard")
+	if !verdict.CanRun {
+		t.Errorf("Semifinals not schedulable with 6 teams and no Wildcard: %v", verdict.Reasons)
 	}
 
 	if got := advancingTeams(t, m, semis, phases, complete, teams); len(got) != 6 {
@@ -183,11 +183,11 @@ func TestByte2BiteMidEvent(t *testing.T) {
 		t.Fatalf("Wildcard advances %d teams, want 3", len(wc))
 	}
 
-	can, err := m.phaseSchedulable(ctx, semis, phases, complete, teams)
+	verdict, err := m.phaseSchedulable(ctx, semis, phases, complete, teams)
 	if err != nil {
 		t.Fatalf("phaseSchedulable: %v", err)
 	}
-	if can {
+	if verdict.CanRun {
 		t.Error("Semifinals schedulable before the Wildcard is played")
 	}
 

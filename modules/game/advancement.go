@@ -219,6 +219,42 @@ func (m *Module) PhaseRankings(ctx context.Context, role PhaseRole, frozenOnly b
 	return out, nil
 }
 
+// filterScoreboard loads the raw scoreboard feeding a filter, returning
+// an empty board for a roster-sourced filter (selectFrom of 0), which
+// selects from the pool instead of from a scoreboard.
+func (m *Module) filterScoreboard(ctx context.Context, selectFrom uint, division string) ([]RankingRow, error) {
+	if selectFrom == 0 {
+		return []RankingRow{}, nil
+	}
+	return m.scoreboardRankings(ctx, selectFrom, division)
+}
+
+// filterContext builds the AdvancementFilterContext a filter is handed:
+// the roster minus the blocklist, with the scoreboard pruned the same
+// way, so a filter's cutoff applies to the teams that remain.  Both
+// readiness checks and Apply receive a context built here, so the field
+// a filter is measured against is always the field it runs on.
+func filterContext(teams []team.Team, rowData []RankingRow, excluded map[uint]struct{}) AdvancementFilterContext {
+	roster := makeRoster(teams)
+	remaining := make(map[uint]team.Team, len(roster))
+	for id, t := range roster {
+		if _, blocked := excluded[id]; !blocked {
+			remaining[id] = t
+		}
+	}
+	board := make([]RankingRow, 0, len(rowData))
+	for _, row := range rowData {
+		if _, blocked := excluded[row.Team.ID]; !blocked {
+			board = append(board, row)
+		}
+	}
+	return AdvancementFilterContext{
+		Roster:     roster,
+		Remaining:  remaining,
+		Scoreboard: board,
+	}
+}
+
 // runAdvancementFilters applies every advancement filter configured on
 // a phase for a single division.  The filters run in order against a
 // single shared candidate pool: an include filter adds the teams it
@@ -248,14 +284,10 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 		Division: division,
 	}
 	for _, filter := range phase.AdvancementFilters {
-		var rowData []RankingRow
-		if filter.SelectFrom != 0 {
-			var err error
-			rowData, err = m.scoreboardRankings(ctx, filter.SelectFrom, division)
-			if err != nil {
-				slog.Error("Error retrieving filter scoreboard", "filter", filter)
-				return nil, nil, err
-			}
+		rowData, err := m.filterScoreboard(ctx, filter.SelectFrom, division)
+		if err != nil {
+			slog.Error("Error retrieving filter scoreboard", "filter", filter, "error", err)
+			return nil, nil, err
 		}
 
 		wctx.Scoreboard = rowData
@@ -278,36 +310,20 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 		// The field the filter sees is the roster minus the
 		// blocklist, so a cutoff applies to the teams that remain
 		// rather than to the whole field.
-		remaining := make(map[uint]team.Team, len(teams))
-		for id, t := range makeRoster(teams) {
-			if _, blocked := excluded[id]; !blocked {
-				remaining[id] = t
-			}
-		}
-		remainingBoard := make([]RankingRow, 0, len(rowData))
-		for _, row := range rowData {
-			if _, blocked := excluded[row.Team.ID]; !blocked {
-				remainingBoard = append(remainingBoard, row)
-			}
-		}
-		sctx := AdvancementFilterContext{
-			Roster:     makeRoster(teams),
-			Remaining:  remaining,
-			Scoreboard: remainingBoard,
-		}
+		sctx := filterContext(teams, rowData, excluded)
 
 		if filter.Mode == GamePhaseAdvancementFilterModeExclude {
 			// An exclude filter removes teams.  Run it against a
 			// copy of the remaining field so every removal lands;
 			// the field-minus-result diff is the filter's full
 			// target set, which joins the blocklist.
-			sctx.Candidates = make(map[uint]team.Team, len(remaining))
-			maps.Copy(sctx.Candidates, remaining)
+			sctx.Candidates = make(map[uint]team.Team, len(sctx.Remaining))
+			maps.Copy(sctx.Candidates, sctx.Remaining)
 			if err := f.Apply(&sctx, filter.Rule, filter.Mode, filter.SliceExpr); err != nil {
 				slog.Error("Error applying advancement filter", "filter", filter, "error", err)
 				return nil, nil, err
 			}
-			for id := range remaining {
+			for id := range sctx.Remaining {
 				if _, kept := sctx.Candidates[id]; !kept {
 					excluded[id] = struct{}{}
 				}
@@ -339,13 +355,9 @@ func (m *Module) runAdvancementFilters(ctx context.Context, phase GamePhase, pha
 // context (mirroring runAdvancementFilters).  An empty When expression
 // is always satisfied, i.e. the filter always runs.
 func (m *Module) filterWhenSatisfied(ctx context.Context, phases []GamePhase, phaseComplete map[uint]bool, teams []team.Team, filter GamePhaseAdvancementFilter, division string) (bool, error) {
-	scoreboard := []RankingRow{}
-	if filter.SelectFrom != 0 {
-		var err error
-		scoreboard, err = m.scoreboardRankings(ctx, filter.SelectFrom, division)
-		if err != nil {
-			return false, err
-		}
+	scoreboard, err := m.filterScoreboard(ctx, filter.SelectFrom, division)
+	if err != nil {
+		return false, err
 	}
 	wctx := WhenContext{
 		Phases:     phaseStates(phases, phaseComplete),
@@ -356,44 +368,76 @@ func (m *Module) filterWhenSatisfied(ctx context.Context, phases []GamePhase, ph
 	return evalWhen(filter.When, wctx, fmt.Sprintf("When expression on filter %q", filter.Rule))
 }
 
+// AdvancementReadiness is a phase's verdict on whether its advancement
+// filters can produce a correct candidate list right now.
+type AdvancementReadiness struct {
+	CanRun bool
+	// Reasons holds one entry per blocking filter or missing source
+	// phase, in filter order.  It is empty when CanRun is true.
+	Reasons []string
+}
+
+// block marks the phase as unable to run and records why.
+func (r *AdvancementReadiness) block(reason string) {
+	r.CanRun = false
+	r.Reasons = append(r.Reasons, reason)
+}
+
 // phaseSchedulable reports whether the filters configured on a phase
-// can be satisfied right now.  A filter is satisfied when its source
-// phase is complete and frozen; a roster-sourced filter (SelectFrom
-// of 0) is always satisfied.  A filter whose When condition evaluates
-// to false is skipped entirely, so it can never block the phase from
-// being scheduled; for a division-aware phase the filter only blocks
-// when its When condition is true for at least one configured
-// division.  A phase with no filters is schedulable.
-func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool, teams []team.Team) (bool, error) {
-	filters, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).
+// can run right now.  A filter needs two things: its source phase
+// complete and frozen (a roster-sourced filter, SelectFrom of 0, has
+// no such requirement), and — when the filter implements
+// AdvancementFilterReadiness — its own data present and usable.  A
+// filter whose When condition evaluates to false is skipped by
+// runAdvancementFilters, so it never blocks; for a division-aware
+// phase the filter only counts as needed when its When condition is
+// true for at least one configured division.  A phase with no filters
+// is schedulable.
+//
+// All blockers are collected, not just the first, so the operator sees
+// every unmet generation parameter at once.  A readiness check that
+// errors is treated as not-ready (the error message becomes the
+// reason) rather than failing the page: a phase list that explains
+// itself is more useful mid-event than one that dies.
+func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases []GamePhase, phaseComplete map[uint]bool, teams []team.Team) (AdvancementReadiness, error) {
+	verdict := AdvancementReadiness{CanRun: true}
+	filterRows, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).
 		Where(&GamePhaseAdvancementFilter{GamePhaseID: phase.ID}).
 		Find(ctx)
 	if err != nil {
-		return false, err
+		return verdict, err
 	}
-	for _, filter := range filters {
-		if filter.SelectFrom == 0 {
-			continue
-		}
+	if len(filterRows) == 0 {
+		return verdict, nil
+	}
 
-		// Determine whether this filter's source phase is required
-		// at all right now.  A filter gated by a When condition that
-		// is false is skipped by runAdvancementFilters, so it must
-		// not keep the phase from being scheduled.
+	// Map lookup by ID: phase IDs follow the authored setup file and
+	// are not guaranteed contiguous, so indexing the phase slice
+	// positionally by ID would read the wrong row.
+	byID := make(map[uint]GamePhase, len(phases))
+	for _, p := range phases {
+		byID[p.ID] = p
+	}
+
+	for _, filter := range filterRows {
+		// Determine whether this filter is required at all right
+		// now.  A filter gated by a When condition that is false is
+		// skipped by runAdvancementFilters, so it must not keep the
+		// phase from being scheduled.
 		required := true
 		if filter.When != "" {
 			divisions := []string{""}
 			if phase.DivisionAware {
 				divisions, err = m.whenDivisions(ctx, phase)
 				if err != nil {
-					return false, err
+					return verdict, err
 				}
 			}
 			required = false
 			for _, division := range divisions {
 				runs, err := m.filterWhenSatisfied(ctx, phases, phaseComplete, teams, filter, division)
 				if err != nil {
-					return false, err
+					return verdict, err
 				}
 				if runs {
 					required = true
@@ -410,18 +454,130 @@ func (m *Module) phaseSchedulable(ctx context.Context, phase GamePhase, phases [
 			}
 		}
 
-		slog.Debug("Evaluating filter satisfaction",
-			"phase", phase.Name,
-			"rule", filter.Rule,
-			"source_id", filter.SelectFrom,
-			"source_complete", phaseComplete[filter.SelectFrom],
-			"source_frozen", phases[filter.SelectFrom-1].Frozen,
-		)
-		if !phaseComplete[filter.SelectFrom] || !phases[filter.SelectFrom-1].Frozen {
-			return false, nil
+		if filter.SelectFrom != 0 {
+			src, ok := byID[filter.SelectFrom]
+			if !ok {
+				verdict.block(fmt.Sprintf("%s: source phase %d no longer exists", filter.Rule, filter.SelectFrom))
+				continue
+			}
+			slog.Debug("Evaluating filter satisfaction",
+				"phase", phase.Name,
+				"rule", filter.Rule,
+				"source_id", src.ID,
+				"source_complete", phaseComplete[src.ID],
+				"source_frozen", src.Frozen,
+			)
+			if !phaseComplete[src.ID] || !src.Frozen {
+				verdict.block(fmt.Sprintf("%s: %s must be complete and frozen first", filter.Rule, src.Name))
+				// The filter would read an empty scoreboard; its own
+				// readiness answer would only repeat this one.
+				continue
+			}
+		}
+
+		f, exists := filters[filter.Filter]
+		if !exists {
+			// Registry correctness is LintConfig's job; an
+			// unregistered filter simply has nothing to be asked.
+			continue
+		}
+
+		// The whole-field board answers the data-availability
+		// question readiness asks; which teams survive selection is
+		// the filters' job, not this check's.
+		rowData, err := m.filterScoreboard(ctx, filter.SelectFrom, "")
+		if err != nil {
+			return verdict, err
+		}
+		sctx := filterContext(teams, rowData, nil)
+		ok, reason, err := filterCanRun(ctx, f, &sctx)
+		if err != nil {
+			slog.Error("Advancement filter readiness check failed",
+				"phase", phase.Name,
+				"filter", filter.Filter,
+				"error", err,
+			)
+			verdict.block(fmt.Sprintf("%s: %v", filter.Rule, err))
+			continue
+		}
+		if !ok {
+			verdict.block(fmt.Sprintf("%s: %s", filter.Rule, reason))
 		}
 	}
-	return true, nil
+	return verdict, nil
+}
+
+// phaseSequence returns the phases in the order their advancement
+// dependencies imply: every phase comes after the phases its filters
+// read from (its SelectFrom sources).  Ties break on phase ID, which
+// matches the implicit authored order used elsewhere.  A cyclic
+// configuration cannot progress, so on a cycle the remaining phases
+// are appended in ID order and the situation is logged; LintConfig
+// validates that SelectFrom references exist but not that the graph is
+// acyclic, so this must never hang.
+func (m *Module) phaseSequence(ctx context.Context, phases []GamePhase) ([]GamePhase, error) {
+	filterRows, err := gorm.G[GamePhaseAdvancementFilter](m.db.DB).Find(ctx)
+	if err != nil {
+		return nil, err
+	}
+	deps := make(map[uint]map[uint]bool)
+	for _, filter := range filterRows {
+		if filter.SelectFrom == 0 {
+			continue
+		}
+		if deps[filter.GamePhaseID] == nil {
+			deps[filter.GamePhaseID] = make(map[uint]bool)
+		}
+		deps[filter.GamePhaseID][filter.SelectFrom] = true
+	}
+
+	byID := make(map[uint]GamePhase, len(phases))
+	remaining := make(map[uint]bool, len(phases))
+	for _, p := range phases {
+		byID[p.ID] = p
+		remaining[p.ID] = true
+	}
+
+	out := make([]GamePhase, 0, len(phases))
+	for len(remaining) > 0 {
+		// Pick the lowest remaining ID whose remaining dependencies
+		// are all already emitted.
+		next := uint(0)
+		for id := range remaining {
+			blocked := false
+			for dep := range deps[id] {
+				// A source outside the phase set cannot be waited on.
+				if remaining[dep] {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			if next == 0 || id < next {
+				next = id
+			}
+		}
+		if next == 0 {
+			// A cycle: no phase can proceed.  Fall back to ID order
+			// so the page still renders deterministically.
+			slog.Warn("Advancement filter dependency cycle, falling back to ID order",
+				"remaining", len(remaining))
+			nums := make([]uint, 0, len(remaining))
+			for id := range remaining {
+				nums = append(nums, id)
+			}
+			sort.Slice(nums, func(i, j int) bool { return nums[i] < nums[j] })
+			for _, id := range nums {
+				out = append(out, byID[id])
+			}
+			return out, nil
+		}
+		out = append(out, byID[next])
+		delete(remaining, next)
+	}
+	return out, nil
 }
 
 func resolveTies(ctx context.Context, dbd *db.DB, rows *[]RankingRow, phase *GamePhase) {

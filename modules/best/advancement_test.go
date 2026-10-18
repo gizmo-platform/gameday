@@ -399,3 +399,131 @@ func TestNotebookAdvancementFullRosterCutoff(t *testing.T) {
 		}
 	}
 }
+
+// TestNotebookCanRun covers the readiness verdict: the filter is not
+// ready until at least one in-scope team has a notebook score, a
+// tie-breaker-only score does not count, an empty scope reports as
+// unrankable, and a populated scoreboard narrows the scope.
+func TestNotebookCanRun(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name     string
+		specs    map[int]map[string]float32
+		board    []game.RankingRow // when set, the scoreboard scope
+		wantOK   bool
+		wantHelp string
+	}{
+		{
+			name:     "no scores recorded",
+			specs:    map[int]map[string]float32{100: {}},
+			wantOK:   false,
+			wantHelp: "no notebook scores have been recorded yet",
+		},
+		{
+			name:     "tie-breaker-only scores do not count",
+			specs:    map[int]map[string]float32{100: {"marketing": 90}, 200: {}},
+			wantOK:   false,
+			wantHelp: "no notebook scores have been recorded yet",
+		},
+		{
+			name:   "one notebook score is enough",
+			specs:  map[int]map[string]float32{100: {"notebook": 300}},
+			wantOK: true,
+		},
+		{
+			name: "scoreboard scopes the check",
+			// The notebook holder is not on the scoreboard, so
+			// within the scope Apply will rank there is nothing to
+			// rank on.
+			specs:    map[int]map[string]float32{100: {"notebook": 300}},
+			board:    []game.RankingRow{}, // non-nil: build the board below
+			wantOK:   false,
+			wantHelp: "no notebook scores have been recorded yet",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, d := newTestModule(t)
+			roster := seedBestScores(t, d, tc.specs)
+
+			sctx := game.AdvancementFilterContext{
+				Roster:     roster,
+				Candidates: make(map[uint]team.Team),
+			}
+			if tc.board != nil {
+				// Scope the board to every team except the notebook
+				// holder (team number 100).
+				board := []game.RankingRow{}
+				for id, tm := range roster {
+					if tm.Number == 100 {
+						continue
+					}
+					board = append(board, game.RankingRow{Team: tm, TeamID: id})
+				}
+				sctx.Scoreboard = board
+			}
+
+			nb := &NotebookAdvancement{db: d}
+			ok, reason, err := nb.CanRun(ctx, &sctx)
+			if err != nil {
+				t.Fatalf("CanRun: %v", err)
+			}
+			if ok != tc.wantOK {
+				t.Errorf("CanRun = %v (%q), want %v", ok, reason, tc.wantOK)
+			}
+			if !tc.wantOK && !strings.Contains(reason, tc.wantHelp) {
+				t.Errorf("reason = %q, want it to contain %q", reason, tc.wantHelp)
+			}
+		})
+	}
+
+	t.Run("empty scope", func(t *testing.T) {
+		_, d := newTestModule(t)
+		sctx := game.AdvancementFilterContext{
+			Roster:     map[uint]team.Team{},
+			Candidates: make(map[uint]team.Team),
+		}
+		nb := &NotebookAdvancement{db: d}
+		ok, reason, err := nb.CanRun(ctx, &sctx)
+		if err != nil {
+			t.Fatalf("CanRun: %v", err)
+		}
+		if ok || !strings.Contains(reason, "no teams are in scope to rank") {
+			t.Errorf("CanRun = %v (%q), want empty-scope refusal", ok, reason)
+		}
+	})
+}
+
+// TestNotebookScope verifies the shared scoping both Apply and CanRun
+// use: the scoreboard when it is populated, the pool otherwise.
+func TestNotebookScope(t *testing.T) {
+	_, d := newTestModule(t)
+	roster := seedBestScores(t, d, map[int]map[string]float32{100: {}})
+
+	poolOnly := game.AdvancementFilterContext{Roster: roster}
+	if got := notebookScope(&poolOnly); len(got) != len(roster) {
+		t.Errorf("pool scope = %d teams, want the full roster", len(got))
+	}
+
+	// A scoreboard row wins over the pool for scope.
+	var scoped *team.Team
+	for _, tm := range roster {
+		if tm.Number == 42 {
+			tm := tm
+			scoped = &tm
+			break
+		}
+	}
+	if scoped == nil {
+		t.Fatal("harness team 42 missing")
+	}
+	board := game.AdvancementFilterContext{
+		Roster:     roster,
+		Scoreboard: []game.RankingRow{{Team: *scoped, TeamID: scoped.ID}},
+	}
+	got := notebookScope(&board)
+	if len(got) != 1 || got[scoped.ID].ID != scoped.ID {
+		t.Errorf("scoreboard scope = %v, want only the board team", got)
+	}
+}

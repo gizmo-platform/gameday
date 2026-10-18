@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/flosch/pongo2/v6"
@@ -52,14 +53,20 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 	// information is populated.  This could be pushed down into
 	// the database by a more skilled programmer.
 	canSchedule := make(map[uint]bool)
+	cannotScheduleMsg := make(map[uint]string)
 	for _, phase := range phases {
-		can, err := m.phaseSchedulable(r.Context(), phase, phases, phaseComplete, teams)
+		verdict, err := m.phaseSchedulable(r.Context(), phase, phases, phaseComplete, teams)
 		if err != nil {
 			slog.Debug("Could not load advancement filters for phase", "phase", phase.ID, "error", err)
 			m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
 			return
 		}
-		canSchedule[phase.ID] = can
+		canSchedule[phase.ID] = verdict.CanRun
+		if !verdict.CanRun {
+			// Joined in Go: pongo2 only autoescapes string-kinded
+			// values, so the reasons travel as one flat string.
+			cannotScheduleMsg[phase.ID] = strings.Join(verdict.Reasons, "; ")
+		}
 	}
 
 	whenActive, whenMsg, err := m.whenStates(r.Context(), phases, phaseComplete, teams)
@@ -69,16 +76,91 @@ func (m *Module) uiViewPhaseList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only the next phase up gets a Generate Schedule control: a phase
+	// still waiting behind an unfrozen source has nothing to explain,
+	// because the source is itself the next thing to do.
+	nextPhase := make(map[uint]bool)
+	sequence, err := m.phaseSequence(r.Context(), phases)
+	if err != nil {
+		slog.Error("Error ordering phases", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	for _, phase := range sequence {
+		if scheduleAvailable[phase.ID] || phase.Frozen {
+			continue
+		}
+		nextPhase[phase.ID] = true
+		break
+	}
+
 	ctx := pongo2.Context{
-		"phases":      phases,
-		"completed":   phaseComplete,
-		"schedule":    scheduleAvailable,
-		"canSchedule": canSchedule,
-		"whenActive":  whenActive,
-		"whenMsg":     whenMsg,
+		"phases":            phases,
+		"completed":         phaseComplete,
+		"schedule":          scheduleAvailable,
+		"canSchedule":       canSchedule,
+		"cannotScheduleMsg": cannotScheduleMsg,
+		"nextPhase":         nextPhase,
+		"whenActive":        whenActive,
+		"whenMsg":           whenMsg,
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/phases.p2", ctx)
+}
+
+// scheduleGate enforces that a phase's advancement filters can run
+// before allowing a schedule action, closing the vector of hitting the
+// select, preview, or accept endpoints directly while the generation
+// parameters are unmet.  The override parameter lets an operator
+// through to the manual team picker when the automatic selection cannot
+// run; it travels with the operator through the preview and accept
+// posts, so it is read from the form as well as the query string.  It
+// renders the blocked page and reports true when the request should be
+// aborted; false when the action may proceed.
+func (m *Module) scheduleGate(w http.ResponseWriter, r *http.Request, phase GamePhase, teams []team.Team) bool {
+	if r.FormValue("override") != "" {
+		return false
+	}
+
+	phases, err := gorm.G[GamePhase](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading phases for schedule gate", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return true
+	}
+	phaseComplete, err := m.phaseCompletionStates(r.Context(), phases)
+	if err != nil {
+		slog.Error("Error determining phase completion for schedule gate", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return true
+	}
+	verdict, err := m.phaseSchedulable(r.Context(), phase, phases, phaseComplete, teams)
+	if err != nil {
+		slog.Error("Error evaluating advancement readiness", "phase", phase.ID, "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return true
+	}
+	if verdict.CanRun {
+		return false
+	}
+
+	slog.Info("Generation parameters unmet, blocking schedule action",
+		"phase", phase.ID,
+		"reasons", verdict.Reasons,
+	)
+	m.ws.DoTemplate(w, r, "views/game/schedule_blocked.p2", pongo2.Context{
+		"phase":   phase,
+		"reasons": verdict.Reasons,
+		// The gate fires on select-teams, preview, and accept alike,
+		// so the escape hatch always returns to the start of the
+		// flow: the team picker, with the manual selection unlocked.
+		"backPhases": path.Join(m.basePath, "schedule"),
+		"overrideLink": fmt.Sprintf("%s?st=%s&override=1",
+			path.Join(m.basePath, "schedule", "phases", strconv.Itoa(int(phase.ID)), "select-teams"),
+			phase.ScheduleType,
+		),
+	})
+	return true
 }
 
 // scheduleRow is one match row of the schedule template
@@ -427,6 +509,9 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 	if m.whenGate(w, r, phase, teams) {
 		return
 	}
+	if m.scheduleGate(w, r, phase, teams) {
+		return
+	}
 
 	fields, err := m.ListFields(r.Context(), Field{})
 	if err != nil {
@@ -504,8 +589,11 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		ctx["advancingTeams"] = advancingTeams
 		ctx["advancementReasons"] = determinations
 	}
+	// The override parameter is the operator's escape hatch when the
+	// automatic selection cannot run: it unlocks the team picker so a
+	// schedule can be built by hand.
 	if r.URL.Query().Get("override") != "" {
-		ctx["manualEnabled"] = false
+		ctx["manualEnabled"] = true
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/schedule_select_teams.p2", ctx)
@@ -529,6 +617,9 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if m.whenGate(w, r, phase, gateTeams) {
+		return
+	}
+	if m.scheduleGate(w, r, phase, gateTeams) {
 		return
 	}
 
@@ -631,6 +722,10 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		"teams":     teams,
 		"fields":    fields,
 		"positions": positions,
+		// The accept form posts to a relative URL, which drops the
+		// query string, so the override has to travel as a form field
+		// for it to reach the accept gate.
+		"override": r.FormValue("override"),
 	}
 
 	m.ws.DoTemplate(w, r, "views/game/schedule_preview.p2", ctx)
@@ -706,6 +801,9 @@ func (m *Module) uiViewPhaseScheduleAccept(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if m.whenGate(w, r, phase, teams) {
+		return
+	}
+	if m.scheduleGate(w, r, phase, teams) {
 		return
 	}
 

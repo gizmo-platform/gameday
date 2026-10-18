@@ -103,6 +103,7 @@
         <div class="is-flex is-justify-content-center noprint">
           <form method="post" action="accept-schedule">
             <button class="button is-primary" type="submit">Accept Schedule</button>
+            {% if override %}<input type="hidden" name="override" value="{{ override }}" />{% endif %}
           </form>
         </div>
       </div>

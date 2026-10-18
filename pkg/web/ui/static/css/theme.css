@@ -104,6 +104,29 @@ body.has-docked-footer > .section {
     margin: 0;
 }
 
+/*
+ * Disabled action cue: a control the operator cannot use yet, shown
+ * with the reason on rollover.  Deliberately no pointer-events:none --
+ * that would suppress the native title tooltip carrying the reason.
+ * Bulma 1.0.4 has no tooltip component and ships no button.is-disabled,
+ * so the appearance is hand-rolled from Bulma's own disabled tokens.
+ */
+.button.is-disabled[aria-disabled="true"] {
+    cursor: not-allowed;
+    color: var(--bulma-text-weak);
+    background-color: var(--bulma-scheme-main-ter);
+    border-color: var(--bulma-border-weak);
+    box-shadow: none;
+    opacity: 0.75;
+}
+
+.button.is-disabled[aria-disabled="true"]:hover,
+.button.is-disabled[aria-disabled="true"]:focus {
+    color: var(--bulma-text-weak);
+    background-color: var(--bulma-scheme-main-ter);
+    border-color: var(--bulma-border-weak);
+}
+
 @media print {
     body {
         font-size: small;

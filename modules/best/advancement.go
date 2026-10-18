@@ -195,6 +195,53 @@ func notebookRowEqual(a, b notebookRow) bool {
 	return true
 }
 
+// notebookScope is the set of teams the notebook ranking is computed
+// over: the teams on the division scoreboard, falling back to the
+// remaining pool when the scoreboard is empty so the filter still
+// evaluates to a definitive answer.  Both Apply and CanRun scope
+// through here, so readiness is always measured against the field
+// Apply will rank.
+func notebookScope(sctx *game.AdvancementFilterContext) map[uint]team.Team {
+	scope := make(map[uint]team.Team, len(sctx.Scoreboard))
+	for _, row := range sctx.Scoreboard {
+		scope[row.Team.ID] = row.Team
+	}
+	if len(scope) == 0 {
+		scope = make(map[uint]team.Team, len(sctx.Pool()))
+		maps.Copy(scope, sctx.Pool())
+	}
+	return scope
+}
+
+// CanRun implements game.AdvancementFilterReadiness.  The filter ranks
+// teams by a recorded notebook score, so it cannot answer anything until
+// at least one team in scope has one: with no notebook scores loaded it
+// would silently reject every team and yield an empty phase.  Scores
+// that are loaded but disqualify every team are ready -- a phase that
+// advances zero teams is a Suppress concern, not a readiness one.
+func (n *NotebookAdvancement) CanRun(ctx context.Context, sctx *game.AdvancementFilterContext) (bool, string, error) {
+	scope := notebookScope(sctx)
+	if len(scope) == 0 {
+		return false, "no teams are in scope to rank", nil
+	}
+
+	buffer, err := scoreBuffer(ctx, n.db, scope)
+	if err != nil {
+		return false, "", err
+	}
+
+	// scoreBuffer also holds the tie breaker values, so a team with
+	// only a marketing score populates its entry without having a
+	// notebook score; only index 0 counts.
+	for _, byType := range buffer {
+		if _, ok := byType[0]; ok {
+			return true, "", nil
+		}
+	}
+
+	return false, "no notebook scores have been recorded yet", nil
+}
+
 func (n *NotebookAdvancement) Apply(sctx *game.AdvancementFilterContext, rule string, mode game.GamePhaseAdvancementFilterMode, sExpr string) error {
 	e, err := expr.Compile(sExpr)
 	if err != nil {
@@ -217,14 +264,7 @@ func (n *NotebookAdvancement) Apply(sctx *game.AdvancementFilterContext, rule st
 	// Scope the ranking to the teams on the division scoreboard.
 	// When the scoreboard is empty the remaining pool is used instead so the
 	// filter still evaluates to a definitive answer.
-	scope := make(map[uint]team.Team, len(sctx.Scoreboard))
-	for _, row := range sctx.Scoreboard {
-		scope[row.Team.ID] = row.Team
-	}
-	if len(scope) == 0 {
-		scope = make(map[uint]team.Team, len(sctx.Pool()))
-		maps.Copy(scope, sctx.Pool())
-	}
+	scope := notebookScope(sctx)
 
 	rows, err := n.notebookRankings(context.Background(), scope)
 	if err != nil {

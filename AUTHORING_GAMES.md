@@ -144,11 +144,37 @@ consistency over more matches.
 
 ### When a phase becomes schedulable
 
-A phase is schedulable when **every phase its advancement filters read from is
-complete and frozen**. A filter with `SelectFrom: 0` (the full roster) imposes
-no such requirement, and neither does a filter whose `When` is `false` (see
-"Conditional filters" in §5). A phase with no advancement filters inherits the
-full roster and is always schedulable.
+A phase can generate its schedule when **both** of these hold:
+
+1. **Every phase its advancement filters read from is complete and
+   frozen.** A filter with `SelectFrom: 0` (the full roster) imposes no
+   such requirement.
+2. **Every filter's data is actually present.** A filter can declare that
+   it cannot answer yet — for example the BEST `BESTNotebook` filter is
+   not ready until at least one team has a recorded notebook score,
+   because until then it would silently reject everyone. A filter whose
+   data is loaded but which happens to select no team *is* ready; use
+   `Suppress` (below) for phases that should not run at all for a
+   roster-shape reason.
+
+Neither requirement applies to a filter whose `When` is `false` (see
+"Conditional filters" in §5): a skipped filter never blocks. A phase with
+no advancement filters inherits the full roster and is always schedulable.
+
+On the phase list, **only the next phase up shows a Generate Schedule
+control** (phases are ordered by their `SelectFrom` dependencies). When
+the next phase's generation parameters are unmet, the button is grayed
+out and carries the reason — as a hover tooltip and as help text under
+the button, e.g. `Pick: no notebook scores have been recorded yet` or
+`Pick: Seeding must be complete and frozen first`. All unmet parameters
+are listed at once. Phases waiting behind the next one up show no button.
+
+The gate is enforced server-side on the select/preview/accept actions,
+but an operator can override it: the blocked page links to **Generate
+manually anyway**, which appends `?override=1` and unlocks the manual
+team picker. The override travels with the operator through the preview
+and accept steps, so a hand-built schedule is possible whenever the
+automatic selection cannot run.
 
 ### Conditional phases (`Suppress`)
 
