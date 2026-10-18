@@ -13,6 +13,11 @@ import (
 	"github.com/gizmo-platform/gameday/pkg/db"
 )
 
+// errClockNoMatches is returned when the active phase has no match
+// left for a clock run to act on, i.e. every match in the phase has
+// reached a terminal state.
+var errClockNoMatches = errors.New("no matches remain in this phase")
+
 // matchTransitionStates lists the MatchState values the clock can
 // drive a match from.  Scorable matches are post-run and are not
 // pulled back into the cycle; terminal states (Complete, NoShow,
@@ -199,8 +204,8 @@ func (m *Module) setClockNextMatch(ctx context.Context, phaseID uint, n int) err
 
 // clockMatchTarget resolves the match a clock run should act on for
 // the active phase.  It returns the phase, the current match and the
-// following match (0 when none).  errClockNoMatch is returned when
-// the active phase has no non-terminal match.
+// following match (0 when none).  errClockNoMatches is returned when
+// the active phase has no match left to run.
 func (m *Module) clockMatchTarget(ctx context.Context, cs *ClockSettings) (*GamePhase, int, int, error) {
 	phase, err := m.activePhase(ctx)
 	if err != nil {
@@ -216,7 +221,8 @@ func (m *Module) clockMatchTarget(ctx context.Context, cs *ClockSettings) (*Game
 	override := m.clockNextMatchOverride(ctx, cs, phase.ID)
 	cur, next := computeClockTargets(override, nums)
 	if cur == 0 {
-		return nil, 0, 0, fmt.Errorf("no non-terminal match in the active phase %q", phase.Name)
+		slog.Debug("Clock target: no matches remain", "phase", phase.ID, "phase-name", phase.Name)
+		return nil, 0, 0, errClockNoMatches
 	}
 	return phase, cur, next, nil
 }

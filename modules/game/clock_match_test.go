@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -271,8 +272,18 @@ func TestClockMatchStartErrors(t *testing.T) {
 		m, _ := newTestModule(t)
 		seedClockSettingsWithTransitions(t, m, time.Hour, 30*time.Second, true)
 		seedPhasePlacements(t, m, []int{1, 2}, MatchStateComplete)
-		if startClock(t, m) {
+
+		req := httptest.NewRequest(http.MethodPost, "/ui/mod/game/timekeeping/start", nil)
+		rec := httptest.NewRecorder()
+		m.uiViewTimekeepingStart(rec, req)
+		if rec.Code == http.StatusSeeOther {
 			t.Fatal("start should have been rejected when every match is terminal")
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("start with no matches remaining = %d, want 400", rec.Code)
+		}
+		if body := rec.Body.String(); !strings.Contains(body, "no matches remain in this phase") {
+			t.Errorf("error page missing the no-matches-remaining message:\n%s", body)
 		}
 		requireNoActiveClock(t, m)
 	})
