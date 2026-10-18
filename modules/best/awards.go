@@ -141,12 +141,20 @@ func (m *Module) awardDefinitions() []Award {
 
 	return []Award{
 		{
+			Key:           "best",
+			Name:          "BEST Award",
+			Description:   bestAwardDescription,
+			Scorer:        &bestAwardScorer{db: m.db, perf: performanceFromSeeding{gm: m.gm}},
+			DivisionAware: divisionAware,
+			Order:         0,
+		},
+		{
 			Key:         "game",
 			Name:        "Game Award",
 			Description: "Awarded from the results of the final phase.",
 			Ranker:      finalPhaseRanker{gm: m.gm},
 			PodiumRanks: gameAwardPlaces,
-			Order:       0,
+			Order:       1,
 		},
 		{
 			Key:           "notebook",
@@ -154,7 +162,7 @@ func (m *Module) awardDefinitions() []Award {
 			Description:   "Highest notebook score.",
 			Scorer:        bestCategoryScorer{db: m.db, key: "notebook"},
 			DivisionAware: divisionAware,
-			Order:         1,
+			Order:         2,
 		},
 		{
 			Key:           "marketing",
@@ -162,7 +170,7 @@ func (m *Module) awardDefinitions() []Award {
 			Description:   "Highest marketing score.",
 			Scorer:        bestCategoryScorer{db: m.db, key: "marketing"},
 			DivisionAware: divisionAware,
-			Order:         2,
+			Order:         3,
 		},
 		{
 			Key:           "poster",
@@ -170,7 +178,7 @@ func (m *Module) awardDefinitions() []Award {
 			Description:   "Highest poster score.",
 			Scorer:        bestCategoryScorer{db: m.db, key: "poster"},
 			DivisionAware: divisionAware,
-			Order:         3,
+			Order:         4,
 		},
 		{
 			Key:           "video",
@@ -178,7 +186,7 @@ func (m *Module) awardDefinitions() []Award {
 			Description:   "Highest video score.",
 			Scorer:        bestCategoryScorer{db: m.db, key: "video"},
 			DivisionAware: divisionAware,
-			Order:         4,
+			Order:         5,
 		},
 	}
 }
@@ -211,10 +219,19 @@ type awardGroup struct {
 	More     bool
 }
 
-// awardResult is the computed winners for a single award.
+// awardResult is the computed winners for a single award.  Diagnosed
+// reports whether Diagnosis holds an eligibility breakdown for the
+// award; the scorer populates it when it can explain which candidates
+// it excluded and why.
+//
+// The flag exists because pongo2 cannot test a nil pointer for truth: a
+// pointer kind is neither a struct nor any other case IsTrue handles, so
+// templates must not branch on Diagnosis directly.
 type awardResult struct {
-	Award  Award
-	Groups []awardGroup
+	Award     Award
+	Groups    []awardGroup
+	Diagnosed bool
+	Diagnosis *awardDiagnosis
 }
 
 // awardRow is a candidate's ranking inputs: the primary award score,
@@ -361,6 +378,11 @@ func (m *Module) computeAwards(ctx context.Context) ([]awardResult, error) {
 			return nil, err
 		}
 
+		var diag *awardDiagnosis
+		if d, ok := def.Scorer.(awardDiagnoster); ok {
+			diag = d.Diagnose()
+		}
+
 		rows := make([]awardRow, 0, len(scores))
 		for teamID, primary := range scores {
 			t, ok := scope[teamID]
@@ -391,7 +413,7 @@ func (m *Module) computeAwards(ctx context.Context) ([]awardResult, error) {
 		}
 		sort.Strings(divNames)
 
-		result := awardResult{Award: def, Groups: []awardGroup{}}
+		result := awardResult{Award: def, Groups: []awardGroup{}, Diagnosis: diag, Diagnosed: diag != nil}
 		for _, name := range divNames {
 			groupRows := groups[name]
 			sort.Slice(groupRows, func(i, j int) bool {

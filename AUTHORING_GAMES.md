@@ -118,7 +118,7 @@ A phase is one stage of the tournament. Fields:
 |-----|---------|
 | `Name` | Human-readable phase name. |
 | `ID` | Unique integer id. Other phases' filters reference this via `SelectFrom`. |
-| `Role` | Optional role name declaring the phase's competitive purpose. Registered roles: `Exhibition`, `Seeding`, `Semifinal`, `Final`, plus `Wildcard` when the BEST module is enabled. Unknown non-empty roles are rejected by the linter. Roles let modules (and later tooling) find e.g. "the seeding phase" without hardcoding author-assigned IDs; unregistered in a file simply means no role is assigned. |
+| `Role` | Optional role name declaring the phase's competitive purpose. Registered roles: `Exhibition`, `Seeding`, `Semifinal`, `Final`, plus `Wildcard` when the BEST module is enabled. Unknown non-empty roles are rejected by the linter. Roles let modules (and later tooling) find e.g. "the seeding phase" without hardcoding author-assigned IDs; omitting it simply means no role is assigned. Marking exactly one phase `Seeding` is load-bearing when the BEST module is enabled: its frozen ranking produces every team's Robot Performance points, and without it no team can be ranked for the BEST Award. |
 | `ScheduleType` | The scheduler to use. Must be a registered generator name (see §7). |
 | `ScoreSummation` | How each team's phase score is aggregated across its matches. One of `AverageWithMulligan` or `Total` (see below). |
 | `AdvancementFilters` | Optional list of filters that decide which teams enter this phase (see §5). |
@@ -577,6 +577,20 @@ shared rank.
 When a phase is `DivisionAware`, a tied group is first split by division name
 and only sub-groups of two or more teams are reordered, so teams in different
 divisions are never compared against each other.
+
+### Robot Performance points
+
+When the BEST module is enabled it derives each team's **Robot Performance**
+points (game rules §4.2.1) from the phase tagged `Role: Seeding`, and feeds them
+to the BEST Award as its fifth component. The points are not authored here and
+are never entered in the BEST scores UI: they are recomputed from the seeding
+phase's own `ScoreSummation` and `TieBreaker` on every read, mapped linearly from
+250 points for 1st place down to 25 for last, and only count once the phase is
+frozen. Points are awarded per division (rules §9), so a seeding phase that is
+not `DivisionAware` is still split by each team's division. A contest with no
+`Seeding` phase therefore yields no Robot Performance points, and because all
+five components are required, no BEST Award ranking either; the awards page says
+so explicitly.
 
 ---
 

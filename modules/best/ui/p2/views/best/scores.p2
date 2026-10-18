@@ -10,6 +10,7 @@
   <div class="box is-flex is-justify-content-center">
     <div>
       <p>Click a score to edit it in place; press Enter to save. Leave the field empty to clear it.</p>
+      <p class="is-size-7 has-text-grey">The Total here sums the judged categories only. The BEST Award also includes Robot Performance, which is derived from the seeding phase ranking and shown on the Awards page.</p>
       <br />
       <hr />
 

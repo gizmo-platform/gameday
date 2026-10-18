@@ -15,6 +15,12 @@
         <h3 class="title is-4">{{ award.Award.Name }}</h3>
         <p class="is-size-7 has-text-grey">{{ award.Award.Description }}</p>
 
+        {% if award.Diagnosed %}
+          {% for note in award.Diagnosis.Notes %}
+          <div class="notification is-warning is-light is-size-7">{{ note }}</div>
+          {% endfor %}
+        {% endif %}
+
         {% if award.Groups %}
           {% for group in award.Groups %}
             <table class="table is-narrow is-fullwidth">
@@ -57,6 +63,39 @@
           {% endfor %}
         {% else %}
           <p class="is-size-7 has-text-grey">No results recorded for this award.</p>
+        {% endif %}
+
+        {% if award.Diagnosed %}
+          {% if not award.Diagnosis.Candidates %}
+            <p class="is-size-7 has-text-grey">No teams are registered for this award.</p>
+          {% else %}
+            {% if not award.Groups %}
+              <p class="is-size-7 has-text-grey">No team has completed all five components yet.</p>
+            {% endif %}
+            <details>
+              <summary class="is-size-7 has-text-grey">Eligibility</summary>
+              <table class="table is-narrow is-fullwidth">
+                <tr>
+                  <th>Team</th>
+                  {% for column in award.Diagnosis.Components %}
+                  <th class="has-text-right">{{ column.Header }}</th>
+                  {% endfor %}
+                  <th>Missing</th>
+                </tr>
+                {% for candidate in award.Diagnosis.Candidates %}
+                <tr>
+                  <td>{{ candidate.Team.Number }} &mdash; {{ candidate.Team.Name }}</td>
+                  {% for cell in candidate.Cells %}
+                  <td class="has-text-right">{{ cell.Display }}</td>
+                  {% endfor %}
+                  <td class="is-size-7{% if not candidate.Ready %} has-text-grey{% endif %}">
+                    {% if candidate.Ready %}—{% else %}{{ candidate.Missing|join:", " }}{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </table>
+            </details>
+          {% endif %}
         {% endif %}
         {% if not forloop.Last %}<hr />{% endif %}
       {% endfor %}
