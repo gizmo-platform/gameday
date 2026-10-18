@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,7 +59,12 @@ func (m *Module) uiViewScorecardList(w http.ResponseWriter, r *http.Request) {
 
 	// Work out what from the form was selected
 	r.ParseForm()
-	filter := filterParams{States: MatchStates}
+	// The default filter must own a copy of the state list: json.Unmarshal
+	// into a non-nil slice reuses its backing array, so unmarshalling a
+	// saved-filter cookie straight into the package-level MatchStates
+	// would permanently corrupt it (losing states from every later page)
+	// for the life of the process.
+	filter := filterParams{States: slices.Clone(MatchStates)}
 	for _, phase := range phases {
 		filter.Phases = append(filter.Phases, phase.ID)
 	}
