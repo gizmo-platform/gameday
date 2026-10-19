@@ -623,12 +623,13 @@ so explicitly.
 ## 7. Schedulers (Generators)
 
 The `ScheduleType` field names the scheduler that produces the matches for a
-phase. Gameday knows exactly **five** registered generators. Anything else
+phase. Gameday knows exactly **six** registered generators. Anything else
 produces an `UnknownGenerator` error.
 
 | Name | Rounds (max / default) | Dynamic | Constraints and notes |
 |------|------------------------|---------|------------------------|
-| `RandomSeeding` | 10 / 7 | no | Produces exactly the configured number of rounds. Each round is a random assignment of teams into `fields × positions` slots, then refined to maximize worst-case team downtime and position diversity. If teams don't divide evenly, a leftover partial match is committed. |
+| `Annealed` | 25 / 5 | no | The quality-first scheduler, and the recommended default for any phase that would otherwise use `RandomSeeding`. Runs a fixed-shape local search that strongly optimizes replay spacing, distinct opponents, field/position diversity, and low variance across teams — measurably better than `RandomSeeding` (e.g. at 40 teams / 2 fields / 4 positions / 6 rounds: 18 distinct opponents vs 13, and replay gaps kept at or above one round of spacing). Prefers a pre-baked design from the embedded archive when the shape (teams × fields × positions, round cap) is covered; otherwise it searches live, which still returns a valid schedule but with somewhat lower quality. |
+| `RandomSeeding` | 10 / 7 | no | Produces exactly the configured number of rounds. Each round is a random assignment of teams into `fields × positions` slots, then refined to maximize worst-case team downtime and position diversity. If teams don't divide evenly, a leftover partial match is committed. `Annealed` dominates it on every quality metric and should be preferred unless `RandomSeeding` is specifically wanted. |
 | `OneShot` | 1 / 1 | no | A single random round. If teams don't divide evenly, a leftover partial match is committed. |
 | `BID` | 100 / 1 | yes | Balanced Incomplete Block Design with block size `k = fields × positions` and λ = 1 (every pair of teams plays together exactly once). Requires `teams > k`; otherwise it falls back to a single random round. The configured `Rounds` is treated as a **minimum** number of appearances per team, with balanced extra blocks appended; the final round count is computed dynamically. |
 | `BESTSemifinal` | 3 / 3 | no | BEST-module only. A fixed rotation for **exactly 8 or 16 teams** (6 or 12 matches respectively). Teams are seeded 1-based in the column order Yellow/Blue/Red/Green. With multiple fields, consecutive matches are grouped into blocks of `fields` per field. |
@@ -657,7 +658,9 @@ division-aware phase can be scheduled.
 
 ### Choosing a scheduler
 
-- **Seeding / early rounds:** `RandomSeeding` for a fixed number of rounds, or
+- **Seeding / early rounds:** `Annealed` for a fixed number of rounds — it is
+  strictly better than `RandomSeeding` at opponent diversity, replay spacing,
+  and position/field variety, with lower variance across teams — or
   `BID` when you want every pair of teams to meet exactly once.
 - **Single exhibition round:** `OneShot`.
 - **BEST semifinals:** `BESTSemifinal` (8 or 16 teams).

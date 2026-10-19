@@ -178,7 +178,7 @@ func (m Match) Team(field, position int) int {
 func (m Match) PeerTeams(field, position, maxPositions int) []int {
 	ret := []int{}
 	for pos := range maxPositions {
-		if pos+1 == position {
+		if pos == position {
 			continue
 		}
 		ret = append(ret, m.Team(field, pos))

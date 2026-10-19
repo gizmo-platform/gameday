@@ -24,6 +24,9 @@ func (s *Schedule) Score() int {
 	s.ClosestReplay = 99
 	s.WorstLocationDiversity = 99
 	s.WorstCompetitorDiversity = 99
+	s.TeamBestScore = 0
+	s.TeamWorstScore = 0
+	s.TeamAvgScore = 0
 
 	ts := make(map[int]*teamStats)
 	for team := range s.Config.Teams {
@@ -46,6 +49,10 @@ func (s *Schedule) Score() int {
 					ts[t].PlayedMatches = append(ts[t].PlayedMatches, matchNum)
 					ts[t].PlayedLocations[Location{field, pos}] = struct{}{}
 					for _, peer := range match.PeerTeams(field, pos, s.Config.Positions) {
+						// Empty slots read back as -1 and are not a team.
+						if peer == -1 {
+							continue
+						}
 						ts[t].OtherTeams[peer] = struct{}{}
 					}
 				}
@@ -68,10 +75,10 @@ func (s *Schedule) Score() int {
 	for t := range s.Config.Teams {
 		tsc := ts[t].Score()
 
-		if tsc > s.TeamBestScore {
+		if t == 0 || tsc > s.TeamBestScore {
 			s.TeamBestScore = tsc
 		}
-		if tsc < s.TeamBestScore {
+		if t == 0 || tsc < s.TeamWorstScore {
 			s.TeamWorstScore = tsc
 		}
 		s.TeamAvgScore += tsc

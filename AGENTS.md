@@ -26,6 +26,7 @@ Gameday is a robotics competition management system. It provides an on-site web 
 │       ├── cloud_serve.go  # `gameday cloud serve` — boots DB, web server, modules (cloud scope)
 │       ├── bake.go         # `gameday bake` parent command
 │       ├── bake_schedule.go# `gameday bake schedule` — offline schedule generation
+│       ├── bake_schedules.go # `gameday bake schedules` — batch-anneal embeddable artifacts
 │       ├── debug.go        # `gameday debug` parent command
 │       ├── debug_game.go   # `gameday debug game`
 │       ├── debug_game_genscores.go # Clear + regenerate random scores for a phase
@@ -116,6 +117,9 @@ Gameday is a robotics competition management system. It provides an on-site web 
 │   │   ├── bus_test.go
 │   │   └── handler_test.go
 │   ├── schedgen/           # Offline schedule generation
+│   │   ├── anneal.go       # Annealed generator: fixed-shape late-acceptance search
+│   │   ├── baked.go        # BakedSchedule artifacts: embed.FS archive, lookup, materialize
+│   │   ├── baked/          # Checked-in YAML artifacts (embedded via embed.FS)
 │   │   ├── common.go       # Config, DivisionConfig, Schedule, Round, Match, Location
 │   │   │                  # Generator interface, GeneratorFactory, GenerateSchedule
 │   │   ├── division.go     # GenerateDivisionSchedule (per-division + interleave)
@@ -148,7 +152,7 @@ CLI (cobra) → Modules (chi routers) → Web Server (pkg/web) → Database (gor
 - Five top-level commands:
   - **`onsite`** — Web server operations (`serve` subcommand boots the full app in the `onsite` scope; supports `--debug` template debug mode)
   - **`cloud`** — Web server operations for the cloud entrypoint (`serve` subcommand is almost identical to `onsite serve` but resolves modules in the `cloud` scope, e.g. excludes the onsite-only `best` module; supports `--debug` template debug mode)
-  - **`bake`** — Offline schedule generation (`bake schedule <gen> <rounds> <fields> <positions> <teams>`)
+  - **`bake`** — Offline schedule generation (`bake schedule <gen> <rounds> <fields> <positions> <teams>`; `bake schedules --teams 8-64 ...` batch-bakes embeddable annealed artifacts)
   - **`debug`** — Database manipulation tools (`debug game genscores <phase>`, `debug game lint <file>`, `debug best genscores`)
   - **`version`** — Print build info
 
@@ -558,9 +562,92 @@ Dual-scope, required module. The cloud side manages contests (named, associated 
 
 | Name | Algorithm | Notes |
 |------|-----------|-------|
+| `Annealed` | Late-acceptance local search + baked archive | High quality; prefers embedded baked artifacts |
 | `BID` | Balanced Incomplete Block Design | Pairwise coverage; `RoundsDynamic=true` |
 | `RandomSeeding` | Random team assignment | Simple random placement |
 | `OneShot` | One-shot generation | Single-pass algorithm |
+
+### Annealed Generator (`anneal.go`, `baked.go`)
+
+The quality-first generator. Registered as `Annealed`, it works in two modes:
+
+1. **Baked (preferred)**: `Generate()` first consults the embedded artifact
+   archive (`LookupBaked`). Artifacts live in `pkg/schedgen/baked/` and are
+   compiled in via `embed.FS` (`//go:embed all:baked`). A lookup matches on
+   (teams, fields, positions) and any artifact with `rounds >= requested`; the
+   smallest sufficient round cap wins so truncation discards as little design
+   as possible. `Materialize` truncates the design to the requested rounds
+   (uniform — each team plays exactly once per round, so the cap stays exact
+   and replay gaps can only widen) and applies a fresh random team labeling
+   from `Options.Seed` (0 = "no preference": a fresh labeling seed is drawn
+   per call, so two events of the same shape never receive identical team
+   assignments; a non-zero seed reproduces the labeling exactly). All
+   schedule metrics are relabeling-invariant, so one baked design serves
+   every event of its shape.
+2. **Live search**: with no covering artifact, `AnnealSchedule` runs late-
+   acceptance hill climbing (LAHC, history 64) bounded by
+   `liveAnnealCeiling` (1M moves) so HTTP requests stay fast.
+
+**Fixed shape = structural round cap.** The search permutes teams into
+(round, wave, slot) positions where each round contains every team exactly
+once, plus ghost entities (ids ≥ Teams) for the partially-filled last wave
+when `teams % (fields×positions) != 0`. Ghost appearances are byes. Every
+move class (within-round slot swap, per-round wave rotation, transposition of
+two teams over a round subset) is a bijection on this structure, so
+`Config.Rounds` is honored with equality in every intermediate state — a cap
+violation is impossible, and `Schedule.Validate()` never rejects a search
+result.
+
+**Cost** (weighted, all sums so single swaps produce gradients; per-team
+shortfalls are squared so the least-served teams dominate and variance
+collapses): replay shortfall below one round of spacing ×200 (quadratic in
+the shortfall), distinct-opponent shortfall below
+`min(rounds×(positions−1), teams−1)` ×1200, and per-(team, location) usage²
+×50. Measurements (40 teams / 2 fields / 4 positions / 6 rounds):
+`RandomSeeding` achieves closest-replay 2 / 13 distinct opponents; the
+annealer achieves 3–4 / 18, which is the theoretical maximum.
+
+**Options** (`AnnealOptions`): `Iterations` (0 = scaled, capped for live use;
+bake default 5M — measured convergence point up to ~100 teams), `Restarts`,
+`History`, `Seed` (0 = fresh seed per call so live requests vary; a fixed
+seed ⇒ reproducible results, and bake passes one), `SkipBaked` (bake
+sets this so it never re-emits an existing artifact). `BakeOptions()` returns
+the bake defaults. Division-aware scheduling is unchanged: each division is
+generated (baked or annealed) independently before interleave.
+
+### Baked Schedule Artifacts (`baked/`, `baked.go`)
+
+YAML files named `teams<T>-fields<F>-positions<P>-rounds<R>.yml` where `R`
+is the round cap. `grid` holds one flow-style row per round; entries are
+zero-based team indexes, `-1` = empty slot. Header records the search
+metadata (`iterations`, `restarts`, `seed`, `cost`) for reviewability.
+Adding a shape = run `bake schedules`, commit the files, rebuild.
+
+**API**: `LookupBaked(Config) (*BakedSchedule, error)` (nil, nil when no
+cover), `BakedSchedule.Materialize(Config, seed)`, `BakedSchedule.Validate()`
+(grid is a per-round permutation of teams + correct empty slots),
+`BakeSchedule(Config, opts)` (always searches, never reads the archive),
+`BakedShapes()`, `BakedShapesInDir(dir)`, `ParseBaked(data)`,
+`BakedSchedule.Marshal()` (flow rows, parse-compatible with `ParseBaked`),
+`BakedFileName(t,f,p,r)`.
+
+**CLI** — `gameday bake schedules` (`internal/cmd/bake_schedules.go`):
+batch-bakes a cross product of `--teams/--fields/--positions/--rounds`
+ranges, writing artifacts straight into the embed directory (default
+`pkg/schedgen/baked`). Range syntax: comma lists and inclusive spans with
+optional step — `"8-12,16,24-40:4"`. Flags: `-o/--out` directory,
+`--iterations`, `--restarts`, `--seed`, `-w/--workers` (shapes annealed
+concurrently), `--force` (re-bake existing), `--dry-run` (print names
+only), `--list` (show shapes covered by `--out`). Existing artifacts are
+skipped unless `--force`, so a large bake can be interrupted and resumed.
+Each bake round-trips through `Materialize` + `Score` before writing, so
+artifacts are validated on production and the report shows live-visible
+metrics. Example:
+
+```bash
+# One weekend bake for typical club-event sizes.
+gameday bake schedules --teams 8-64 --fields 1-3 --positions 2-4 --rounds 3-8 -w 8
+```
 
 ### Division-Aware Scheduling
 
@@ -781,7 +868,7 @@ ldflags="-X github.com/gizmo-platform/gameday/pkg/buildinfo.Version=1.0.0 \
 
 ## Testing
 
-- **Location**: `pkg/cloud/client_test.go`, `pkg/db/db_test.go`, `pkg/schedgen/bid_test.go`, `pkg/schedgen/division_test.go`, `pkg/event/bus_test.go`, `pkg/event/handler_test.go`, `pkg/web/error_templates_test.go`, `pkg/web/tmpl_debug_test.go`, `pkg/web/eventbus_test.go`, `pkg/web/users_test.go`, `pkg/web/tokens_test.go`, `pkg/web/admin_test.go`, `pkg/web/landing_test.go`, `modules/game/lint_test.go`, `modules/game/advancement_test.go`, `modules/game/clock_test.go`, `modules/game/clock_match_test.go`, `modules/game/cloud_test.go`, `modules/game/cloud_scorecards_test.go`, `modules/game/contest_key_test.go`, `modules/game/push_test.go`, `modules/game/scorecard_test.go`, `modules/game/cloud_schedules_test.go`, `modules/game/autopush_test.go`, `modules/game/division_aware_test.go`, `modules/game/phase_rankings_test.go`, `modules/game/byte2bite_test.go`, `modules/game/schedule_gate_test.go`, `modules/team/team_test.go`, `modules/team/region_test.go`, `modules/contest/contest_test.go`, `modules/contest/onsite_test.go`, `modules/best/scores_test.go`, `modules/best/awards_test.go`, `modules/best/performance_test.go`, `modules/best/best_award_test.go`, `modules/best/game_award_test.go`, `modules/best/advancement_test.go`, `modules/best/final_test.go`, `modules/best/semifinal_test.go`
+- **Location**: `pkg/cloud/client_test.go`, `pkg/db/db_test.go`, `pkg/schedgen/bid_test.go`, `pkg/schedgen/division_test.go`, `pkg/schedgen/anneal_test.go`, `pkg/schedgen/baked_test.go`, `internal/cmd/bake_schedules_test.go`, `pkg/event/bus_test.go`, `pkg/event/handler_test.go`, `pkg/web/error_templates_test.go`, `pkg/web/tmpl_debug_test.go`, `pkg/web/eventbus_test.go`, `pkg/web/users_test.go`, `pkg/web/tokens_test.go`, `pkg/web/admin_test.go`, `pkg/web/landing_test.go`, `modules/game/lint_test.go`, `modules/game/advancement_test.go`, `modules/game/clock_test.go`, `modules/game/clock_match_test.go`, `modules/game/cloud_test.go`, `modules/game/cloud_scorecards_test.go`, `modules/game/contest_key_test.go`, `modules/game/push_test.go`, `modules/game/scorecard_test.go`, `modules/game/cloud_schedules_test.go`, `modules/game/autopush_test.go`, `modules/game/division_aware_test.go`, `modules/game/phase_rankings_test.go`, `modules/game/byte2bite_test.go`, `modules/game/schedule_gate_test.go`, `modules/team/team_test.go`, `modules/team/region_test.go`, `modules/contest/contest_test.go`, `modules/contest/onsite_test.go`, `modules/best/scores_test.go`, `modules/best/awards_test.go`, `modules/best/performance_test.go`, `modules/best/best_award_test.go`, `modules/best/game_award_test.go`, `modules/best/advancement_test.go`, `modules/best/final_test.go`, `modules/best/semifinal_test.go`
 - **Pattern**: Table-driven / config-driven tests using `schedgen.Config`; in-DB tests build a module via `newTestModule(t, opts...)` (a fresh temp-dir SQLite DB + a `web.Server`, optionally with `web.EventBus`) and exercise handlers or bus events directly
 - **Coverage**: BIBD smoke test (v=7, k=3 Steiner Triple System), larger team test (13 teams), degenerate case (teams < block size), division interleaving, mobile navbar (burger as the last brand child targeting the `navbar-menu` that wraps start/end, toggle script loaded), footer (present on base pages in every scope with the credit line and build version, `noprint`, docked-footer body class), landing page (interface filtering keeps real IPv4 interfaces and drops loopback/link-local/IPv6/down/docker/bridge/veth/virbr, `GAMEDAY_ADVERTISE_ADDR` override with port appending, onsite logged-out login notice + URLs, logged-in user line, no-address hint, cloud welcome message escaped exactly once with line breaks kept, scorecards hint only when logged out, blank message fallback, no box without a scope), profile permissions page (`groupPermissions` module/grant ordering, one title-cased fieldset per module, title-cased grant checkboxes checked only for held grants, checkbox submit replaces the profile's permissions), error template rendering (incl. `DoTemplate` rendering `error` values as their HTML-escaped message for plain, wrapped, and pointer-receiver errors, a `<script>` payload escaped, typed-nil errors rendering empty, an empty message rendering "unknown error", and adapted errors staying true in `{% if %}`), debug template loading, advancement filters (roster/scoreboard sourcing, exclude-then-include, tie-breaking, `SliceExpr` `len(Roster)` sees the full roster after an exclude, a `Roster` include does not re-advance blocked teams), byte2bite phase flow (6 teams: Wildcard suppressed and Semifinals schedulable straight from Seeding with all 6; 10 teams: Wildcard takes the 3 non-top-7 teams and Semifinals take 8; 40 teams: Wildcard takes 8 and Semifinals take 16; uses a stub `BESTNotebook` filter), schedule readiness gate (blocking `CanRun` verdict lands the rule-named reason in `AdvancementReadiness.Reasons`, a `CanRun` error degrades to not-ready without failing the call, multiple blockers collect in filter order, an unready source phase blocks once without the filter's own `CanRun` being asked, a `When: false` filter never invokes `CanRun`, filters without the readiness interface are always ready, non-contiguous source phase IDs resolve the correct source (regression), `phaseSequence` dependency order with ID tie-breaks and cycle fallback, select-teams/preview/accept all render the blocked page and create nothing while blocked, `?override=1` unlocks the non-inert manual picker and the accept carries the override, phase list renders the disabled control with title + help line for a blocked next-up phase and no control for phases behind it, BEST `NotebookAdvancement.CanRun` verdicts for no scores / tie-breaker-only scores / one notebook score / empty scope, `notebookScope` scoreboard-over-pool scoping), phase score stats (min/max/avg with the MatchPlacement reported for the extremes, empty-phase zero result, lowest-ID tie-break; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set), phase score stats page (admin render with min/max team names, scores, and source Match/Field cells, GAME:ADMIN guard blocks non-admins, back links resolve), phase rankings page (frozen phase renders every team unpaginated in score order, division-aware phase renders one table per division with ranks restarting at 1, anonymous users get 401 with no permission named, unfrozen phase refused, phase list shows the Rankings button after Stats only for frozen phases and logged-in users), default field seeding (Migrate guarantees a `Field 1` row and is idempotent on re-run), match clock (YAML parse, settings round-trip, start/cancel, auto-stop with hurry/end events, guard against double-start/cancel-when-idle, page rendering), clock-driven match transitions (target selection, start/end/auto-stop/cancel state flow, operator next-match override, flag-off no-op, Scorable-left-alone, stale Running/Queued reset, start rejection paths, transitions panel round-trip), admin team list (pagination, division/region facets, combined filters, filtered pagination, filter state preserved in pager links, no-match empty state), db driver selection (postgres-without-DSN error, unknown-driver error, env-gated Postgres integration test on `GAMEDAY_TEST_PG_DSN`: migrate + upsert round-trip), user deletion (deletes the user's API tokens, then the user, clears the profile's `profile_permissions` join rows, then deletes the profile; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set, where the old profile-first ordering fails with an FK violation), API tokens (token authenticator resolves a valid token to the owning user's login and rejects unknown tokens, user delete cascades to the user's tokens, token create stores only the hash and renders the one-time plaintext, end-to-end Bearer auth through the full router: a valid token for the bootstrap admin renders the CORE:ADMIN-guarded user list, a bogus token gets 401, and no credentials get the unauthorized page), game cloud import Postgres FK (multi-phase `byte2bite.yml` fixture with advancement filters imports cleanly on Postgres, where the `game_phase_id` FK is enforced; runs on SQLite by default and on Postgres when `GAMEDAY_TEST_PG_DSN` is set), cloud client (JSON decode, query encoding, error vs network-failure distinction, env/default base URL, basic-auth header, bearer-token header, env-var bearer token (GAMEDAY_CLOUD_TOKEN) with explicit-option precedence, regions/teams round-trips, raw-bytes game file round-trip, JSON error body parsing (the `error` field is extracted into `Error.Message`, non-JSON bodies fall back to the trimmed raw body)), team cloud import (public regions/teams JSON endpoints incl. unknown-region 404, end-to-end region import with division defaulting, idempotent re-import that updates in place without duplicating and preserves `disabled`, cloud-failure path that writes nothing), game cloud import (end-to-end import via shared `applyGameConfig` incl. advancement filter, regenerated scorecard exprs, and clock section, idempotent re-import, cloud-failure path that writes nothing, public YAML export with runtime state stripped and round-trip parse, cloud-scoped configuration/setup screens incl. setup upload round-trip and onsite-only routes staying unregistered), setup runtime-flag preservation (re-upload keeps a stored phase's Active/Frozen/HideScores while applying design edits, a brand-new phase keeps the file's flags), contest (cloud contest list + per-contest roster JSON endpoints, My Contest selection storing the cloud ID and re-select replacing the row, CONTEST:ADMIN guard, selection auto-import: roster imported when the local team list is empty and skipped when teams exist, cloud game imported when no `GamePhase` rows exist and skipped when a game is loaded, all against a fake cloud server), contest keying (schedule preview candidate placements carry the selected contest ID, zero when no contest is selected, scorecard submit mirrors the placement's ContestID onto the MatchScore, ExportContestData returns portable placements with team name, score, and scorecard values for a contest and an empty slice for an unknown contest ID), cloud game push (end-to-end push with fake cloud server verifying path, payload fields, and success redirect, cloud endpoint stores placements + scorecard values keyed by contest ID, idempotent re-push replaces in place, GAME:SYNCHRONIZE guard rejects ungranted and unauthenticated profiles without writing (JSON `{"error": ...}` denial body for `Accept: application/json` requests, HTML page otherwise), no-contest guard shows warning/danger and sends nothing, cloud-failure path shows danger with the cloud's error message, unauthenticated push against a real cloud instance (no token) surfaces the guard's 401 as a clean danger error (the parsed JSON message, not the HTML denial page) instead of a false success, cloud endpoint writes a JSON error body on bad contest ID and malformed body without storing, DoJSON round-trip with Content-Type, nil-body sends no Content-Type, PushContestData client round-trip), automatic cloud push on scorecard submit (submit pushes the contest's data with the new score and values, no contest selected → no push, a failing cloud still saves the score and redirects, overlapping submits during an in-flight push coalesce into a single follow-up push carrying the latest score; race-detector clean), scorecard submit errors (a non-numeric value and a non-integer expression result each render the error page without redirecting, roll back to the previous score and values, and push nothing), cloud schedules (list with one row per contest/phase and match/team counts, anonymous access, contest facet with names, empty state, pagination keeping the contest filter, detail page rendering the onsite schedule template with pushed field names, cloud position names and colours, a `Position <id>` placeholder column, one-based rounds and matches in order, missing schedule error page, routes absent onsite), shared `buildScheduleRows` (match ordering regardless of input order, one-based rounds, placement keys, Completed only when all slots are terminal) and the onsite schedule page rendering out-of-order placements in order, field name push (payload carries `field_name`, stored and updated in place on re-push, scorecard detail shows the pushed name and falls back to `Field <id>` rather than the cloud's own field), cloud scorecards lookup (empty state, list with team/contest/placement columns and a View button, phase column with name from the cloud game design and `Phase <id>` fallback, contest facet name from the contests table with fallback, team name/number search, contest and state facets, combined filters, pagination with pager links, filter state preserved in pager links, unguarded page accessible to a bare profile, detail page rendering the existing scorecard template read-only with the pushed values and disabled inputs, detail page for a missing placement rendering the internal error page), game division awareness (`DivisionAware()` false with no phases and with only non-division-aware phases, true once a `DivisionAware: true` phase exists), phase roles (built-in roles valid, empty role valid, `RegisterPhaseRole` panics on empty/duplicate, `PhaseRoles()` sorted without the empty role, lint rejects an unknown `Role` and accepts built-ins plus BEST's `Wildcard`), `PhaseRankings` by role (role filter with identity fields populated, `frozenOnly` skipping unfrozen phases, same-role phases in ID order, empty role matching only unassigned phases, unknown role yielding an empty slice, division aware phase yielding one entry per division with teams and none for empty divisions), BEST awards (per-division ranking when a division-aware phase exists, single "Overall" ranking when none does, dense ranking with co-winners sharing a rank, canonical tie-break chain notebook → marketing → poster → video with team number as ordering-only last resort, unassigned-division group, podium/complete split, awards page render and BEST:ADMIN guard), BEST Game Award (ranks 1 through 4 from the frozen `Final`-role phase and shows all four places inline with plain numeric ranks like the other awards, `More` false once every awarded place is inline and true when a team falls outside them, no groups when no phase carries the role or when the final is unfrozen, one group per division with ranks restarting at 1 for a division aware final, Game Award rendering ahead of the category awards, no special place titles rendered), BEST Robot Performance (linear rank→points mapping 250→5 with whole-point rounding and edge cases for one- and two-team fields and out-of-range ranks, flat seeding phase regrouped per division so a small division's top team still earns 250, ties in the phase preserved as identical points, division aware phase unchanged by the regroup, undivided teams bucketed together, derivation state `noGameModule`/`noPhase`/`notFrozen`/`ready` with the phase name surfaced, error propagation, end-to-end derivation from a frozen `Seeding`-role phase), BEST Award composite (all-five-components eligibility gate counting an absent value rather than 0, exact 1000-point total, disabled teams neither ranked nor diagnosed, diagnosis notes for every unavailable Robot Performance state plus the per-division split note, award registry order best→game→notebook→marketing→poster→video, `Diagnosed` flag set only for the BEST Award with five component column headers like `Notebook /300` and `Robot Performance /250`, end-to-end ranking from a frozen seeding phase, awards page eligibility panel and incomplete-eligibility notice, scores page Total footnote), scorecard list filters (saved-filter cookie applies its phase/field/position/state scopes, unmarshalling the cookie never corrupts the package-level `MatchStates` list the filter form renders, all seven state checkboxes survive a saved filter, no-cookie requests fall back to all states, clear action expires the cookie and restores the full view)
 - **Run**: `go test ./...`
