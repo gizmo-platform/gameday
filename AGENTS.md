@@ -22,6 +22,7 @@ Gameday is a robotics competition management system. It provides an on-site web 
 │       ├── root.go         # Root command, slog setup (LOG_LEVEL)
 │       ├── onsite.go       # `gameday onsite` parent command
 │       ├── onsite_serve.go # `gameday onsite serve` — boots DB, web server, modules
+│       ├── onsite_tray.go  # `gameday onsite tray` — system tray applet (no webserver)
 │       ├── cloud.go        # `gameday cloud` parent command
 │       ├── cloud_serve.go  # `gameday cloud serve` — boots DB, web server, modules (cloud scope)
 │       ├── bake.go         # `gameday bake` parent command
@@ -150,7 +151,7 @@ CLI (cobra) → Modules (chi routers) → Web Server (pkg/web) → Database (gor
 - `main.go` calls `cmd.Entrypoint()`.
 - `root.go` configures `slog` based on `LOG_LEVEL` env var, then executes the root command.
 - Five top-level commands:
-  - **`onsite`** — Web server operations (`serve` subcommand boots the full app in the `onsite` scope; supports `--debug` template debug mode)
+  - **`onsite`** — Web server operations (`serve` subcommand boots the full app in the `onsite` scope; supports `--debug` template debug mode; `tray` subcommand runs a standalone system tray applet — build info and Exit menu entries only, no webserver, DB, or modules)
   - **`cloud`** — Web server operations for the cloud entrypoint (`serve` subcommand is almost identical to `onsite serve` but resolves modules in the `cloud` scope, e.g. excludes the onsite-only `best` module; supports `--debug` template debug mode)
   - **`bake`** — Offline schedule generation (`bake schedule <gen> <rounds> <fields> <positions> <teams>`; `bake schedules --teams 8-64 ...` batch-bakes embeddable annealed artifacts)
   - **`debug`** — Database manipulation tools (`debug game genscores <phase>`, `debug game lint <file>`, `debug best genscores`)
@@ -810,6 +811,7 @@ The wire types live in `pkg/cloud/scores.go` (`ContestPlacement` with `FieldName
 | `github.com/coder/websocket` | Websocket server (event bus export) |
 | `github.com/jedib0t/go-pretty/v6` | Table rendering (CLI) |
 | `golang.org/x/crypto/bcrypt` | Password hashing |
+| `github.com/gogpu/systray` | System tray applet (`onsite tray`, pure Go / zero CGO) |
 | Bulma CSS 1.0.4 (CDN) | Frontend UI framework |
 
 ## Build & Deploy
