@@ -77,10 +77,11 @@ func onsiteTrayCmdRun(c *cobra.Command, args []string) {
 			// controller decides the new state and the menu shows it.
 			listen.SetChecked(clock.toggle())
 		})
+		menu.AddSeparator()
 	}
-	addTestSoundMenu(menu, player)
-
-	menu.AddSeparator()
+	if addTestSoundItems(menu, player) > 0 {
+		menu.AddSeparator()
+	}
 	menu.Add("Exit", func() {
 		// Remove releases the tray and unblocks Run().  It runs on its
 		// own goroutine because menu callbacks are dispatched from the
@@ -221,20 +222,26 @@ func (c *clockPlayer) setOn(on bool) {
 	}()
 }
 
-// addTestSoundMenu adds a submenu that plays each sound immediately, so
+// addTestSoundItems adds an entry per sound that plays it immediately, so
 // an operator can set levels and confirm the right output is configured
-// without starting a match to hear one.
-func addTestSoundMenu(menu *systray.Menu, player *sfx.Player) {
+// without starting a match to hear one.  It returns how many entries were
+// added.
+//
+// The sounds are top-level entries rather than a submenu because whether a
+// submenu ever gets its contents is up to the tray host: a host that
+// expands submenus lazily asks AboutToShow first, and the systray library
+// answers that nothing changed, so the host never fetches the children and
+// the submenu opens empty.
+func addTestSoundItems(menu *systray.Menu, player *sfx.Player) int {
 	sounds := player.Sounds()
 	if len(sounds) == 0 {
 		slog.Warn("No sound effects are available to test")
-		return
+		return 0
 	}
 
-	test := systray.NewMenu()
 	for _, name := range sounds {
 		name := name
-		test.Add(titleCase(name), func() {
+		menu.Add(testSoundLabel(name), func() {
 			// Playback happens on its own goroutine: menu callbacks run
 			// on the platform event loop, which a sound must not occupy.
 			go func() {
@@ -244,7 +251,14 @@ func addTestSoundMenu(menu *systray.Menu, player *sfx.Player) {
 			}()
 		})
 	}
-	menu.AddSubmenu("Test sounds", test)
+	return len(sounds)
+}
+
+// testSoundLabel is the menu text for a sound's test entry.  The entries
+// share the top-level menu with the other controls, so the label says what
+// choosing it does.
+func testSoundLabel(name string) string {
+	return "Play " + titleCase(name)
 }
 
 // titleCase renders a dash-separated sound name the way a menu label
