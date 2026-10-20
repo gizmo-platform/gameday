@@ -19,6 +19,9 @@
         <div class="notification is-primary">
           Currently handling contest <strong>{{ selected.Name }}</strong> (ID {{ selected.ID }}{% if selected.Region %}, {{ selected.Region }}{% endif %}).
         </div>
+        {% if selectedFrozen %}
+          <div class="notification is-warning">This contest is frozen on the cloud: it is finished and no longer accepts result uploads.</div>
+        {% endif %}
       {% endif %}
 
       {% if not error %}
@@ -28,10 +31,13 @@
             <div class="control">
               <select class="input" name="contest_id" id="contest_id">
                 {% for contest in contests %}
-                  <option value="{{ contest.ID }}" {% if selected.ID == contest.ID %}selected{% endif %}>{{ contest.Name }} (ID {{ contest.ID }}{% if contest.Region %}, {{ contest.Region }}{% endif %})</option>
+                  <option value="{{ contest.ID }}" {% if selected.ID == contest.ID %}selected{% endif %}>{{ contest.Name }} (ID {{ contest.ID }}{% if contest.Region %}, {{ contest.Region }}{% endif %}{% if contest.Frozen %}, frozen{% endif %})</option>
                 {% endfor %}
               </select>
             </div>
+            {% if selectedFrozen %}
+              <p class="help is-warning">This contest is frozen on the cloud: it no longer accepts result uploads.</p>
+            {% endif %}
           </div>
           {% if profile | hasPermission:"CONTEST:ADMIN" %}
             <div class="is-flex is-justify-content-center">

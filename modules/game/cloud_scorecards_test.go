@@ -186,10 +186,10 @@ func TestCloudScorecardsContestName(t *testing.T) {
 	m, d := newTestModule(t)
 	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
 
-	if err := d.AutoMigrate(&contestNameRow{}); err != nil {
+	if err := d.AutoMigrate(&contestRow{}); err != nil {
 		t.Fatalf("migrate contest: %v", err)
 	}
-	c := contestNameRow{Name: "Spring Fling"}
+	c := contestRow{Name: "Spring Fling"}
 	if err := d.Create(&c).Error; err != nil {
 		t.Fatalf("create contest: %v", err)
 	}

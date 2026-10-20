@@ -16,6 +16,10 @@ type ContestInfo struct {
 	ID     uint   `json:"id"`
 	Name   string `json:"name"`
 	Region string `json:"region"`
+	// Frozen reports whether the cloud has frozen the contest. A
+	// frozen contest is finished: it no longer accepts result
+	// uploads, and an onsite server shows it as such.
+	Frozen bool `json:"frozen"`
 }
 
 // GetContests lists every cloud contest, ordered by name.

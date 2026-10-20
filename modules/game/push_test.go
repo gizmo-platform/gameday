@@ -543,3 +543,81 @@ func TestPushContestDataUnauthenticatedCloud(t *testing.T) {
 		t.Errorf("cloud placements = %d, want 0 (nothing stored)", got)
 	}
 }
+
+// seedFrozenContest records a contest row with the given frozen state,
+// standing in for the contest module's table on a cloud instance.
+func seedFrozenContest(t *testing.T, m *Module, id uint, frozen bool) {
+	t.Helper()
+	if err := m.db.AutoMigrate(&contestRow{}); err != nil {
+		t.Fatalf("migrate contests: %v", err)
+	}
+	if err := m.db.Create(&contestRow{ID: id, Name: "Frozen FFA", Frozen: frozen}).Error; err != nil {
+		t.Fatalf("create contest: %v", err)
+	}
+}
+
+// TestCloudContestScoresDataFrozenRefused verifies that a frozen
+// contest refuses uploads with 409 and a JSON error naming the reason,
+// while an open contest still accepts them.
+func TestCloudContestScoresDataFrozenRefused(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+	seedFrozenContest(t, cm, 7, true)
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[]}]`
+	code, resp, hdr := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body, "Accept", "application/json")
+	if code != http.StatusConflict {
+		t.Fatalf("store to a frozen contest = %d, want 409: %s", code, resp)
+	}
+	if ct := hdr.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(resp, "frozen") {
+		t.Errorf("refusal missing reason: %s", resp)
+	}
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 0 {
+		t.Errorf("placements = %d, want 0 (frozen contest stores nothing)", got)
+	}
+
+	// Another contest on the same cloud is unaffected.
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/9/scores", body); code != http.StatusOK {
+		t.Fatalf("store to an open contest = %d, want 200: %s", code, resp)
+	}
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 1 {
+		t.Errorf("placements = %d, want 1", got)
+	}
+}
+
+// TestCloudContestScoresDataUnfrozenAccepts verifies that unfreezing a
+// contest resumes accepting uploads, and that a contest with no row at
+// all (a site whose contest is not registered here) is still accepted.
+func TestCloudContestScoresDataUnfrozenAccepts(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+	seedFrozenContest(t, cm, 7, false)
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
+		t.Fatalf("store to an unfrozen contest = %d, want 200: %s", code, resp)
+	}
+
+	if got := countGameRows(t, d, &CloudMatchPlacement{}); got != 1 {
+		t.Errorf("placements = %d, want 1", got)
+	}
+}
+
+// TestCloudContestScoresDataNoContestTable verifies that a cloud
+// without a contests table at all keeps accepting pushes: the frozen
+// check degrades to "not frozen" rather than blocking every site.
+func TestCloudContestScoresDataNoContestTable(t *testing.T) {
+	m, d := newTestModule(t)
+
+	cm := newCloudTestModule(t, d, m.ws, modules.ModuleDeps{"team": m.tm.(modules.Web)})
+
+	body := `[{"round":1,"match":1,"phase_id":1,"team_id":1,"team_name":"Team 1","field_id":1,"position_id":1,"state":4,"score":42,"values":[]}]`
+	if code, resp, _ := routerReq(t, cm, syncContext(), http.MethodPost, "/ui/mod/game/cloud/contests/7/scores", body); code != http.StatusOK {
+		t.Fatalf("store without a contests table = %d, want 200: %s", code, resp)
+	}
+}

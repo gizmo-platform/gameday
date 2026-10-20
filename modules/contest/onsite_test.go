@@ -423,3 +423,37 @@ func TestSelectContestSkipsGameWhenLoaded(t *testing.T) {
 		t.Errorf("phase name = %q, want Existing Phase", got.Name)
 	}
 }
+
+// TestMyContestShowsFrozenContest verifies the My Contest page marks a
+// contest the cloud has frozen, both in the selection list and for the
+// currently selected contest.
+func TestMyContestShowsFrozenContest(t *testing.T) {
+	srv := fakeCloudServer(t, []cloud.ContestInfo{
+		{ID: 7, Name: "Winter FFA", Region: "North", Frozen: true},
+		{ID: 9, Name: "Spring FFA", Region: "South"},
+	}, nil)
+	defer srv.Close()
+	t.Setenv("GAMEDAY_CLOUD", srv.URL)
+
+	m, d, _, _ := newOnsiteTestModule(t)
+
+	form := url.Values{}
+	form.Set("contest_id", "7")
+	if code, body := onsiteRouterReq(t, m, adminContext(), http.MethodPost, "/ui/mod/contest/", form); code != http.StatusSeeOther {
+		t.Fatalf("select = %d, want 303: %s", code, body)
+	}
+	if got := fetchOnsiteContest(t, d); got.ID != 7 {
+		t.Fatalf("selected contest = %+v, want ID 7", got)
+	}
+
+	code, body := onsiteRouterReq(t, m, adminContext(), http.MethodGet, "/ui/mod/contest/", nil)
+	if code != http.StatusOK {
+		t.Fatalf("my contest page = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "frozen") {
+		t.Errorf("my contest page missing frozen notice: %s", body)
+	}
+	if !strings.Contains(body, "(ID 7, North, frozen)") {
+		t.Errorf("selection list missing frozen annotation: %s", body)
+	}
+}

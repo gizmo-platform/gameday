@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"path"
@@ -31,13 +32,32 @@ type placementKey struct {
 	PositionID uint
 }
 
+// contestFrozen reports whether the contest module has frozen the
+// given contest. A contest the cloud does not know about (no row, or
+// no contests table at all) is treated as not frozen, so pushes from
+// sites whose contest is not registered on the cloud still land.
+func (m *Module) contestFrozen(ctx context.Context, contestID uint) bool {
+	row, err := gorm.G[contestRow](m.db.DB).
+		Where(&contestRow{ID: contestID}).
+		First(ctx)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Debug("Contest frozen check unavailable, allowing upload",
+				"contest_id", contestID, "error", err)
+		}
+		return false
+	}
+	return row.Frozen
+}
+
 // cloudContestScoresData is the public endpoint that stores a site's
 // schedule and scorecard data for one contest. The contest ID in the
 // URL is authoritative; the body is a bare array of placement rows.
 // Storing is an upsert on the placement's natural key in a
 // transaction, so a re-push updates matching placements in place
 // (keeping their IDs stable) and removes placements that are no
-// longer in the schedule.
+// longer in the schedule. A frozen contest accepts no uploads: the
+// stored results are final, so the request is refused with 409.
 func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -47,6 +67,14 @@ func (m *Module) cloudContestScoresData(w http.ResponseWriter, r *http.Request) 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid contest id"})
+		return
+	}
+
+	if m.contestFrozen(ctx, contestID) {
+		slog.Warn("Refusing upload for frozen contest", "contest_id", contestID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("contest %d is frozen and no longer accepts uploads", contestID)})
 		return
 	}
 

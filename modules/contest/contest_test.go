@@ -2,17 +2,19 @@ package contest
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/gizmo-platform/gameday/modules/team"
+	"github.com/gizmo-platform/gameday/pkg/cloud"
 	"github.com/gizmo-platform/gameday/pkg/db"
 	"github.com/gizmo-platform/gameday/pkg/web"
-	"github.com/gizmo-platform/gameday/modules/team"
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )
@@ -362,5 +364,157 @@ func TestContestCRUDRoundTrip(t *testing.T) {
 	}
 	if count := contestCount(t, d); count != 0 {
 		t.Fatalf("after delete = %d contests, want 0", count)
+	}
+}
+
+// setContestFrozen writes the frozen flag directly, simulating a
+// contest that is already frozen before the request under test.
+func setContestFrozen(t *testing.T, d *db.DB, id uint, frozen bool) {
+	t.Helper()
+	if _, err := gorm.G[Contest](d.DB).Where(&Contest{ID: id}).Update(context.Background(), "Frozen", frozen); err != nil {
+		t.Fatalf("set frozen: %v", err)
+	}
+}
+
+func TestContestFreezeRoundTrip(t *testing.T) {
+	m, d := newTestModule(t)
+	reg := seedRegion(t, d, "North")
+	c := createContest(t, d, "Winter FFA", reg.ID)
+
+	if got := fetchContest(t, d, c.ID); got.Frozen {
+		t.Fatalf("new contest is frozen, want open")
+	}
+
+	// Freeze.
+	code, body := routerReq(t, m, adminContext(), http.MethodPost, "/ui/mod/contest/1/freeze", nil)
+	if code != http.StatusSeeOther {
+		t.Fatalf("freeze = %d, want 303: %s", code, body)
+	}
+	if got := fetchContest(t, d, c.ID); !got.Frozen {
+		t.Errorf("contest not frozen after freeze POST")
+	}
+
+	// The list page marks it frozen and offers unfreeze.
+	code, body = routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/contest/", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list = %d, want 200: %s", code, body)
+	}
+	if !strings.Contains(body, "Frozen") || !strings.Contains(body, "/unfreeze") {
+		t.Errorf("list page missing frozen state or unfreeze action: %s", body)
+	}
+
+	// Unfreeze.
+	code, body = routerReq(t, m, adminContext(), http.MethodPost, "/ui/mod/contest/1/unfreeze", nil)
+	if code != http.StatusSeeOther {
+		t.Fatalf("unfreeze = %d, want 303: %s", code, body)
+	}
+	if got := fetchContest(t, d, c.ID); got.Frozen {
+		t.Errorf("contest still frozen after unfreeze POST")
+	}
+}
+
+func TestContestFreezeRequiresPermission(t *testing.T) {
+	m, d := newTestModule(t)
+	reg := seedRegion(t, d, "North")
+	c := createContest(t, d, "Winter FFA", reg.ID)
+
+	for _, target := range []string{
+		"/ui/mod/contest/1/freeze",
+		"/ui/mod/contest/1/unfreeze",
+	} {
+		code, body := routerReq(t, m, context.Background(), http.MethodPost, target, nil)
+		if code != http.StatusUnauthorized {
+			t.Fatalf("%s without permission = %d, want 401: %s", target, code, body)
+		}
+	}
+	if got := fetchContest(t, d, c.ID); got.Frozen {
+		t.Errorf("blocked freeze changed the contest")
+	}
+}
+
+// TestFrozenContestRefusesEdits verifies that a frozen contest's
+// record and roster can no longer be mutated, and that the refusal
+// names the reason.
+func TestFrozenContestRefusesEdits(t *testing.T) {
+	m, d := newTestModule(t)
+	north := seedRegion(t, d, "North")
+	south := seedRegion(t, d, "South")
+	c := createContest(t, d, "Winter FFA", north.ID)
+	team := seedTeam(t, d, "Alpha", 1, north.ID, false)
+
+	if err := d.Create(&ContestRoster{ContestID: c.ID, TeamID: team.ID}).Error; err != nil {
+		t.Fatalf("seed roster: %v", err)
+	}
+	setContestFrozen(t, d, c.ID, true)
+
+	form := url.Values{}
+	form.Set("contest_name", "Edited FFA")
+	form.Set("contest_region", strconv.FormatUint(uint64(south.ID), 10))
+
+	// Edit, delete, and every roster mutation are refused.
+	posts := []struct {
+		target string
+		form   url.Values
+	}{
+		{"/ui/mod/contest/1/edit", form},
+		{"/ui/mod/contest/1/delete", nil},
+		{"/ui/mod/contest/1/roster/init", nil},
+		{"/ui/mod/contest/1/roster/add", url.Values{"roster_team": {strconv.FormatUint(uint64(team.ID), 10)}}},
+		{"/ui/mod/contest/1/roster/" + strconv.FormatUint(uint64(team.ID), 10) + "/delete", nil},
+	}
+	for _, tc := range posts {
+		code, body := routerReq(t, m, adminContext(), http.MethodPost, tc.target, tc.form)
+		if code == http.StatusSeeOther {
+			t.Errorf("%s on a frozen contest = 303, want refusal", tc.target)
+		}
+		if !strings.Contains(body, "frozen") {
+			t.Errorf("%s refusal missing reason: %s", tc.target, body)
+		}
+	}
+
+	// Nothing changed: the contest, its roster, and its name survive.
+	if got := fetchContest(t, d, c.ID); got.Name != "Winter FFA" || got.RegionID != north.ID {
+		t.Errorf("frozen contest was modified: %+v", got)
+	}
+	if count := rosterCount(t, d, c.ID); count != 1 {
+		t.Errorf("roster rows = %d, want 1 (unchanged)", count)
+	}
+
+	// The roster stays readable, and unfreezing restores mutations.
+	if code, body := routerReq(t, m, context.Background(), http.MethodGet, "/ui/mod/contest/1/roster", nil); code != http.StatusOK {
+		t.Fatalf("roster page for a frozen contest = %d, want 200: %s", code, body)
+	}
+	setContestFrozen(t, d, c.ID, false)
+	if code, body := routerReq(t, m, adminContext(), http.MethodPost, "/ui/mod/contest/1/delete", nil); code != http.StatusSeeOther {
+		t.Fatalf("delete after unfreeze = %d, want 303: %s", code, body)
+	}
+}
+
+// TestCloudContestsEndpointFrozenFlag verifies the public contest list
+// carries the frozen flag so onsite servers can show it.
+func TestCloudContestsEndpointFrozenFlag(t *testing.T) {
+	m, d := newTestModule(t)
+	reg := seedRegion(t, d, "North")
+	open := createContest(t, d, "Open FFA", reg.ID)
+	frozen := createContest(t, d, "ZFrozen FFA", reg.ID)
+	setContestFrozen(t, d, frozen.ID, true)
+
+	code, body := routerReq(t, m, adminContext(), http.MethodGet, "/ui/mod/contest/cloud/contests", nil)
+	if code != http.StatusOK {
+		t.Fatalf("cloud contests = %d, want 200: %s", code, body)
+	}
+
+	var got []cloud.ContestInfo
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("unmarshal cloud contests: %v: %s", err, body)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(contests) = %d, want 2: %s", len(got), body)
+	}
+	if got[0].ID != open.ID || got[0].Frozen {
+		t.Errorf("contests[0] = %+v, want open contest not frozen", got[0])
+	}
+	if got[1].ID != frozen.ID || !got[1].Frozen {
+		t.Errorf("contests[1] = %+v, want frozen contest frozen", got[1])
 	}
 }

@@ -4,14 +4,18 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/go-chi/chi/v5"
+	"github.com/the-maldridge/authware"
 	"gorm.io/gorm"
 
 	"github.com/gizmo-platform/gameday/modules"
@@ -33,6 +37,11 @@ type Contest struct {
 	ID uint
 
 	Name string
+
+	// Frozen marks a contest as finished: while it is set the cloud
+	// refuses uploads for it (score pushes) and its record and roster
+	// can no longer be edited. Freezing is reversible.
+	Frozen bool
 
 	RegionID uint
 	Region   team.Region
@@ -82,6 +91,8 @@ func New(scope string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module 
 		r.Get("/{id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewEditForm))
 		r.Post("/{id}/edit", m.ws.GuardRoute(pAdmin, m.uiViewUpsert))
 		r.Post("/{id}/delete", m.ws.GuardRoute(pAdmin, m.uiViewDelete))
+		r.Post("/{id}/freeze", m.ws.GuardRoute(pAdmin, m.uiViewToggleFrozen))
+		r.Post("/{id}/unfreeze", m.ws.GuardRoute(pAdmin, m.uiViewToggleFrozen))
 
 		r.Get("/{id}/roster", m.uiViewRoster)
 		r.Post("/{id}/roster/init", m.ws.GuardRoute(pAdmin, m.uiViewRosterInit))
@@ -192,7 +203,76 @@ func (m *Module) uiViewEditForm(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ErrContestFrozen is returned when an operation is refused because
+// the contest has been frozen. Errors wrapping it are surfaced to the
+// operator as the reason an action was rejected.
+var ErrContestFrozen = errors.New("contest is frozen")
+
+// frozenGuard loads the contest named in the URL and reports whether
+// the request may continue. When the contest is frozen it renders the
+// error page, so handlers return immediately.
+func (m *Module) frozenGuard(w http.ResponseWriter, r *http.Request) bool {
+	id := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	c, err := m.loadContest(r.Context(), id)
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return false
+	}
+	if c.Frozen {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{
+			"error": fmt.Errorf("%w: %s is frozen; unfreeze it to make changes", ErrContestFrozen, c.Name),
+		})
+		return false
+	}
+	return true
+}
+
+// uiViewToggleFrozen freezes or unfreezes a contest. The two routes
+// share this handler: the path suffix decides the new state, so the
+// action stays a plain POST form with no hidden fields.
+func (m *Module) uiViewToggleFrozen(w http.ResponseWriter, r *http.Request) {
+	id := m.ws.StrToUint(chi.URLParam(r, "id"))
+	frozen := strings.HasSuffix(r.URL.Path, "/freeze")
+
+	c, err := m.loadContest(r.Context(), id)
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	if _, err := gorm.G[Contest](m.db.DB).
+		Where(&Contest{ID: id}).
+		Update(r.Context(), "Frozen", frozen); err != nil {
+		slog.Error("Error changing contest frozen state", "error", err, "contest", id)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+	slog.Info("Contest frozen state changed",
+		"contest", id, "name", c.Name, "frozen", frozen,
+		"operator", m.operatorName(r))
+
+	http.Redirect(w, r, m.basePath, http.StatusSeeOther)
+}
+
+// operatorName returns the login of the user performing a request,
+// for audit logging of freeze transitions.
+func (m *Module) operatorName(r *http.Request) string {
+	if u, ok := r.Context().Value(authware.UserKey{}).(authware.User); ok {
+		return u.Identity
+	}
+	return "anonymous"
+}
+
 func (m *Module) uiViewUpsert(w http.ResponseWriter, r *http.Request) {
+	// An edit of a frozen contest is refused; creating a new contest
+	// has nothing to be frozen yet.
+	if m.ws.StrToUint(chi.URLParam(r, "id")) != 0 {
+		if !m.frozenGuard(w, r) {
+			return
+		}
+	}
+
 	r.ParseForm()
 	c := Contest{
 		ID:       m.ws.StrToUint(chi.URLParam(r, "id")),
@@ -209,6 +289,10 @@ func (m *Module) uiViewUpsert(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) uiViewDelete(w http.ResponseWriter, r *http.Request) {
 	id := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	if !m.frozenGuard(w, r) {
+		return
+	}
 
 	if _, err := gorm.G[Contest](m.db.DB).Where(&Contest{ID: id}).First(r.Context()); err != nil {
 		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
@@ -270,6 +354,10 @@ func (m *Module) uiViewRoster(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) uiViewRosterInit(w http.ResponseWriter, r *http.Request) {
 	id := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	if !m.frozenGuard(w, r) {
+		return
+	}
 
 	c, err := m.loadContest(r.Context(), id)
 	if err != nil {
@@ -356,8 +444,7 @@ func (m *Module) uiViewRosterAddForm(w http.ResponseWriter, r *http.Request) {
 func (m *Module) uiViewRosterAdd(w http.ResponseWriter, r *http.Request) {
 	id := m.ws.StrToUint(chi.URLParam(r, "id"))
 
-	if _, err := m.loadContest(r.Context(), id); err != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+	if !m.frozenGuard(w, r) {
 		return
 	}
 
@@ -393,8 +480,8 @@ func (m *Module) uiViewRosterRemove(w http.ResponseWriter, r *http.Request) {
 	id := m.ws.StrToUint(chi.URLParam(r, "id"))
 	teamID := m.ws.StrToUint(chi.URLParam(r, "team_id"))
 
-	if _, err := m.loadContest(r.Context(), id); err != nil {
-		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+	// frozenGuard also confirms the contest exists.
+	if !m.frozenGuard(w, r) {
 		return
 	}
 

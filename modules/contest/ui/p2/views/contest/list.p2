@@ -6,6 +6,9 @@
 <div class="box is-flex is-justify-content-center">
   <div>
     <p>Below is a list of all contests.</p>
+    <p>A frozen contest is finished: the cloud no longer accepts uploads for
+      it, and its details and roster can no longer be edited. Freezing can be
+      undone.</p>
     <br />
     <hr />
     {% if profile | hasPermission:"CONTEST:ADMIN" %}
@@ -20,6 +23,7 @@
         <th>ID</th>
         <th>Name</th>
         <th>Region</th>
+        <th>Status</th>
         <th>Roster</th>
         {% if profile | hasPermission:"CONTEST:ADMIN" %}
         <th>Actions</th>
@@ -31,14 +35,30 @@
         <td>{{ contest.Name }}</td>
         <td>{{ contest.Region.Name }}</td>
         <td>
+          {% if contest.Frozen %}
+          <span class="tag is-warning">Frozen</span>
+          {% else %}
+          <span class="tag is-success">Open</span>
+          {% endif %}
+        </td>
+        <td>
           <a class="button" href="{{ pageBase }}/{{ contest.ID }}/roster">Roster</a>
         </td>
         {% if profile | hasPermission:"CONTEST:ADMIN" %}
         <td>
           <div class="buttons">
-            <a class="button" href="{{ pageBase }}/{{ contest.ID }}/edit">Edit</a>
+            <a class="button {% if contest.Frozen %}is-disabled{% endif %}" {% if contest.Frozen %}aria-disabled="true"{% endif %} href="{{ pageBase }}/{{ contest.ID }}/edit">Edit</a>
+            {% if contest.Frozen %}
+            <form action="{{ pageBase }}/{{ contest.ID }}/unfreeze" method="POST">
+              <button class="button is-warning" type="submit">Unfreeze</button>
+            </form>
+            {% else %}
+            <form action="{{ pageBase }}/{{ contest.ID }}/freeze" method="POST">
+              <button class="button" type="submit">Freeze</button>
+            </form>
+            {% endif %}
             <form action="{{ pageBase }}/{{ contest.ID }}/delete" method="POST">
-              <button class="button" type="submit">Delete</button>
+              <button class="button" type="submit" {% if contest.Frozen %}disabled{% endif %}>Delete</button>
             </form>
           </div>
         </td>

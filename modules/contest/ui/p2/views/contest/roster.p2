@@ -8,14 +8,17 @@
     <p>Roster for {{ contest.Name }} ({{ contest.Region.Name }}). The roster is
     independent of the region: start it from the region's teams, then add or
     remove teams as needed.</p>
+    {% if contest.Frozen %}
+      <div class="notification is-warning">This contest is frozen. The roster can no longer be changed until it is unfrozen.</div>
+    {% endif %}
     <br />
     <hr />
     {% if profile | hasPermission:"CONTEST:ADMIN" %}
       <div class="is-flex is-justify-content-center">
         <form method="POST" action="{{ pageBase }}/init" style="display:inline">
-          <button type="submit" class="button is-primary">Start from Region</button>
+          <button type="submit" class="button is-primary" {% if contest.Frozen %}disabled{% endif %}>Start from Region</button>
         </form>
-        <a class="button" href="{{ pageBase }}/add">Add Team</a>
+        <a class="button {% if contest.Frozen %}is-disabled{% endif %}" {% if contest.Frozen %}aria-disabled="true"{% endif %} href="{{ pageBase }}/add">Add Team</a>
         <a class="button" href="{{ basePath }}">Back to List</a>
       </div>
       <hr />
@@ -40,7 +43,7 @@
             {% if profile | hasPermission:"CONTEST:ADMIN" %}
               <td>
                 <form method="POST" action="{{ pageBase }}/{{ row.Team.ID }}/delete">
-                  <button type="submit" class="button">Remove</button>
+                  <button type="submit" class="button" {% if contest.Frozen %}disabled{% endif %}>Remove</button>
                 </form>
               </td>
             {% endif %}

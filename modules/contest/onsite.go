@@ -156,12 +156,25 @@ func (m *OnsiteModule) uiViewMyContest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	selected := m.currentContest(ctx)
+
+	// The frozen flag lives on the cloud's contest, not the local
+	// selection row, so read it from the freshly fetched list.
+	selectedFrozen := false
+	for i := range contests {
+		if contests[i].ID == selected.ID {
+			selectedFrozen = contests[i].Frozen
+			break
+		}
+	}
+
 	m.ws.DoTemplate(w, r, "views/contest/my_contest.p2", pongo2.Context{
-		"cloudBase":  m.cloudClient.BaseURL(),
-		"moduleBase": m.basePath,
-		"contests":   contests,
-		"selected":   m.currentContest(ctx),
-		"imported":   m.ws.StrToUint(r.URL.Query().Get("imported")),
+		"cloudBase":      m.cloudClient.BaseURL(),
+		"moduleBase":     m.basePath,
+		"contests":       contests,
+		"selected":       selected,
+		"selectedFrozen": selectedFrozen,
+		"imported":       m.ws.StrToUint(r.URL.Query().Get("imported")),
 	})
 }
 

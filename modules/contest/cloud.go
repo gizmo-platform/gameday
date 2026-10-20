@@ -37,6 +37,7 @@ func (m *Module) cloudContestsData(w http.ResponseWriter, r *http.Request) {
 			ID:     c.ID,
 			Name:   c.Name,
 			Region: c.Region.Name,
+			Frozen: c.Frozen,
 		})
 	}
 

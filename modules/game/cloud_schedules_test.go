@@ -27,10 +27,10 @@ func newCloudScheduleModule(t *testing.T) *Module {
 // seedContestName records a contest name the facet and columns use.
 func seedContestName(t *testing.T, m *Module, id uint, name string) {
 	t.Helper()
-	if err := m.db.AutoMigrate(&contestNameRow{}); err != nil {
+	if err := m.db.AutoMigrate(&contestRow{}); err != nil {
 		t.Fatalf("migrate contests: %v", err)
 	}
-	if err := m.db.Create(&contestNameRow{ID: id, Name: name}).Error; err != nil {
+	if err := m.db.Create(&contestRow{ID: id, Name: name}).Error; err != nil {
 		t.Fatalf("create contest: %v", err)
 	}
 }

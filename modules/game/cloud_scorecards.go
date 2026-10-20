@@ -37,17 +37,18 @@ type cloudScorecardRow struct {
 	PhaseName   string
 }
 
-// contestNameRow is a minimal local view of the contest module's
-// Contest table. The game module reads it directly by table name
-// rather than importing the contest module, because the contest
-// module already depends on the game module and a reverse import
-// would create a dependency cycle.
-type contestNameRow struct {
-	ID   uint
-	Name string
+// contestRow is a minimal local view of the contest module's Contest
+// table. The game module reads it directly by table name rather than
+// importing the contest module, because the contest module already
+// depends on the game module and a reverse import would create a
+// dependency cycle.
+type contestRow struct {
+	ID     uint
+	Name   string
+	Frozen bool
 }
 
-func (contestNameRow) TableName() string { return "contests" }
+func (contestRow) TableName() string { return "contests" }
 
 // uiViewCloudScorecards renders the cloud scorecards-by-team lookup
 // page with server-side search, contest/state facet filters, and
@@ -238,7 +239,7 @@ func (m *Module) uiViewCloudScorecard(w http.ResponseWriter, r *http.Request) {
 // empty map).
 func (m *Module) cloudContestNames(ctx context.Context) map[uint]string {
 	names := make(map[uint]string)
-	if rows, err := gorm.G[contestNameRow](m.db.DB).Find(ctx); err == nil {
+	if rows, err := gorm.G[contestRow](m.db.DB).Find(ctx); err == nil {
 		for _, row := range rows {
 			names[row.ID] = row.Name
 		}
