@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,6 +58,37 @@ type ContestRoster struct {
 	Team   team.Team
 }
 
+// clearerEntry pairs a module's registered name with the contest data
+// clearing capability it exposes, so the wipe happens in a stable
+// order and the audit log names the module it came from.
+type clearerEntry struct {
+	name    string
+	clearer modules.ContestDataClearer
+}
+
+// clearersFrom collects the contest data clearing capability from
+// every resolved module that implements it. Modules are visited in
+// name order so the wipe and its log output are deterministic. A nil
+// deps (a module built in isolation) yields no clearers.
+func clearersFrom(deps modules.ModuleDeps) []clearerEntry {
+	if len(deps) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(deps))
+	for name := range deps {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	out := make([]clearerEntry, 0, len(names))
+	for _, name := range names {
+		if c, ok := deps[name].(modules.ContestDataClearer); ok {
+			out = append(out, clearerEntry{name: name, clearer: c})
+		}
+	}
+	return out
+}
+
 type Module struct {
 	r  chi.Router
 	db *db.DB
@@ -64,16 +96,22 @@ type Module struct {
 
 	scope string
 
+	// clearers are the modules holding data keyed to a contest, which
+	// the Clear Data action erases.
+	clearers []clearerEntry
+
 	basePath string
 }
 
-func New(scope string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module {
+func New(scope string, db *db.DB, ws *web.Server, deps modules.ModuleDeps) *Module {
 	m := Module{
 		r:  chi.NewRouter(),
 		db: db,
 		ws: ws,
 
 		scope: scope,
+
+		clearers: clearersFrom(deps),
 	}
 
 	if err := m.ws.InstallPermission(context.Background(), ModuleName, PermissionAdmin); err != nil {
@@ -93,6 +131,7 @@ func New(scope string, db *db.DB, ws *web.Server, _ modules.ModuleDeps) *Module 
 		r.Post("/{id}/delete", m.ws.GuardRoute(pAdmin, m.uiViewDelete))
 		r.Post("/{id}/freeze", m.ws.GuardRoute(pAdmin, m.uiViewToggleFrozen))
 		r.Post("/{id}/unfreeze", m.ws.GuardRoute(pAdmin, m.uiViewToggleFrozen))
+		r.Post("/{id}/clear", m.ws.GuardRoute(pAdmin, m.uiViewClearData))
 
 		r.Get("/{id}/roster", m.uiViewRoster)
 		r.Post("/{id}/roster/init", m.ws.GuardRoute(pAdmin, m.uiViewRosterInit))
@@ -144,6 +183,51 @@ func (m *Module) NavList(prefix string) []web.NavElement {
 	}}
 }
 
+// contestDataCounts merges the per-module contest data counts into one
+// map keyed by contest ID. A module whose counts query fails is logged
+// and skipped: the list page is contest administration's front door
+// and must stay usable even when some other module's data is
+// unreadable.
+func (m *Module) contestDataCounts(ctx context.Context) map[uint][]modules.ContestDataRow {
+	out := make(map[uint][]modules.ContestDataRow)
+	for _, e := range m.clearers {
+		counts, err := e.clearer.ContestDataCounts(ctx)
+		if err != nil {
+			slog.Error("Error counting contest data", "error", err, "module", e.name)
+			continue
+		}
+		for id, rows := range counts {
+			out[id] = append(out[id], rows...)
+		}
+	}
+	return out
+}
+
+// contestDataRow is one row of the clear-confirmation itemization: a
+// labelled count plus the running total, which pongo2 cannot compute
+// itself.
+type contestDataRow struct {
+	Label string
+	Rows  int64
+}
+
+// clearTarget describes one contest's clear-confirmation state for
+// the list page.
+type clearTarget struct {
+	Total int64
+	Rows  []contestDataRow
+}
+
+// contestListItem is one row of the contest list with its clear state
+// attached. pongo2 cannot index a map keyed by uint, so the clear
+// state travels on the row itself: the embedded Contest promotes every
+// existing field, so templates keep reading contest.Name and friends
+// while contest.Clear reaches the new state.
+type contestListItem struct {
+	Contest
+	Clear clearTarget
+}
+
 func (m *Module) uiViewListContests(w http.ResponseWriter, r *http.Request) {
 	contests, err := gorm.G[Contest](m.db.DB).
 		Preload("Region", nil).
@@ -157,7 +241,39 @@ func (m *Module) uiViewListContests(w http.ResponseWriter, r *http.Request) {
 		return contests[i].Name < contests[j].Name
 	})
 
-	m.ws.DoTemplate(w, r, "views/contest/list.p2", pongo2.Context{"contests": contests})
+	counts := m.contestDataCounts(r.Context())
+	items := make([]contestListItem, 0, len(contests))
+	for _, c := range contests {
+		t := clearTarget{Rows: make([]contestDataRow, 0, len(counts[c.ID]))}
+		for _, row := range counts[c.ID] {
+			if row.Rows == 0 {
+				continue
+			}
+			t.Rows = append(t.Rows, contestDataRow{Label: row.Label, Rows: row.Rows})
+			t.Total += row.Rows
+		}
+		items = append(items, contestListItem{Contest: c, Clear: t})
+	}
+
+	// The redirect after a clear names the contest by ID; show its name
+	// instead, resolving best-effort so a contest deleted in the
+	// meantime still yields a usable notification.
+	clearedFor := ""
+	if id := m.ws.StrToUint(r.URL.Query().Get("cleared_for")); id != 0 {
+		for _, c := range contests {
+			if c.ID == id {
+				clearedFor = c.Name
+				break
+			}
+		}
+	}
+
+	m.ws.DoTemplate(w, r, "views/contest/list.p2", pongo2.Context{
+		"contests":   items,
+		"cleared":    m.ws.StrToUint(r.URL.Query().Get("cleared")),
+		"clearedFor": clearedFor,
+		"clearError": r.URL.Query().Get("clear_error"),
+	})
 }
 
 func (m *Module) uiViewAddForm(w http.ResponseWriter, r *http.Request) {
@@ -312,6 +428,79 @@ func (m *Module) uiViewDelete(w http.ResponseWriter, r *http.Request) {
 
 func (m *Module) rosterPath(id uint) string {
 	return path.Join(m.basePath, strconv.FormatUint(uint64(id), 10), "/roster")
+}
+
+// clearErrorURL builds the list-page URL carrying a failed clear
+// attempt, so the operator sees why nothing was deleted.
+func (m *Module) clearErrorURL(reason string) string {
+	return m.basePath + "?clear_error=" + reason
+}
+
+// uiViewClearData erases every row the other modules hold for one
+// contest. The action is irreversible, so the operator must type the
+// contest's name to confirm it; the check runs server-side, and the
+// modal's disabled button is friction rather than security.
+//
+// A frozen contest is refused: freezing declares its results final,
+// which is why editing and deleting it are already refused. Clearing
+// becomes available again by unfreezing.
+func (m *Module) uiViewClearData(w http.ResponseWriter, r *http.Request) {
+	id := m.ws.StrToUint(chi.URLParam(r, "id"))
+
+	if !m.frozenGuard(w, r) {
+		return
+	}
+
+	c, err := m.loadContest(r.Context(), id)
+	if err != nil {
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	r.ParseForm()
+	if strings.TrimSpace(r.FormValue("confirm_name")) != c.Name {
+		http.Redirect(w, r, m.clearErrorURL("name"), http.StatusSeeOther)
+		return
+	}
+
+	// One transaction for every module, so a failure part-way through
+	// leaves the contest's stored data untouched rather than
+	// half-erased.
+	type clearedModule struct {
+		name string
+		rows int64
+	}
+	var cleared []clearedModule
+	err = m.db.Transaction(func(tx *gorm.DB) error {
+		cleared = cleared[:0]
+		for _, e := range m.clearers {
+			rows, err := e.clearer.ClearContestData(r.Context(), tx, id)
+			if err != nil {
+				return fmt.Errorf("clearing %s data for contest %d: %w", e.name, id, err)
+			}
+			cleared = append(cleared, clearedModule{name: e.name, rows: rows})
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Error("Error clearing contest data", "error", err, "contest", id)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
+	// Logged only once committed, so a rolled back attempt never
+	// claims data was removed.
+	var total int64
+	for _, done := range cleared {
+		total += done.rows
+		slog.Info("Contest data cleared",
+			"contest", id, "name", c.Name,
+			"module", done.name, "rows", done.rows,
+			"operator", m.operatorName(r))
+	}
+
+	http.Redirect(w, r, m.basePath+"?cleared="+strconv.FormatInt(total, 10)+
+		"&cleared_for="+strconv.FormatUint(uint64(id), 10), http.StatusSeeOther)
 }
 
 func (m *Module) loadContest(ctx context.Context, id uint) (Contest, error) {

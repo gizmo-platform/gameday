@@ -11,6 +11,21 @@
       undone.</p>
     <br />
     <hr />
+    {% if cleared %}
+    <div class="notification is-success">
+      Cleared <strong>{{ cleared }}</strong> rows of stored results{% if clearedFor %} for <strong>{{ clearedFor }}</strong>{% endif %}.
+      Sites can push again to repopulate them.
+    </div>
+    {% endif %}
+    {% if clearError %}
+    <div class="notification is-danger">
+      {% if clearError == "name" %}
+      The confirmation name did not match the contest's name exactly. Nothing was cleared.
+      {% else %}
+      The stored results could not be cleared. Nothing was deleted.
+      {% endif %}
+    </div>
+    {% endif %}
     {% if profile | hasPermission:"CONTEST:ADMIN" %}
     <div class="is-flex is-justify-content-center">
       <a class="button is-primary" href="{{ pageBase }}/add">Add Contest</a>
@@ -60,12 +75,119 @@
             <form action="{{ pageBase }}/{{ contest.ID }}/delete" method="POST">
               <button class="button" type="submit" {% if contest.Frozen %}disabled{% endif %}>Delete</button>
             </form>
+            <button class="button is-danger {% if contest.Frozen or not contest.Clear.Total %}is-disabled{% endif %}"
+                    type="button"
+                    {% if contest.Frozen or not contest.Clear.Total %}aria-disabled="true"{% endif %}
+                    title="{% if contest.Frozen %}Frozen contests cannot be cleared: unfreeze it first{% else %}{% if not contest.Clear.Total %}No stored results for this contest{% else %}Erase {{ contest.Clear.Total }} stored result rows{% endif %}{% endif %}"
+                    data-clear-modal="clear-modal-{{ contest.ID }}">Clear Data</button>
           </div>
         </td>
         {% endif %}
       </tr>
       {% endfor %}
     </table>
+
+    {% if profile | hasPermission:"CONTEST:ADMIN" %}
+    {% for contest in contests %}
+    {% if contest.Clear.Total and not contest.Frozen %}
+    <div class="modal" id="clear-modal-{{ contest.ID }}">
+      <div class="modal-background"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">Erase all stored results for {{ contest.Name }}?</p>
+        </header>
+        <section class="modal-card-body">
+          <p>This permanently deletes the results every site has pushed for this contest:</p>
+          <table class="table is-narrow">
+            <tr>
+              <th>Data</th>
+              <th>Rows</th>
+            </tr>
+            {% for row in contest.Clear.Rows %}
+            <tr>
+              <td>{{ row.Label }}</td>
+              <td>{{ row.Rows }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+              <th>Total</th>
+              <th>{{ contest.Clear.Total }}</th>
+            </tr>
+          </table>
+          <p>This does <strong>not</strong> touch the contest record, its roster, the team list, or the game configuration.</p>
+          <p>Deletion cannot be undone from this screen. Sites can push their results again afterwards, which repopulates the stored schedules and scorecards.</p>
+          <p class="help">Type the contest name <code>{{ contest.Name }}</code> exactly to enable erasing.</p>
+          <form method="POST" action="{{ pageBase }}/{{ contest.ID }}/clear">
+            <div class="field">
+              <div class="control">
+                <input class="input" type="text" name="confirm_name" data-confirm="{{ contest.Name }}" autocomplete="off" />
+              </div>
+            </div>
+            <div class="buttons is-centered">
+              <button class="button" type="button" data-clear-cancel>Cancel</button>
+              <button class="button is-danger" type="submit">Erase Results</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    <script>
+      // Each Clear Data button opens its contest's confirmation modal.
+      // The submit button stays disabled until the typed name matches
+      // the contest's name; the server re-checks it, so this is
+      // friction, not security.
+      (function () {
+        "use strict";
+
+        function bind(opener, modal) {
+          // An empty contest has nothing to erase; the button stays
+          // clickable so its tooltip still explains why (aria-disabled,
+          // never disabled, which would swallow the tooltip).
+          if (opener.getAttribute("aria-disabled") == "true") {
+            return;
+          }
+
+          var input = modal.querySelector("input[name=confirm_name]");
+          var submit = modal.querySelector("button[type=submit]");
+
+          function close() {
+            modal.classList.remove("is-active");
+          }
+
+          opener.addEventListener("click", function () {
+            modal.classList.add("is-active");
+            if (input != null) {
+              input.focus();
+            }
+          });
+          modal.querySelector(".modal-background").addEventListener("click", close);
+          modal.querySelectorAll("[data-clear-cancel]").forEach(function (btn) {
+            btn.addEventListener("click", close);
+          });
+          document.addEventListener("keydown", function (e) {
+            if (e.key == "Escape") {
+              close();
+            }
+          });
+          if (input != null && submit != null) {
+            submit.disabled = true;
+            input.addEventListener("input", function () {
+              submit.disabled = input.value.trim() != input.getAttribute("data-confirm");
+            });
+          }
+        }
+
+        document.querySelectorAll("[data-clear-modal]").forEach(function (opener) {
+          var modal = document.getElementById(opener.getAttribute("data-clear-modal"));
+          if (modal != null) {
+            bind(opener, modal);
+          }
+        });
+      })();
+    </script>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
