@@ -20,6 +20,19 @@ func (c BIDScheduleConfig) DefaultRounds() int { return 1 }
 
 func (c BIDScheduleConfig) RoundsDynamic() bool { return true }
 
+// DegradesWidths opts the BID generator into dynamic position
+// degradation: block sizes whose lambda=1 design is infeasible force
+// an approximation, so a width with a cleaner design is preferred.
+func (c BIDScheduleConfig) DegradesWidths() TierFunc { return BIBDTier }
+
+// DegradesWidths opts the BID generator into width degradation.
+func (b *BIDSchedule) DegradesWidths() TierFunc { return BIBDTier }
+
+// CoversAllPairs reports that the BID generator schedules until every
+// pair of teams has met, so narrowing the width adds matches rather
+// than dropping opponent coverage.
+func (b *BIDSchedule) CoversAllPairs() bool { return true }
+
 func NewBID(c Config) Generator {
 	return &BIDSchedule{
 		Schedule: Schedule{
@@ -40,7 +53,8 @@ type BIDSchedule struct {
 // Generate produces a BIBD-based schedule with the minimum number
 // of matches needed so every pair of teams plays together once.
 func (b *BIDSchedule) Generate() (*Schedule, error) {
-	k := b.Config.Fields * b.Config.Positions
+	width := b.Config.ActiveWidth()
+	k := b.Config.Fields * width
 	v := b.Config.Teams
 
 	// Validate BIBD feasibility: need v > k for a non-trivial design.
@@ -174,9 +188,11 @@ func (b *BIDSchedule) Generate() (*Schedule, error) {
 	}
 
 	// Convert blocks into matches with field/position placements.
+	// Active positions rotate across matches so a narrowed width
+	// still visits every physical position.
 	slots := []Location{}
 	for f := range b.Config.Fields {
-		for p := range b.Config.Positions {
+		for p := range width {
 			slots = append(slots, Location{f, p})
 		}
 	}
@@ -191,7 +207,10 @@ func (b *BIDSchedule) Generate() (*Schedule, error) {
 		m := Match{Placements: make(map[Location]int)}
 		for i, team := range block {
 			loc := slots[i%len(slots)]
-			m.Placements[loc] = team
+			m.Placements[Location{
+				Field:    loc.Field,
+				Position: physicalPosition(loc.Position, len(allMatches), width, b.Config.Positions),
+			}] = team
 		}
 		allMatches = append(allMatches, m)
 	}

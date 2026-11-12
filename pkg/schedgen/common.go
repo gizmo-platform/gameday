@@ -57,8 +57,31 @@ func GenerateSchedule(g string, c Config) (*Schedule, error) {
 	if !exists {
 		return nil, &UnknownGenerator{msg: "generator does not exist (" + g + ")"}
 	}
+
+	// A generator that opts in may narrow the match width below the
+	// physical number of positions. The decision is arithmetic, so it
+	// happens once here before the generator is built, and a pinned
+	// width always wins.
+	probe := gf(c)
+	var tier TierFunc
+	if wd, ok := probe.(WidthDegradable); ok {
+		tier = wd.DegradesWidths()
+	}
+	_, coverage := probe.(WidthCoverage)
+	c, report := ResolveWidth(c, tier, coverage)
+
 	gen := gf(c)
-	return gen.Generate()
+	s, err := gen.Generate()
+	if err != nil {
+		return nil, err
+	}
+	s.Config = c
+	s.ActivePositions = c.ActiveWidth()
+	s.WidthDegraded = report.Degraded
+	if report.Degraded {
+		s.WidthReason = report.Chosen.Reason
+	}
+	return s, nil
 }
 
 // GetConfig returns the configuration implementation for a given
@@ -89,6 +112,23 @@ type Config struct {
 	Positions int
 	Teams     int
 	Rounds    int
+
+	// ActivePositions is how many of the Positions positions per
+	// field are played on. Zero means "use them all". A generator may
+	// choose a smaller number than the physical maximum when the team
+	// count does not divide into full waves (see degradation.go); an
+	// operator can pin the value to decide for themselves.
+	ActivePositions int
+}
+
+// ActiveWidth returns how many positions per field matches are played
+// on, which is Positions unless a narrower active width was chosen or
+// pinned.
+func (c Config) ActiveWidth() int {
+	if c.ActivePositions > 0 && c.ActivePositions < c.Positions {
+		return c.ActivePositions
+	}
+	return c.Positions
 }
 
 // DivisionConfig defines a division for division-aware scheduling.
@@ -124,6 +164,21 @@ type Schedule struct {
 	// GenerateDivisionSchedule interleave step. Validation of
 	// per-team round counts happens pre-interleave per division.
 	Interleaved bool
+
+	// ActivePositions is how many positions per field this schedule
+	// actually plays on, which is Config.Positions unless the width
+	// was narrowed. Every emitted match uses this many positions on
+	// each field it occupies.
+	ActivePositions int
+
+	// WidthDegraded is true when ActivePositions is narrower than
+	// Config.Positions, in which case WidthReason explains why in
+	// operator-facing prose.
+	WidthDegraded bool
+
+	// WidthReason is the reason for a narrowed match width, empty
+	// otherwise.
+	WidthReason string
 }
 
 // Location represents a Field and Position on that field as a unique

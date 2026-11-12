@@ -34,6 +34,9 @@ func GenerateDivisionSchedule(generator string, cfg Config, divisions []Division
 			Positions: cfg.Positions,
 			Teams:     len(div.TeamIndices),
 			Rounds:    rounds,
+			// A pinned width applies to every division; zero lets
+			// each division resolve its own from its team count.
+			ActivePositions: cfg.ActivePositions,
 		}
 
 		sched, err := GenerateSchedule(generator, subCfg)
@@ -48,7 +51,22 @@ func GenerateDivisionSchedule(generator string, cfg Config, divisions []Division
 	}
 
 	// Interleave all division schedules round-by-round.
-	return interleave(results, fieldMap, cfg), nil
+	result := interleave(results, fieldMap, cfg)
+
+	// Surface the narrowest active width across divisions; a
+	// division that degraded makes the merged schedule report the
+	// first reason it encountered.
+	result.ActivePositions = cfg.ActiveWidth()
+	for _, r := range results {
+		if r.schedule.ActivePositions > 0 && r.schedule.ActivePositions < result.ActivePositions {
+			result.ActivePositions = r.schedule.ActivePositions
+		}
+		if r.schedule.WidthDegraded && result.WidthReason == "" {
+			result.WidthDegraded = true
+			result.WidthReason = r.schedule.WidthReason
+		}
+	}
+	return result, nil
 }
 
 // assignFieldsToDivisions assigns fields to divisions that don't have
@@ -228,15 +246,24 @@ func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *
 		var compacted []Match
 		// slotFields tracks which fields are used in each compacted match.
 		slotFields := make([]map[int]bool, 0)
+		// slotSeats tracks the exact (field, position) seats used in
+		// each compacted match, so divisions playing at different
+		// active widths never collide on one seat.
+		slotSeats := make([]map[Location]bool, 0)
 		// slotDiv tracks the division of the first match placed in each slot
 		// (used for NoCompact checks).
 		slotDiv := make([]int, 0)
 
 		for _, m := range allMatches {
-			// Collect fields used by this match.
+			// Collect fields used by this match. Divisions may play
+			// at different active widths, so track exact
+			// (field, position) seats too: merging two matches that
+			// share a seat would silently drop a placement.
 			fields := make(map[int]bool)
+			seats := make(map[Location]bool)
 			for loc := range m.Placements {
 				fields[loc.Field] = true
+				seats[loc] = true
 			}
 
 			placed := false
@@ -259,6 +286,14 @@ func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *
 						break
 					}
 				}
+				if !conflict {
+					for loc := range seats {
+						if slotSeats[si][loc] {
+							conflict = true
+							break
+						}
+					}
+				}
 				if conflict {
 					continue
 				}
@@ -267,6 +302,7 @@ func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *
 				for loc, team := range m.Placements {
 					compacted[si].Placements[loc] = team
 					slotFields[si][loc.Field] = true
+					slotSeats[si][loc] = true
 				}
 				placed = true
 				break
@@ -274,6 +310,7 @@ func interleave(results []divResult, fieldMap map[int][]int, globalCfg Config) *
 
 			if !placed {
 				slotFields = append(slotFields, fields)
+				slotSeats = append(slotSeats, seats)
 				slotDiv = append(slotDiv, m.DivisionID)
 				compacted = append(compacted, m)
 			}

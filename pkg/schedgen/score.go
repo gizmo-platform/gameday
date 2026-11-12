@@ -29,6 +29,7 @@ func (s *Schedule) Score() int {
 	s.TeamAvgScore = 0
 
 	ts := make(map[int]*teamStats)
+	width := s.Config.ActiveWidth()
 	for team := range s.Config.Teams {
 		ts[team] = &teamStats{
 			ClosestReplay:   99,
@@ -40,21 +41,23 @@ func (s *Schedule) Score() int {
 	for roundID, round := range s.Rounds {
 		for matchNum, match := range round.Matches {
 			matchNum = matchNum + roundID*len(round.Matches)
-			for field := range s.Config.Fields {
-				for pos := range s.Config.Positions {
-					t := match.Team(field, pos)
-					if t == -1 {
+			// Iterate placements directly: with a narrowed match width
+			// the physical positions rotate per wave, so seats are not
+			// confined to the first width indices.
+			fieldTeams := make(map[int][]int)
+			for loc, t := range match.Placements {
+				fieldTeams[loc.Field] = append(fieldTeams[loc.Field], t)
+			}
+			for _, t := range match.Placements {
+				ts[t].PlayedMatches = append(ts[t].PlayedMatches, matchNum)
+			}
+			for loc, t := range match.Placements {
+				ts[t].PlayedLocations[loc] = struct{}{}
+				for _, peer := range fieldTeams[loc.Field] {
+					if peer == t {
 						continue
 					}
-					ts[t].PlayedMatches = append(ts[t].PlayedMatches, matchNum)
-					ts[t].PlayedLocations[Location{field, pos}] = struct{}{}
-					for _, peer := range match.PeerTeams(field, pos, s.Config.Positions) {
-						// Empty slots read back as -1 and are not a team.
-						if peer == -1 {
-							continue
-						}
-						ts[t].OtherTeams[peer] = struct{}{}
-					}
+					ts[t].OtherTeams[peer] = struct{}{}
 				}
 			}
 		}
@@ -107,7 +110,7 @@ func (s *Schedule) Score() int {
 	total := s.TeamAvgScore
 	s.TeamAvgScore = s.TeamAvgScore / s.Config.Teams
 
-	return total / (s.Config.Fields * s.Config.Positions)
+	return total / (s.Config.Fields * width)
 }
 
 func (s *Schedule) Validate() error {
@@ -116,15 +119,8 @@ func (s *Schedule) Validate() error {
 	for roundID, round := range s.Rounds {
 		for matchNum, match := range round.Matches {
 			matchNum = matchNum + roundID*len(round.Matches)
-			for field := range s.Config.Fields {
-				for pos := range s.Config.Positions {
-					t := match.Team(field, pos)
-					if t == -1 {
-						continue
-					}
-
-					teamMatches[t] = append(teamMatches[t], matchNum)
-				}
+			for _, t := range match.Placements {
+				teamMatches[t] = append(teamMatches[t], matchNum)
 			}
 		}
 	}

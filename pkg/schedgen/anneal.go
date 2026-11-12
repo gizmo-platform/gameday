@@ -21,6 +21,14 @@ func (AnnealedScheduleConfig) DefaultRounds() int { return 5 }
 
 func (AnnealedScheduleConfig) RoundsDynamic() bool { return false }
 
+// DegradesWidths opts the annealer into dynamic position degradation:
+// wave arithmetic decides the fit, since a solo wave wastes an entire
+// match slot on one team playing nobody.
+func (AnnealedScheduleConfig) DegradesWidths() TierFunc { return DivisorTier }
+
+// DegradesWidths opts the annealed generator into width degradation.
+func (as *AnnealedSchedule) DegradesWidths() TierFunc { return DivisorTier }
+
 // AnnealOptions tune the local search that produces an annealed
 // schedule.
 //
@@ -80,7 +88,7 @@ func BakeOptions() AnnealOptions {
 // annealIterations scales the default iteration budget with the size
 // of the schedule being searched.
 func annealIterations(c Config) int {
-	iters := 40_000 * c.Rounds * (c.Fields * c.Positions)
+	iters := 40_000 * c.Rounds * (c.Fields * c.ActiveWidth())
 	if iters < liveAnnealFloor {
 		iters = liveAnnealFloor
 	}
@@ -224,7 +232,8 @@ type annealer struct {
 	rnd  *rand.Rand
 	opts AnnealOptions
 
-	slots      int // locations per wave (fields * positions)
+	slots      int // match seats per wave (fields * active width)
+	width      int // active positions per field
 	waves      int // matches (waves) per round
 	perRound   int // padded entities per round
 	emptyStart int // first empty-slot entity id
@@ -250,7 +259,8 @@ func newAnnealer(c Config, opts AnnealOptions, seed int64) *annealer {
 	if c.Rounds < 2 {
 		a.historyLen = 1
 	}
-	a.slots = c.Fields * c.Positions
+	a.width = c.ActiveWidth()
+	a.slots = c.Fields * a.width
 	a.waves = (c.Teams + a.slots - 1) / a.slots
 	if a.waves < 1 {
 		a.waves = 1
@@ -332,7 +342,7 @@ func (a *annealer) seed() {
 			group := []int{seedTeam}
 			available[seedTeam] = true
 
-			for len(group) < a.cfg.Positions && len(group) < remaining {
+			for len(group) < a.width && len(group) < remaining {
 				bestT, bestPenalty := -1, 1<<30
 				for t := 0; t < v; t++ {
 					if available[t] {
@@ -417,13 +427,13 @@ func (a *annealer) cost() int {
 	for r := 0; r < len(a.perm); r++ {
 		for w := 0; w < waves; w++ {
 			for f := 0; f < a.cfg.Fields; f++ {
-				base := w*a.slots + f*a.cfg.Positions
-				for i := 0; i < a.cfg.Positions; i++ {
+				base := w*a.slots + f*a.width
+				for i := 0; i < a.width; i++ {
 					ti := a.slotTeam(r, base+i)
 					if ti < 0 {
 						continue
 					}
-					for j := i + 1; j < a.cfg.Positions; j++ {
+					for j := i + 1; j < a.width; j++ {
 						tj := a.slotTeam(r, base+j)
 						if tj < 0 {
 							continue
@@ -444,7 +454,7 @@ func (a *annealer) cost() int {
 
 	// Each team wants as many distinct opponents as the schedule can
 	// possibly give it: one per match times everyone else.
-	idealOpp := len(a.perm) * (a.cfg.Positions - 1)
+	idealOpp := len(a.perm) * (a.width - 1)
 	if cap := v - 1; idealOpp > cap {
 		idealOpp = cap
 	}
@@ -626,11 +636,15 @@ func clonePerm(p [][]int) [][]int {
 }
 
 // buildRounds converts a permutation into the Schedule round list.
-// Entities at or above Config.Teams are empty slots and are omitted
-// from the match, which is how non-divisible team counts produce
-// partially filled matches.
+// The permutation is laid out over the active width; positions are
+// mapped onto physical position indices with a per-wave rotation so a
+// narrowed match width still visits every physical position across
+// waves instead of leaving one permanently dark. Entities at or above
+// Config.Teams are empty slots and are omitted from the match, which
+// is how non-divisible team counts produce partially filled matches.
 func buildRounds(c Config, perm [][]int) []Round {
-	slots := c.Fields * c.Positions
+	width := c.ActiveWidth()
+	slots := c.Fields * width
 	rounds := make([]Round, 0, len(perm))
 	for r := range perm {
 		waves := len(perm[r]) / slots
@@ -645,7 +659,10 @@ func buildRounds(c Config, perm [][]int) []Round {
 				if e >= c.Teams {
 					continue
 				}
-				m.Placements[Location{Field: s / c.Positions, Position: s % c.Positions}] = e
+				m.Placements[Location{
+					Field:    s / width,
+					Position: physicalPosition(s%width, w, width, c.Positions),
+				}] = e
 				round.TeamAppearances[e] = w
 			}
 			round.Matches = append(round.Matches, m)

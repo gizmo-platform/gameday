@@ -43,6 +43,14 @@ type BakedSchedule struct {
 	Fields    int `yaml:"fields"`
 	Positions int `yaml:"positions"`
 
+	// ActivePositions is how many of the positions per field the
+	// design actually plays on. Zero means the full physical width,
+	// which is every artifact baked before dynamic position
+	// degradation existed. The grid is laid out over the active
+	// width; the physical position of a seat is derived from the
+	// wave index at materialization time.
+	ActivePositions int `yaml:"active_positions,omitempty"`
+
 	// Rounds is the number of round rows in Grid, i.e. the round cap
 	// this design can serve.
 	Rounds int `yaml:"rounds"`
@@ -67,11 +75,22 @@ func (b *BakedSchedule) FileName() string {
 	return BakedFileName(b.Teams, b.Fields, b.Positions, b.Rounds)
 }
 
+// activeWidth is how many positions per field the design plays on.
+func (b *BakedSchedule) activeWidth() int {
+	if b.ActivePositions > 0 && b.ActivePositions < b.Positions {
+		return b.ActivePositions
+	}
+	return b.Positions
+}
+
 // Validate checks the artifact's internal consistency: the grid has
 // the advertised shape and each round is a permutation of the teams
 // plus the correct number of empty slots.
 func (b *BakedSchedule) Validate() error {
-	slots := b.Fields * b.Positions
+	if b.ActivePositions < 0 || b.ActivePositions > b.Positions {
+		return errors.New("active_positions outside the physical position count")
+	}
+	slots := b.Fields * b.activeWidth()
 	if b.Teams < 1 || slots < 1 {
 		return errors.New("baked schedule has no teams or slots")
 	}
@@ -122,15 +141,16 @@ func (b *BakedSchedule) Marshal() ([]byte, error) {
 		return nil, err
 	}
 	meta := struct {
-		Teams      int   `yaml:"teams"`
-		Fields     int   `yaml:"fields"`
-		Positions  int   `yaml:"positions"`
-		Rounds     int   `yaml:"rounds"`
-		Iterations int   `yaml:"iterations,omitempty"`
-		Restarts   int   `yaml:"restarts,omitempty"`
-		Seed       int64 `yaml:"seed,omitempty"`
-		Cost       int   `yaml:"cost,omitempty"`
-	}{b.Teams, b.Fields, b.Positions, b.Rounds, b.Iterations, b.Restarts, b.Seed, b.Cost}
+		Teams           int   `yaml:"teams"`
+		Fields          int   `yaml:"fields"`
+		Positions       int   `yaml:"positions"`
+		ActivePositions int   `yaml:"active_positions,omitempty"`
+		Rounds          int   `yaml:"rounds"`
+		Iterations      int   `yaml:"iterations,omitempty"`
+		Restarts        int   `yaml:"restarts,omitempty"`
+		Seed            int64 `yaml:"seed,omitempty"`
+		Cost            int   `yaml:"cost,omitempty"`
+	}{b.Teams, b.Fields, b.Positions, b.ActivePositions, b.Rounds, b.Iterations, b.Restarts, b.Seed, b.Cost}
 
 	out, err := yaml.Marshal(meta)
 	if err != nil {
@@ -189,6 +209,18 @@ func LookupBaked(c Config) (*BakedSchedule, error) {
 		candidate, err := ParseBaked(data)
 		if err != nil {
 			slog.Warn("Ignoring invalid baked schedule", "file", entry.Name(), "error", err)
+			continue
+		}
+		// A design baked at a different match width than the one
+		// chosen for this request cannot serve it: using it would
+		// quietly undo the degradation decision (or re-impose one
+		// the operator overrode). Skip it and let the live search
+		// produce the right shape.
+		if candidate.activeWidth() != c.ActiveWidth() {
+			slog.Debug("Baked schedule width does not match request",
+				"file", entry.Name(),
+				"baked-active", candidate.activeWidth(),
+				"requested-active", c.ActiveWidth())
 			continue
 		}
 		best = candidate
@@ -260,6 +292,10 @@ func (b *BakedSchedule) Materialize(c Config, seed int64) (*Schedule, error) {
 		return nil, fmt.Errorf("baked schedule shape %dx%dx%d does not match request %dx%dx%d",
 			b.Teams, b.Fields, b.Positions, c.Teams, c.Fields, c.Positions)
 	}
+	if b.activeWidth() != c.ActiveWidth() {
+		return nil, fmt.Errorf("baked schedule active width %d does not match request %d",
+			b.activeWidth(), c.ActiveWidth())
+	}
 	if c.Rounds < 1 {
 		return nil, errors.New("requested round count must be at least 1")
 	}
@@ -292,9 +328,10 @@ func (b *BakedSchedule) Materialize(c Config, seed int64) (*Schedule, error) {
 	}
 
 	s := &Schedule{
-		Config:        c,
-		Rounds:        buildRounds(c, perm),
-		ClosestReplay: 99,
+		Config:          c,
+		Rounds:          buildRounds(c, perm),
+		ClosestReplay:   99,
+		ActivePositions: c.ActiveWidth(),
 	}
 	if err := s.Validate(); err != nil {
 		return nil, fmt.Errorf("materialized baked schedule failed validation: %w", err)
@@ -377,9 +414,10 @@ func BakeSchedule(c Config, opts AnnealOptions) (*BakedSchedule, error) {
 		return nil, fmt.Errorf("annealed schedule failed validation: %w", err)
 	}
 
-	slots := c.Fields * c.Positions
+	slots := c.Fields * c.ActiveWidth()
 	waves := (c.Teams + slots - 1) / slots
 	perRound := waves * slots
+	width := c.ActiveWidth()
 
 	b := &BakedSchedule{
 		Teams:      c.Teams,
@@ -392,6 +430,9 @@ func BakeSchedule(c Config, opts AnnealOptions) (*BakedSchedule, error) {
 		Cost:       e,
 		Grid:       make([][]int, 0, len(s.Rounds)),
 	}
+	if width < c.Positions {
+		b.ActivePositions = width
+	}
 	for _, round := range s.Rounds {
 		row := make([]int, perRound)
 		for i := range row {
@@ -399,12 +440,15 @@ func BakeSchedule(c Config, opts AnnealOptions) (*BakedSchedule, error) {
 		}
 		for w, m := range round.Matches {
 			for f := 0; f < c.Fields; f++ {
-				for p := 0; p < c.Positions; p++ {
-					t := m.Team(f, p)
+				for p := 0; p < width; p++ {
+					// Physical positions rotate per wave, so read
+					// the rotated seat back to recover the layout
+					// index.
+					t := m.Team(f, physicalPosition(p, w, width, c.Positions))
 					if t < 0 {
 						continue
 					}
-					row[w*slots+slotIndexOf(f, p, c.Positions)] = t
+					row[w*slots+slotIndexOf(f, p, width)] = t
 				}
 			}
 		}
