@@ -90,7 +90,7 @@
               </select>
             </div>
           </div>
-          <p class="help">Automatic plays fewer teams per match when the team count would otherwise leave a match with a single team playing nobody.</p>
+          <p class="help">Automatic plays fewer teams per match when the team count would otherwise leave a match with a single team playing nobody. Choose a fixed width to always play full matches, even when that means one team plays alone.</p>
         </div>
         {% endif %}
       </div>

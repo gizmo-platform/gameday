@@ -810,23 +810,30 @@ type widthOptionRow struct {
 
 // widthOptions lists the match widths an operator can pin for a
 // phase, headed by Automatic, which lets the generator narrow the
-// width when the team count does not divide into full waves. Widths
-// below the physical maximum only appear when at least one of them
-// could plausibly fit better than the full width.
+// width when the team count does not divide into full waves. When the
+// full width is ragged, an explicit full-width choice follows, so the
+// operator can keep every physical position and accept a solo-wave
+// match rather than degrade. Widths below the physical maximum only
+// appear when at least one of them could plausibly fit better than the
+// full width.
 func widthOptions(teams, fields, positions int) []widthOptionRow {
 	rows := []widthOptionRow{{
 		Value: 0,
-		Label: fmt.Sprintf("Automatic (all %d positions)", positions),
+		Label: "Automatic",
 	}}
 	if positions < 2 || fields < 1 {
 		return rows
 	}
-	// Only offer narrower widths when the full width leaves a
+	// Only offer explicit widths when the full width leaves a
 	// ragged last wave, which is the case degradation exists for.
 	full := schedgen.TierOf(teams, fields*positions)
 	if full == schedgen.TierExact {
 		return rows
 	}
+	rows = append(rows, widthOptionRow{
+		Value: positions,
+		Label: fmt.Sprintf("All %d positions (always full matches)", positions),
+	})
 	for _, opt := range schedgen.CandidateWidths(teams, fields, positions) {
 		if opt.Positions >= positions {
 			continue
