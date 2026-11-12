@@ -208,3 +208,34 @@ func TestFinalsShort(t *testing.T) {
 		checkShortSchedule(t, s, teams, 4, 4)
 	}
 }
+
+// TestFinalsIgnoreWidthDegradation pins the finals against the
+// scheduler's dynamic position degradation: the finals rotation is
+// checked against the physical field, and finals are not a
+// width-degrading generator, so a field shape that would degrade an
+// annealed schedule must still yield the full four-position finals.
+func TestFinalsIgnoreWidthDegradation(t *testing.T) {
+	// 9 teams on one field with 4 physical positions is exactly the
+	// shape where the annealed generator narrows the match width to
+	// three; the finals must not follow it.
+	s, err := schedgen.GenerateSchedule("BESTFinals", schedgen.Config{
+		Teams:     4,
+		Fields:    1,
+		Positions: 4,
+		Rounds:    4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.WidthDegraded {
+		t.Errorf("finals must never report width degradation: %q", s.WidthReason)
+	}
+	if s.ActivePositions != 4 {
+		t.Errorf("ActivePositions = %d, want the full 4", s.ActivePositions)
+	}
+	for _, m := range s.Rounds[0].Matches {
+		if len(m.Placements) != 4 {
+			t.Errorf("finals match carries %d placements, want 4", len(m.Placements))
+		}
+	}
+}
