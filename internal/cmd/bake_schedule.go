@@ -77,6 +77,9 @@ func bakeScheduleCmdRun(c *cobra.Command, args []string) {
 	totalScore := s.Score()
 
 	fmt.Println("Schedule Generated")
+	if s.WidthDegraded {
+		fmt.Printf("Width: %s\n", s.WidthReason)
+	}
 	fmt.Printf("Team Scores: best=%d, worst=%d, avg=%d\n", s.TeamBestScore, s.TeamWorstScore, s.TeamAvgScore)
 	fmt.Printf("High Level: closest-replay=%d, closest-match=%d, worst-location-diversity=%d worst-competitor-diversity=%d\n",
 		s.ClosestReplay, s.ClosestReplayMatch, s.WorstLocationDiversity, s.WorstCompetitorDiversity)

@@ -103,7 +103,6 @@ func bakeSchedulesCmdRun(c *cobra.Command, _ []string) error {
 		return fmt.Errorf("--rounds: %w", err)
 	}
 
-	type shape struct{ teams, fields, positions, rounds int }
 	shapes := []shape{}
 	for _, teams := range teamList {
 		for _, fields := range fieldList {
@@ -181,12 +180,7 @@ func bakeSchedulesCmdRun(c *cobra.Command, _ []string) error {
 			defer wg.Done()
 			for s := range jobs {
 				name := schedgen.BakedFileName(s.teams, s.fields, s.positions, s.rounds)
-				cfg := schedgen.Config{
-					Teams:     s.teams,
-					Fields:    s.fields,
-					Positions: s.positions,
-					Rounds:    s.rounds,
-				}
+				cfg := bakeConfig(s)
 				opts := schedgen.BakeOptions()
 				opts.Restarts = flags.restarts
 				opts.Seed = flags.seed
@@ -222,9 +216,14 @@ func bakeSchedulesCmdRun(c *cobra.Command, _ []string) error {
 					continue
 				}
 				live.Score()
-				report("[%d/%d] %s cost=%d closest-replay=%d competitor-diversity=%d location-diversity=%d\n",
+				degradedNote := ""
+				if baked.ActivePositions > 0 {
+					degradedNote = fmt.Sprintf(" active-positions=%d", baked.ActivePositions)
+				}
+				report("[%d/%d] %s cost=%d closest-replay=%d competitor-diversity=%d location-diversity=%d%s\n",
 					n, len(shapes), name, baked.Cost,
-					live.ClosestReplay, live.WorstCompetitorDiversity, live.WorstLocationDiversity)
+					live.ClosestReplay, live.WorstCompetitorDiversity, live.WorstLocationDiversity,
+					degradedNote)
 			}
 		}()
 	}
@@ -240,6 +239,24 @@ func bakeSchedulesCmdRun(c *cobra.Command, _ []string) error {
 		return errors.New("some shapes failed to bake")
 	}
 	return nil
+}
+
+// shape is one event size in the bake cross product.
+type shape struct{ teams, fields, positions, rounds int }
+
+// bakeConfig builds the generation config for one shape, resolving
+// the active match width exactly as the runtime Annealed generator
+// would, so a baked artifact always carries the width the live
+// resolver picks and the two can never disagree.
+func bakeConfig(s shape) schedgen.Config {
+	cfg := schedgen.Config{
+		Teams:     s.teams,
+		Fields:    s.fields,
+		Positions: s.positions,
+		Rounds:    s.rounds,
+	}
+	resolved, _ := schedgen.ResolveWidth(cfg, schedgen.DivisorTier, false)
+	return resolved
 }
 
 func listBakedShapes(dir string) error {
