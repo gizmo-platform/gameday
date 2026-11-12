@@ -8,6 +8,13 @@
     <div class="content">
       <h2>Preview Schedule</h2>
       <p>You may preview the schedule below.  The schedule is not yet finalized until you select to accept it at the bottom of this page.</p>
+      {% if schedule.WidthDegraded %}
+      <div class="notification is-info is-light">
+        Narrower matches: {{ schedule.WidthReason }} Every physical
+        position is still used as matches rotate across waves. Pick a
+        fixed match width on the previous page to override this.
+      </div>
+      {% endif %}
     </div>
     <div class="is-flex is-justify-content-center">
       <table class="table">

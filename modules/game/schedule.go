@@ -523,6 +523,13 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	positions, err := gorm.G[FieldPosition](m.db.DB).Find(r.Context())
+	if err != nil {
+		slog.Error("Error loading positions", "error", err)
+		m.ws.DoTemplate(w, r, "errors/internal.p2", pongo2.Context{"error": err})
+		return
+	}
+
 	scfg, err := schedgen.GetConfig(r.URL.Query().Get("st"))
 	if err != nil {
 		slog.Error("Error getting scheduler config", "error", err)
@@ -535,9 +542,13 @@ func (m *Module) uiViewPhaseScheduleSelectTeams(w http.ResponseWriter, r *http.R
 		"teams":         teams,
 		"manualEnabled": true,
 		"fields":        fields,
+		"positions":     positions,
 		"scheduletype":  r.URL.Query().Get("st"),
 		"schedulemax":   scfg.MaxRounds(),
 		"scheduledef":   scfg.DefaultRounds(),
+		// Match widths the operator can pin; Automatic (0) lets
+		// the generator choose based on the team count.
+		"widthOptions": widthOptions(len(teams), len(fields), len(positions)),
 	}
 
 	advancingTeams := make(map[uint]struct{})
@@ -665,6 +676,9 @@ func (m *Module) uiViewPhaseSchedulePreview(w http.ResponseWriter, r *http.Reque
 		Positions: len(positions),
 		Teams:     len(teams),
 		Rounds:    int(m.ws.StrToUint(r.FormValue("rounds"))),
+		// An operator may pin the match width; zero lets the
+		// generator choose (and possibly degrade) it.
+		ActivePositions: int(m.ws.StrToUint(r.FormValue("active_positions"))),
 	}
 
 	var s *schedgen.Schedule
@@ -786,6 +800,43 @@ func generateDivisionSchedule(r *http.Request, db *gorm.DB, c schedgen.Config, f
 	}
 
 	return schedgen.GenerateDivisionSchedule(r.FormValue("schedule_type"), c, divConfigs)
+}
+
+// widthOptionRow is one selectable match width for the schedule form.
+type widthOptionRow struct {
+	Value int
+	Label string
+}
+
+// widthOptions lists the match widths an operator can pin for a
+// phase, headed by Automatic, which lets the generator narrow the
+// width when the team count does not divide into full waves. Widths
+// below the physical maximum only appear when at least one of them
+// could plausibly fit better than the full width.
+func widthOptions(teams, fields, positions int) []widthOptionRow {
+	rows := []widthOptionRow{{
+		Value: 0,
+		Label: fmt.Sprintf("Automatic (all %d positions)", positions),
+	}}
+	if positions < 2 || fields < 1 {
+		return rows
+	}
+	// Only offer narrower widths when the full width leaves a
+	// ragged last wave, which is the case degradation exists for.
+	full := schedgen.TierOf(teams, fields*positions)
+	if full == schedgen.TierExact {
+		return rows
+	}
+	for _, opt := range schedgen.CandidateWidths(teams, fields, positions) {
+		if opt.Positions >= positions {
+			continue
+		}
+		rows = append(rows, widthOptionRow{
+			Value: opt.Positions,
+			Label: fmt.Sprintf("%d positions per field", opt.Positions),
+		})
+	}
+	return rows
 }
 
 func (m *Module) uiViewPhaseScheduleAccept(w http.ResponseWriter, r *http.Request) {

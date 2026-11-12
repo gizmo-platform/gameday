@@ -78,6 +78,21 @@
             <input class="input" type="number" name="rounds" value="{{ scheduledef }}" max="{{ schedulemax }}" />
           </div>
         </div>
+        {% if widthOptions | length > 1 %}
+        <div class="field">
+          <label class="label">Match Width</label>
+          <div class="control">
+            <div class="select">
+              <select name="active_positions">
+                {% for opt in widthOptions %}
+                <option value="{{ opt.Value }}"{% if forloop.First %} selected{% endif %}>{{ opt.Label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <p class="help">Automatic plays fewer teams per match when the team count would otherwise leave a match with a single team playing nobody.</p>
+        </div>
+        {% endif %}
       </div>
     </div>
     <div class="is-flex is-justify-content-center">
